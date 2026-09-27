@@ -2654,10 +2654,12 @@ impl String {
     // error because the range check the caller would write is the one this
     // already does; NUL is distinguishable because a Prismio string cannot
     // contain one. `self.get(index)` is the Option form.
+    //
     // One unsigned comparison covers both ends -- a negative index is past every
     // length as a U64 -- and a scan whose loop already proves `index < length`
     // then has nothing left to test: written as two, the `index < 0` half stayed
-    // in the tokenizer's inner loop, a taken branch per character.
+    // in the tokenizer's inner loop as a sign test per character (178 -> 156 us
+    // median once the byte read became a branch; see `ir_str_byte_at`).
     public fn charAt(self, index: Int) -> Char {
         if ((index as U64) >= (__builtin_string_len(self) as U64)) { return '\0' }
         return __builtin_string_byte_at(self, index)

@@ -4201,9 +4201,6 @@ int ir_extract_value(const char *agg_type, const char *agg, int index) {
     return intern_value(LLVMBuildExtractValue(g_builder, a, (unsigned)index, ""));
 }
 
-// A constant aggregate, for a value known at compile time -- a string literal is
-// `{ @.strN, <len> }` and needs no instructions at all, which is why literals do
-// not go through insertvalue.
 // One byte of a String, read from wherever that string keeps its bytes.
 //
 // **Never through `str_data_ptr`**, and that is the difference between this
@@ -4219,12 +4216,27 @@ int ir_extract_value(const char *agg_type, const char *agg, int index) {
 // field 1, and `i & 7` is the shift within whichever word, because for 8..11 that
 // is exactly `i - 8`.
 //
-// The heap load still happens either way, from a pointer that is valid either
-// way: for an inline string it reads the scratch slot, which is uninitialised
-// and whose value is then thrown away by the final `select`. That is what keeps
-// this branchless and store-free -- everything except the GEP and the load is
-// loop-invariant when the string is, so LICM lifts it and the loop body is the
-// two instructions it was before the representation changed.
+// **A branch on the inline tag, weighted 1:2000 towards the heap.** The heap arm
+// is the plain GEP-and-load, and it touches nothing else: no scratch slot, no
+// shifts. The pair arm is the arithmetic above. A string that is invariant in a
+// loop makes the branch invariant too, so the loop is unswitched and the heap copy
+// of the body is the two instructions it was before the representation changed.
+// The weights are for the case where it is not unswitched -- `charAt` inlined
+// into a large loop body -- and lay the heap arm out as the fall-through.
+//
+// This was a `select` of both reads, which is store-free and branchless but
+// computes both arms on every call: the heap load went through a pointer that
+// was the scratch slot for an inline string, and the shifts ran for a heap one.
+// Where LICM lifted the invariant half that cost nothing; where it did not, it
+// was the tokenization benchmark's 0.150 -> 0.209 ms. The branch put it at
+// 0.178, and `charAt`'s single unsigned range check at 0.156 (medians) -- with
+// the branch, the `index < 0` half of a two-sided check became a sign test the
+// loop kept. The vectorised byte loops did not move (checksum stays 0.6 ms).
+//
+// What it does not fix: a loop that reads a `let mut` String through
+// `byteAt` still tests the tag per byte, because nothing resolved the binding
+// and the loop is too large to unswitch. `csv_parse` is 3% behind the
+// scratch-store form for that; see RESULTS-unicode-18.md section 12.
 int ir_str_byte_at(const char *base, const char *index) {
     LLVMTypeRef i8 = LLVMInt8TypeInContext(g_ctx);
     LLVMTypeRef i32 = LLVMInt32TypeInContext(g_ctx);

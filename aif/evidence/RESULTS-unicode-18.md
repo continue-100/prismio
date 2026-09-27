@@ -286,6 +286,12 @@ the seed's rule, so `strFoldedEquals` exits its loop with a real `break`.
 
 ## 12 · Verification, round 2
 
+Two compilers. `h2` is the round as first verified; the final one (`n2`) adds
+two changes made after it, described below: the byte read became a branch, and
+`charAt` checks its range with one unsigned comparison.
+
+At `h2`:
+
 - Fixpoint: h1 = h2 = h3 at `compiler.ll` (f32d7263…); seed -> hs0 -> hs1 -> hs2
   identical.
 - Suite (`run_suite.py --compiler build/h2-pkg/bin/pc`, renamed): **450 / 450**.
@@ -305,5 +311,85 @@ the seed's rule, so `strFoldedEquals` exits its loop with a real `break`.
   `generate_unicode_tables.py --check`: clean.
 - Conformance: GraphemeBreakTest 853 / 853, NormalizationTest 20,171 / 20,171, Part 1 invariants 1,094,910 unchanged.
 - `--verify`: test_137 57 / 57 / 0, test_200 and test_206 and test_212 allocate nothing, test_204 81 / 81 / 0, test_205 192 / 182 / 10 (by design); 0 violations in all.
-- Benchmark suite, v3 against h2: BENCH_RESULT.
 - Docs: example gates 244 (docs) and 50 (developers) snippets; both content audits pass.
+
+### The byte read is a branch
+
+The benchmark suite against `v3` read a geomean of 1.006 at `h2`, and all of it
+was `tokenization`: 0.156 -> 0.210 ms. The tokenizer calls `charAt`, which is
+loop-free and so no longer resolves its parameter (section 7), and `charAt`
+inlines into a loop LLVM will not unswitch. `ir_str_byte_at` was a `select` of
+both reads -- the pair's shift and a heap load through a pointer that was the
+scratch slot for an inline string -- so every character paid for both.
+
+It is now a branch on the inline tag, weighted 1:2000 towards the heap, whose
+heap arm is the plain GEP-and-load. That alone was not all of it: with a branch,
+the `index < 0` half of `charAt`'s two-sided range check stayed in the loop as a
+sign test per character (`tbnz` on the index), where the `select` form had let
+LLVM drop it. One unsigned comparison removes it. Attributed on one tree,
+alternating, median / min in µs:
+
+| `tokenization` | two-sided `charAt` | unsigned `charAt` |
+|---|---|---|
+| `select` (`h2`) | 214 / 203 | 213 / 204 -- no instruction changed |
+| branch | 178 / 152 | **156 / 145** |
+
+`v3` reads 155 / 145. A trap on the way: the first "branch, two-sided" arm was
+packaged with `package.py --repo <worktree>` holding the old `charAt`, and its
+binary was instruction-identical to the unsigned one. `package.py` compiles
+std from the compiler's own tree, not `--repo` (see the cross-commit A/B note);
+the arm was rebuilt from a bootstrapped compiler.
+
+### Verification of the final compiler
+
+- Fixpoint: n1 (built by `h2`) -> n2 = n3 at `compiler.ll` 16cdf3ac…; seed ->
+  ns0 -> ns1 -> ns2, and ns1 emits the same 16cdf3ac…. A revert of `charAt`,
+  built and measured to settle the table above, was restored; rebuilding the
+  final tree reproduces 16cdf3ac… with 0 of 135,567 functions changed.
+- Suite (`run_suite.py --compiler build/n2-pkg/bin/pc`, renamed): **450 / 450**.
+- AIF differential: 19 / 19 agree. `--verify` on 137/200/204/205/206/212:
+  unchanged from `h2`, 0 violations.
+- IR snapshot `h2` -> `n2`: 142 programs change, and with metadata numbers
+  normalised the only changed functions are the six that read a String byte
+  (`strByteAt`, `strGet`, `strFirst`, `strLast`, `strStartsWithChar`,
+  `strEndsWithChar`) and `charAt`, plus one new `!{!"branch_weights", i32 1,
+  i32 2000}` node. Skip lists identical.
+- Lint, format, source lists, table check, conformance: unchanged and clean.
+  Docs: example gates 244 and 50, both content audits pass.
+
+### Benchmarks, `v3` against the final compiler
+
+Two alternating runs of each, 5 samples per run pooled; `dead_code_elimination`
+is reported apart (eliminated by all three languages: Prismio 0 ns, C++ and
+Rust 0.58-0.71 µs of timer overhead) and left out of every ratio.
+
+- **Geomean new/old over 62 workloads: 1.003 on medians, 1.004 on minima.**
+  Against the other languages: 0.867x C++ and 0.775x Rust.
+- Faster: `s_expression_parse` 0.900 (alternating A/B, 41 samples: 0.892 min),
+  `string_join` 0.955, `sort_strings` 0.968.
+- `tokenization` 0.984 -- parity with `v3`, from 1.346 at `h2`.
+- Noise, by their minima: `function_call_overhead` 1.086 median / 1.004 min,
+  `recursive_tree_rebuild` 1.139 / 0.987. `trie_search` 1.022 changed no
+  instruction. `line_processing` 1.023 is 1.007 on minima in a direct A/B.
+- **`csv_parse` 1.026 (A/B 1.030 median, 1.027 min) -- open.**
+
+`csv_parse` is still the fastest of the three (0.887x C++, 0.577x Rust), and
+the 3% is in its parse loop. A probe timing the two phases apart, 200
+iterations: building the input is equal, parsing is 312.8 µs (`v3`) against
+329.8 µs. The loop reads `csvData.byteAt(pos)`; `csvData` is a `let mut`, which
+nothing resolves, and `byteAt` reaches the builtin through `strByteAt`, so each
+read tests the tag. `v3` had no test: its inlined `strByteAt` resolved the
+parameter, which put three stores to the scratch slot in the loop -- free here,
+and exactly what kept byte loops from vectorising (section 7).
+
+What was tried: `PRISMIO_LLVM_ARGS=-unswitch-threshold=200` makes LLVM
+unswitch the loop, and the heap copy is then the ideal body -- no tag test, and
+the `b == ',' or b == '\n'` pair back to one `ccmp` -- yet it read 320-325 µs,
+still ~4% behind: the register allocator rematerialises a 64-bit modulus
+constant at every field end. Aligning loops to 64 bytes, and shifting the
+function by 0x80-0x200 bytes, left `v3` ahead every time, so it is not layout.
+The lead is to resolve a String binding at the caller and let `byteAt` /
+`charAt` on a resolved binding use the pointer. Today resolution reaches only
+`__builtin_string_byte_at` applied directly to a name, and only for parameters
+and immutable `let`s. That means resolving `let mut` at every assignment and
+seeing through a std method call.

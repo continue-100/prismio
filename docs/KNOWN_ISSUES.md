@@ -498,6 +498,17 @@ types: whoever picks this up should start by finding which of
 call's resolution in flight. `../tests/test_149_list_literal` covers the three
 contexts that work.
 
+**A byte loop over a `let mut` String tests the inline tag per byte.**
+`s.byteAt(i)` reaches `__builtin_string_byte_at` through `strByteAt`, which
+is loop-free and so does not resolve its parameter; the caller's binding is
+never resolved either, because only parameters and immutable `let`s are. Each
+read is then `ir_str_byte_at`'s branch on the tag, which LLVM does not unswitch
+out of a large loop. It is predicted and cheap, but `csv_parse` pays 3% for it
+against the older scratch-store form. Forcing unswitching does not recover the
+3%. The fix is to resolve a String binding at the caller, re-resolving a
+`let mut` at each assignment, and to let `byteAt`/`charAt` on a resolved
+binding use the pointer. See `../aif/evidence/RESULTS-unicode-18.md` section 12.
+
 **A string literal in a curated runtime function breaks the link.**
 `ir_curate_module` copies a function body into the user's module as
 `available_externally` and does **not** copy the private string constants it
