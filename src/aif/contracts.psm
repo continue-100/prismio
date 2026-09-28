@@ -7,6 +7,7 @@ import ast.types
 import common.text
 import common.diagnostics
 import common.float_builtins
+import common.int_builtins
 import std.string
 import std.option
 
@@ -122,6 +123,7 @@ private fn aifCompilerBuiltinContract(name: String, index: Int) -> Int {
     if (name.equals("__builtin_max")) { return AIF_FFI_BORROW }
     if (name.equals("__builtin_min")) { return AIF_FFI_BORROW }
     if (name.equals("__builtin_abs")) { return AIF_FFI_BORROW }
+    if (intBitCountBuiltin(name) or intRotateBuiltin(name)) { return AIF_FFI_BORROW }
     if (floatBuiltinArity(name) > 0) { return AIF_FFI_BORROW }
     // The failure builtins read their message and keep nothing; the process
     // ends before anything could be retained.
@@ -399,6 +401,7 @@ private fn aifFfiAllocatesThroughArenaHint(name: String) -> Bool {
     if (name.equals("int_to_str")) { return true }
     if (name.equals("list_new")) { return true }
     if (name.equals("list_new_with_capacity")) { return true }
+    if (name.equals("list_new_filled")) { return true }
     if (name.equals("soa")) { return true }
     if (name.equals("aos")) { return true }
     return false
@@ -412,6 +415,7 @@ internal fn aifFfiProduces(name: String) -> Bool {
     if (name.equals("chan_recv")) { return true }
     if (name.equals("list_new")) { return true }
     if (name.equals("list_new_with_capacity")) { return true }
+    if (name.equals("list_new_filled")) { return true }
     if (name.equals("soa")) { return true }
     if (name.equals("aos")) { return true }
     if (name.equals("str_concat")) { return true }

@@ -9,15 +9,48 @@ project {
     description = "Prismio compiler"
     license = "Apache-2.0"
     authors = [
-        "Saksham Jaiswal"
+    "Saksham Jaiswal"
     ]
 }
 
+// `.prismio/build/debug/prismio` is the compiler every command in this checkout
+// runs, so the debug profile builds it optimised: -g drops the program to -O0,
+// and overflow checks would make it a different, slower compiler. Set either to
+// true to step through the compiler in a debugger.
+profiles {
+    debug {
+        debugInfo = false
+        overflowChecks = false
+    }
+}
+
 targets {
+    // The compiler is an ordinary Prismio program whose runtime and backend are
+    // C. Nothing about it is built into the toolchain: this target names every
+    // source, flag and library, and any project can declare the same things.
     executable("prismio") {
         entry = "src/main.psm"
+        // It carries this checkout's runtime, compiled from source, rather than
+        // the installed one -- which is what makes a runtime/ edit reach the next
+        // compiler generation.
+        runtime = "none"
+        // `run --jit` resolves a jitted module's runtime calls in this process.
+        exportDynamic = true
+        native {
+            // Must match RUNTIME_SOURCES in tools/bootstrap.sh and bootstrap.ps1;
+            // tools/check_source_lists.py checks that it does.
+            source("runtime/lang_runtime.c", "runtime/program_support.c",
+            "runtime/build_driver.c", "runtime/ir_symbols.c",
+            "runtime/aif_containers.c", "runtime/aif_support.c",
+            "runtime/diagnostics.c", "runtime/llvm-api-backend.c")
+            include("runtime")
+            define("PRISMIO_LLVM_REAL_HEADERS", "PRISMIO_BOOTSTRAP_COMPAT")
+            flag("-Wno-deprecated-declarations")
+            // Written by `python3 tools/setup_llvm.py`.
+            responseFile("third_party/llvm-compile.rsp")
+        }
         link {
-            component("prismio.backend")
+            responseFile("third_party/llvm-link.rsp")
         }
     }
 }
@@ -26,21 +59,28 @@ commands {
     command("dist") {
         description = "Package an installable toolchain and check the runtime/backend split"
         run("tools/package.py", "--compiler", ".prismio/build/debug/prismio",
-            "--out", "dist/Prismio")
+        "--out", "dist/Prismio")
         run("tools/verify_separation.py", "--dist", "dist/Prismio")
     }
 
-    // Both go through tools/run_suite.py, which tests a *copy* of the compiler.
+    // A compiler release for this machine only: `dist/release/prismio-<version>-<triple>`
+    // as `.tar.gz` (`.zip` on Windows) plus its `.sha256`. Other platforms each run
+    // it on their own host -- RELEASE.md §3. release.py refuses a compiler that is
+    // not a fixpoint, so run `prismio build` first when the compiler has changed:
+    // a command step cannot rebuild the toolchain.host it is running on.
+    command("ship") {
+        description = "Package a compiler release for this host: fixpoint check, archive, SHA-256"
+        run("tools/release.py", "--compiler", ".prismio/build/debug/prismio",
+        "--out", "dist/release", args)
+    }
+
+    // Through tools/run_suite.py, which tests a *copy* of the compiler.
     //
     // **One fixture cannot pass through `prismio suite`.** The ums host-routing
     // test deletes `.prismio/build/debug/prismio` and re-promotes it, which the
-    // outer `prismio` process running this command is holding. It reports
-    // 282/283 here and 283/283 from `python3 tools/run_suite.py`. Use the direct
-    // form as the release gate; this one is for the fast loop.
-    // The ums fixture deletes the project host and re-promotes it to exercise
-    // host routing, and the object-cache fixtures assert what a build
-    // recompiles; neither survives being run by the same binary under test.
-    // Run `prismio dist` first when the compiler has changed.
+    // outer `prismio` process running this command is holding, so it reports
+    // one failure here that `python3 tools/run_suite.py` does not. Use the
+    // direct form as the release gate; this one is for the fast loop.
     command("suite") {
         description = "Run the compiler test suite against the packaged compiler"
         run("tools/run_suite.py", args)
@@ -56,15 +96,22 @@ commands {
         run("benchmarks/run.py", "--compiler", ".prismio/build/debug/prismio", args)
     }
 
+    // Both package first: the extern check and the differential read
+    // dist/Prismio, and a gate that reads whatever an earlier `dist` left there
+    // checks a different compiler from the one the suite just tested.
     command("lists") {
         description = "Check the hand-maintained source lists and that every extern has a definition"
         run("tools/check_source_lists.py")
+        run("tools/package.py", "--compiler", ".prismio/build/debug/prismio",
+        "--out", "dist/Prismio")
         run("tools/check_externs.py", "--dist", "dist/Prismio")
     }
 
     command("verify") {
         description = "The full acceptance gate: suite, source lists, externs, AIF differential"
-        run("tools/run_suite.py")
+        run("tools/package.py", "--compiler", ".prismio/build/debug/prismio",
+        "--out", "dist/Prismio")
+        run("tools/run_suite.py", "--compiler", "dist/Prismio/bin/prismio")
         run("tools/check_source_lists.py")
         run("tools/check_externs.py", "--dist", "dist/Prismio")
         run("tools/aif_differential.py", "--compiler", "dist/Prismio/bin/prismio")

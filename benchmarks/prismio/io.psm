@@ -5,10 +5,8 @@ import std.string
 public fn benchByteSum(text: String) -> Int {
     let n = text.length
     let mut checksum = 0
-    let mut i = 0
-    while (i < n) {
+    for i in 0..<n {
         checksum = (checksum + text.byteAt(i)) % 1000000007
-        i = i + 1
     }
     return checksum + n
 }
@@ -27,11 +25,8 @@ public fn benchLineProcessing(path: String) -> Int {
     let text = readFile(path)
     let lines = text.lines()
     let mut checksum = 0
-    let mut i = 0
-    while (i < lines.length) {
-        let line = lines[i]
+    for line in lines {
         checksum = (checksum + line.length * 31 + line.count('a')) % 1000000007
-        i = i + 1
     }
     return checksum + lines.length
 }
@@ -71,87 +66,57 @@ public fn benchTokenization(scale: Int) -> Int {
     return checksum + tokens
 }
 
+// Bytes throughout, as C++'s `uint8_t` vectors, `std::string` and
+// `uint8_t inv[256]` are. This arm used `Vec<Int>` for all four, which is four
+// times the memory the other two touch.
 public fn benchBase64Codec(scale: Int) -> Int {
     let n = 30000 * scale
-    let mut input: Vec<Int> = Vec<Int>.withCapacity(n)
+    let mut input = Vec<U8>.filled(n, 0)
     let mut seed = 17
-    let mut i = 0
-    while (i < n) {
+    for i in 0..<n {
         seed = benchRandom(seed)
-        input.push(seed % 256)
-        i = i + 1
+        input[i] = (seed % 256) as U8
     }
 
     let b64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
     let encodedLen = (n / 3) * 4
-    let mut encoded: Vec<Int> = Vec<Int>.withCapacity(encodedLen)
-    let mut initJ = 0
-    while (initJ < encodedLen) {
-        encoded.push(0)
-        initJ = initJ + 1
-    }
+    let mut encoded = Vec<U8>.filled(encodedLen, 0)
 
-    let mut k = 0
     let mut j = 0
-    while (k < n) {
-        let b0 = input[k]
-        let b1 = input[k + 1]
-        let b2 = input[k + 2]
+    for i in 0..<n step 3 {
+        let b0 = input[i] as Int
+        let b1 = input[i + 1] as Int
+        let b2 = input[i + 2] as Int
 
-        let i0 = b0 >> 2
-        let i1 = ((b0 & 3) << 4) | (b1 >> 4)
-        let i2 = ((b1 & 15) << 2) | (b2 >> 6)
-        let i3 = b2 & 63
-
-        encoded[j] = b64Chars.byteAt(i0)
-        encoded[j + 1] = b64Chars.byteAt(i1)
-        encoded[j + 2] = b64Chars.byteAt(i2)
-        encoded[j + 3] = b64Chars.byteAt(i3)
-
-        k = k + 3
+        encoded[j] = b64Chars.byteAt(b0 >> 2) as U8
+        encoded[j + 1] = b64Chars.byteAt(((b0 & 3) << 4) | (b1 >> 4)) as U8
+        encoded[j + 2] = b64Chars.byteAt(((b1 & 15) << 2) | (b2 >> 6)) as U8
+        encoded[j + 3] = b64Chars.byteAt(b2 & 63) as U8
         j = j + 4
     }
 
-    let mut inv: Vec<Int> = Vec<Int>.withCapacity(256)
-    let mut initInv = 0
-    while (initInv < 256) {
-        inv.push(0)
-        initInv = initInv + 1
-    }
-    let mut ti = 0
-    while (ti < 64) {
-        inv[b64Chars.byteAt(ti)] = ti
-        ti = ti + 1
+    let mut inv = Vec<U8>.filled(256, 0)
+    for i in 0..<64 {
+        inv[b64Chars.byteAt(i)] = i as U8
     }
 
-    let mut decoded: Vec<Int> = Vec<Int>.withCapacity(n)
-    let mut initDec = 0
-    while (initDec < n) {
-        decoded.push(0)
-        initDec = initDec + 1
-    }
-
-    let mut dj = 0
+    let mut decoded = Vec<U8>.filled(n, 0)
     let mut di = 0
-    while (dj < encodedLen) {
-        let c0 = inv[encoded[dj]]
-        let c1 = inv[encoded[dj + 1]]
-        let c2 = inv[encoded[dj + 2]]
-        let c3 = inv[encoded[dj + 3]]
+    for i in 0..<encodedLen step 4 {
+        let c0 = inv[encoded[i] as Int] as Int
+        let c1 = inv[encoded[i + 1] as Int] as Int
+        let c2 = inv[encoded[i + 2] as Int] as Int
+        let c3 = inv[encoded[i + 3] as Int] as Int
 
-        decoded[di] = (c0 << 2) | (c1 >> 4)
-        decoded[di + 1] = ((c1 & 15) << 4) | (c2 >> 2)
-        decoded[di + 2] = ((c2 & 3) << 6) | c3
-
-        dj = dj + 4
+        decoded[di] = ((c0 << 2) | (c1 >> 4)) as U8
+        decoded[di + 1] = (((c1 & 15) << 4) | (c2 >> 2)) as U8
+        decoded[di + 2] = (((c2 & 3) << 6) | c3) as U8
         di = di + 3
     }
 
     let mut checksum: I64 = 0
-    let mut ci = 0
-    while (ci < n) {
-        checksum = (checksum * 31 + (decoded[ci] as I64)) % 1000000007
-        ci = ci + 1
+    for b in decoded {
+        checksum = (checksum * 31 + (b as I64)) % 1000000007
     }
     return ((checksum + (encodedLen as I64)) % 1000000007) as Int
 }
@@ -161,8 +126,7 @@ public fn benchCsvParse(scale: Int) -> Int {
 
     let mut csvData = ""
     let mut seed = 61
-    let mut r = 0
-    while (r < rows) {
+    for r in 0..<rows {
         seed = benchRandom(seed)
         let id = 1000 + (seed % 9000)
         seed = benchRandom(seed)
@@ -189,7 +153,6 @@ public fn benchCsvParse(scale: Int) -> Int {
         let p3 = "," + score.toString() + "\n"
         let line = p1 + p2 + p3
         csvData = csvData + line
-        r = r + 1
     }
 
     let n = csvData.length

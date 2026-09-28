@@ -21,10 +21,14 @@ WINDOWS = os.name == "nt"
 # Recursive release and channels must also be leak-free. The provenance fixture
 # intentionally retains unbound temporaries (documented in the fixture), so its
 # ASan run targets the use-after-free class that originally motivated this gate.
+# The push guard fixture builds every list with exactly the room its loop needs
+# or one element less. It checks `length <= capacity` itself, since an arena
+# chunk hides an overrun from ASan; a list on the heap overruns visibly here.
 FIXTURES = [
     ("test_73_recursive_release.psm", True),
     ("test_92_field_view_provenance.psm", False),
     ("test_96_channels.psm", True),
+    ("test_216_for_push_guard.psm", True),
 ]
 
 

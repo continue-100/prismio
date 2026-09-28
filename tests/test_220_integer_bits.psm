@@ -1,0 +1,59 @@
+// `countOnes`, `leadingZeros`, `trailingZeros`, `rotateLeft`, `rotateRight` on
+// every integer width -- each one LLVM intrinsic at the operand's own width, so
+// a U8's leading zeros are out of 8 and a zero has as many as the type is wide.
+// And the text of an I64 past 32 bits, which `toString` and interpolation cut to
+// 32 bits until 2026-09-27 (`I64.MAX` read "-1").
+
+import std.io
+import std.math
+import std.string
+import std.display
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let a: Int = 0b1011_0000
+    if (a.countOnes() != 3 or a.leadingZeros() != 24 or a.trailingZeros() != 4) { return fail("Int") }
+    let zero: Int = 0
+    if (zero.countOnes() != 0 or zero.leadingZeros() != 32 or zero.trailingZeros() != 32) {
+        return fail("a zero counts the width")
+    }
+    let allSet: Int = -1
+    if (allSet.countOnes() != 32 or allSet.leadingZeros() != 0) { return fail("Int -1") }
+    if (a.rotateLeft(28) != 11 or a.rotateRight(4) != 11) { return fail("Int rotate") }
+
+    let b: U8 = 0b0001_0110
+    if (b.countOnes() != 3 or b.leadingZeros() != 3 or b.trailingZeros() != 1) { return fail("U8") }
+    if (b.rotateLeft(4) != 97 or b.rotateRight(1) != 11) { return fail("U8 rotate") }
+    if (b.rotateLeft(-1) != 11 or b.rotateLeft(9) != 44) { return fail("distance modulo the width") }
+
+    let h: U16 = 0xF000
+    if (h.leadingZeros() != 0 or h.trailingZeros() != 12 or h.rotateLeft(4) != 15) { return fail("U16") }
+    let one: I8 = 1
+    if (one.rotateRight(1) != -128) { return fail("I8 rotate into the sign bit") }
+    let u: U32 = 1
+    if (u.rotateRight(1) != 2147483648 or u.leadingZeros() != 31) { return fail("U32") }
+    let w: U64 = 0x8000_0000_0000_0001
+    if (w.countOnes() != 2 or w.leadingZeros() != 0 or w.rotateLeft(1) != 3) { return fail("U64") }
+    if (w.rotateRight(1) != 0xC000_0000_0000_0000 or w.rotateLeft(65) != 3) { return fail("U64 rotate") }
+    let s: I64 = -2
+    if (s.countOnes() != 63 or s.trailingZeros() != 1) { return fail("I64") }
+    if (s.rotateRight(1) != I64.MAX) { return fail("I64 rotate") }
+
+    let big: I64 = 4294967296
+    if (big.toString() != "4294967296" or "${big + 1}" != "4294967297") { return fail("I64 past 32 bits") }
+    if (I64.MAX.toString() != "9223372036854775807") { return fail("I64.MAX") }
+    if ("${I64.MIN}" != "-9223372036854775808") { return fail("I64.MIN") }
+    if (I64.MIN.toString(16) != "-8000000000000000") { return fail("I64 radix") }
+    let n: I64 = -42
+    if (n.toString() != "-42") { return fail("negative I64") }
+    let smallest: Int = -2147483648
+    if (smallest.toString(16) != "-80000000") { return fail("Int radix after the refactor") }
+
+    println("ok")
+    return 0
+}

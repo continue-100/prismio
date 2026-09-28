@@ -1216,8 +1216,81 @@ private fn semaTypeFunctionCall(module: ASTNode, expr: ASTNode, callee: ASTNode,
     return true
 }
 
+// `Map<String, Int>()` or `Parser(source)`: calling a type calls its `new`. The
+// callee becomes the `Map<String, Int>.new` the parser builds for the written
+// spelling -- a MEMBER_ACCESS on the type, carrying the call's type arguments as
+// its qualifier -- so semaTypeFunctionCall, Vec's associated functions and
+// inference from an annotation (`let m: Map<K, V> = Map()`) all apply as they
+// do there, and nothing downstream learns a second way to spell a constructor.
+//
+// Asked only of a name that is not a binding. Answers semaVecRewritten() or
+// semaVecRejected() -- the verdicts Vec's associated functions give -- or
+// semaVecNotLowered() for a call that is not to a type.
+private fn semaTypeCall(module: ASTNode, expr: ASTNode, callee: ASTNode) -> Int {
+    if (callee.kind != NodeKind.IDENTIFIER_EXPR) { return semaVecNotLowered() }
+    let name = callee.s1
+    if (ir_has_var_type(name) == 1) { return semaVecNotLowered() }
+    // A function of the type's own name is what the call means: std.process
+    // declares `fn Process() -> Process`, and `Process()` is that.
+    if (semaDeclaresFunction(name) or monoHasTemplate(module, name, NodeKind.FUNCTION)) {
+        return semaVecNotLowered()
+    }
+    let isVec = name.equals("Vec")
+    let isType = isVec or semaHasStruct(module, name) or semaHasEnum(module, name)
+        or monoHasTemplate(module, name, NodeKind.STRUCT_DECL)
+        or monoHasTemplate(module, name, NodeKind.ENUM_DECL)
+    if (isType == false) { return semaVecNotLowered() }
+
+    let newName = name.concat(".new")
+    let hasNew = isVec or ir_decl_count(newName) > 0
+        or monoHasTemplate(module, newName, NodeKind.FUNCTION)
+    if (hasNew == false) {
+        semaErrorAt(callee, diagQuote(name).concat(" has no `new`, so it cannot be called"))
+        if (semaHasEnum(module, name) or monoHasTemplate(module, name, NodeKind.ENUM_DECL)) {
+            diag_note("build a variant with `".concat(name, ".Variant`"))
+        } else {
+            diag_note("write a struct literal, `".concat(name, " { ... }`, or declare `fn new` in `impl ", name, "`"))
+        }
+        nodeSetType(expr, typeInvalid())
+        return semaVecRejected()
+    }
+
+    // `let m = Map()`: a generic type called with nothing to solve its
+    // parameters from. An annotation would have supplied them already
+    // (monoTypeArgsFromExpected), so this is the case with none.
+    let generic = monoHasTemplate(module, name, NodeKind.STRUCT_DECL)
+        or monoHasTemplate(module, name, NodeKind.ENUM_DECL) or isVec
+    if (generic and nodeIsNull(expr.child3) and nodeIsNull(expr.child2)) {
+        semaErrorAt(callee, diagQuote(name.concat("()")).concat(" needs its type arguments"))
+        let written = name.concat("<...>")
+        diag_note("write them, `".concat(written, "()`, or annotate the binding: `let x: ",
+                                         written, " = ").concat(name, "()`"))
+        nodeSetType(expr, typeInvalid())
+        return semaVecRejected()
+    }
+
+    let mut qualifier = callee
+    if (nodeExists(expr.child3)) {
+        qualifier = ptr_to_node(expr.child3)
+    } else {
+        qualifier = createNode(NodeKind.IDENTIFIER_EXPR)
+        qualifier.s1 = name.clone()
+        nodeSpanFrom(qualifier, callee)
+    }
+    let member = createNode(NodeKind.MEMBER_ACCESS_EXPR)
+    nodeSpanFrom(member, callee)
+    member.s1 = "new"
+    member.child1 = node_to_ptr(qualifier)
+    expr.child1 = node_to_ptr(member)
+    expr.child3 = ptr_null()
+    return semaVecRewritten()
+}
+
 private fn semaCallExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
     let callee = ptr_to_node(expr.child1)
+    let typeCall = semaTypeCall(module, expr, callee)
+    if (typeCall == semaVecRewritten()) { return semaExpr(module, expr) }
+    if (typeCall == semaVecRejected()) { return typeInvalid() }
 
     // A call to a generic function names a template, not a declaration.
     // Solving its type arguments needs the types of the arguments, which is
@@ -1950,6 +2023,10 @@ internal fn semaExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
     if (expr.kind == NodeKind.IDENTIFIER_EXPR) { return semaIdentifierExpr(module, expr) }
     if (expr.kind == NodeKind.NONE_LITERAL_EXPR) { return semaNoneLiteralExpr(module, expr) }
     if (expr.kind == NodeKind.DEFAULT_EXPR) { return semaDefaultWithoutContext(expr) }
+    if (expr.kind == NodeKind.MAP_LITERAL_EXPR) {
+        if (semaMapLiteral(module, expr, typeInvalid()) == false) { return typeInvalid() }
+        return semaExpr(module, expr)
+    }
     if (expr.kind == NodeKind.CAST_EXPR) { return semaCastExpr(module, expr) }
     if (expr.kind == NodeKind.UNARY_EXPR) { return semaUnaryExpr(module, expr) }
     if (expr.kind == NodeKind.BINARY_EXPR) { return semaBinaryExpr(module, expr) }
@@ -2269,8 +2346,22 @@ private fn semaDefaultEmptyVec(stmt: ASTNode) {
     stmt.child2 = node_to_ptr(empty)
 }
 
+// `let stock: Map<String, Int>` is an empty Map, for the reason an unwritten Vec
+// is an empty Vec: until 2026-09-28 it compiled to a zeroed struct, whose first
+// `set` read a null bucket table. The initializer is `default`, which is
+// `mapNew<K, V>()` for a Map (semaDefaultMapNew). Not for `Map<K, V>?`.
+private fn semaDefaultEmptyMap(stmt: ASTNode) {
+    if (nodeExists(stmt.child1) == false or nodeExists(stmt.child2)) { return }
+    let ann = ptr_to_node(stmt.child1)
+    if (ann.i2 != 1 or ann.i3 == 1 or ann.s1.equals("Map") == false) { return }
+    let fresh = createNode(NodeKind.DEFAULT_EXPR)
+    nodeSpanFrom(fresh, stmt)
+    stmt.child2 = node_to_ptr(fresh)
+}
+
 private fn semaVariableDecl(module: ASTNode, stmt: ASTNode, expectedReturn: TypeInfo) {
     semaDefaultEmptyVec(stmt)
+    semaDefaultEmptyMap(stmt)
     let mut varT = typeInvalid()
     let hasAnnotation = nodeExists(stmt.child1)
     let mut hasInit = nodeExists(stmt.child2)
@@ -2350,7 +2441,8 @@ private fn semaVariableDecl(module: ASTNode, stmt: ASTNode, expectedReturn: Type
         if (init.kind == NodeKind.CALL_EXPR and nodeExists(init.child1)) {
             let callee = ptr_to_node(init.child1)
             if (callee.s1.equals("list_new")
-                or callee.s1.equals("list_new_with_capacity")) {
+                or callee.s1.equals("list_new_with_capacity")
+                or callee.s1.equals("list_new_filled")) {
                 ir_mark_list_exclusive(stmt.s1)
             }
         }
@@ -2497,7 +2589,8 @@ private fn semaAssignment(module: ASTNode, stmt: ASTNode, expectedReturn: TypeIn
         if (replacement.kind == NodeKind.CALL_EXPR and nodeExists(replacement.child1)) {
             let callee = ptr_to_node(replacement.child1)
             if (callee.s1.equals("list_new")
-                or callee.s1.equals("list_new_with_capacity")) {
+                or callee.s1.equals("list_new_with_capacity")
+                or callee.s1.equals("list_new_filled")) {
                 ir_mark_list_exclusive(target.s1)
             }
         }

@@ -26,6 +26,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from executable import resolve_executable
+
 REPO = Path(__file__).resolve().parent.parent
 WINDOWS = os.name == "nt"
 EXE = ".exe" if WINDOWS else ""
@@ -85,7 +87,7 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
-    compiler = Path(args.compiler).resolve()
+    compiler = resolve_executable(args.compiler)
     if not compiler.is_file():
         die(f"no compiler at {compiler}")
 

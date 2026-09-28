@@ -342,6 +342,25 @@ private fn parseArrayLiteral(p: Parser) -> ASTNode {
     return arrayLit
 }
 
+// `{ "Alice": 20, "Bob": 25 }`, and `{}`. The cursor is past the `{`. A key is
+// an expression, as in Python: `{ name: 1 }` keys on the value of `name`, never
+// on the string "name". A trailing comma is allowed, as in the array literal.
+private fn parseMapLiteral(p: Parser) -> ASTNode {
+    let mapLit = p.node(NodeKind.MAP_LITERAL_EXPR)
+    let keys = nodeList()
+    let values = nodeList()
+    while (p.checkVal(TokenType.SEPARATOR, "}") == false) {
+        nodeListPush(keys, parseExpression(p, 0))
+        p.expectVal(TokenType.SEPARATOR, ":", "map literal entry")
+        nodeListPush(values, parseExpression(p, 0))
+        if (p.matchVal(TokenType.SEPARATOR, ",") == false) { break }
+    }
+    p.expectVal(TokenType.SEPARATOR, "}", "map literal")
+    mapLit.child1 = keys.head
+    mapLit.child2 = values.head
+    return mapLit
+}
+
 private fn parseCall(p: Parser, callee: ASTNode) -> ASTNode {
     let call = p.node(NodeKind.CALL_EXPR)
     // Point the call at its callee rather than at the first argument, so
@@ -651,6 +670,14 @@ private fn parsePrimary(p: Parser) -> ASTNode {
 
     if (p.matchVal(TokenType.SEPARATOR, "[")) {
         return parseSuffixes(p, parseArrayLiteral(p))
+    }
+
+    // Nothing else begins an expression with `{` -- a block is a statement, and
+    // a closure opens with `|` -- so a map literal claims no existing spelling.
+    // Gated as a struct literal is, so a `for` head ending at `{` is never read
+    // as one.
+    if (p.allowStructLit == 1 and p.matchVal(TokenType.SEPARATOR, "{")) {
+        return parseSuffixes(p, parseMapLiteral(p))
     }
 
     p.fatal("expected an expression, found ".concat(parserDescribe(current),

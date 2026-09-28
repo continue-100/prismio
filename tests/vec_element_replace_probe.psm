@@ -1,0 +1,47 @@
+// A Vec's element replaced while a view of it is still live, and a Vec that
+// only literals written at a push ever reach.
+//
+// Both leaked. A literal copied in at the push is not an allocation site, so a
+// Vec<String> holding nothing else was never told it owned its elements; and
+// `v[i] = x` stored over the element without keeping it anywhere. The displaced
+// element is now parked and released with the list -- which is what makes the
+// view below safe: releasing it at the store would free what `before` reads.
+
+import std.io
+import std.string
+
+struct Named {
+    label: String
+}
+
+fn named(stem: String) -> Named {
+    return Named { label: stem.concat(" and a suffix long enough to allocate") }
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let mut words: Vec<String> = []
+    words.push("the first string, too long to be stored inline")
+    words.push("the second string, too long to be stored inline")
+    let before = words[0]
+    words[0] = "a replacement, also too long to be stored inline"
+    if (before != "the first string, too long to be stored inline") { return fail("view") }
+    if (words[0] != "a replacement, also too long to be stored inline") { return fail("set") }
+    words[1] = "short"
+
+    let mut owners: Vec<Named> = []
+    owners.push(named("first"))
+    owners.push(named("second"))
+    let kept = owners[0]
+    owners.set(0, named("third"))
+    if (kept.label.startsWith("first") == false) { return fail("struct view") }
+    if (owners[0].label.startsWith("third") == false) { return fail("struct set") }
+
+    println("PASS")
+    return 0
+}

@@ -1,0 +1,8 @@
+// expect-error: Vec element: expected Int, found String
+// The value is checked against the written element type.
+import std.io
+
+fn main() -> Int {
+    let v = Vec<Int>.filled(3, "x")
+    return v.length
+}

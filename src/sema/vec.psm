@@ -225,22 +225,35 @@ internal fn semaVecLowerIndexStore(stmt: ASTNode, target: ASTNode, store: String
     return call
 }
 
-// `Vec<T>.withCapacity(n)` -- the one associated function. It is `[]` with room
-// for `n`, and lowers as `[]` does: onto the runtime, typed `Vec<T>` from the
-// written `T`, because a container's element storage is chosen from the type at
-// its construction site. So, like `[]`, it needs no import and costs no call.
+// `Vec<T>.new()`, `Vec<T>.withCapacity(n)` and `Vec<T>.filled(n, value)`, the
+// associated functions; `Vec<T>()` reaches `new` through semaTypeCall. `new` is
+// `[]`, and `withCapacity` is `[]` with room for `n`. Both lower as `[]` does:
+// onto the runtime, typed `Vec<T>` from the written `T`, because a container's
+// element storage is chosen from the type at its construction site. So, like
+// `[]`, it needs no import and costs no call.
+//
+// `filled` is `n` copies of `value` -- `std::vector<T>(n, value)`, `vec![value;
+// n]`. A scalar `T` lowers onto the runtime too, one allocation and one fill;
+// any other `T` has to be copied per element, which is std.vec's `vecFilled`.
 internal fn semaVecAssociated(module: ASTNode, expr: ASTNode, qualifier: ASTNode,
                               name: String) -> Int {
     if (qualifier.s1.equals("Vec") == false) { return semaVecNotLowered() }
-    if (name.equals("withCapacity") == false) {
+    if (name.equals("new") == false and name.equals("withCapacity") == false
+            and name.equals("filled") == false) {
         semaErrorAt(expr, "`Vec` has no associated function ".concat(diagQuote(name)))
-        diag_note("`Vec<T>.withCapacity(n)` is the one there is; `[]` is an empty Vec")
+        diag_note("there are `Vec<T>.withCapacity(n)` and `Vec<T>.filled(n, value)`; `Vec<T>()` and `[]` are an empty Vec")
         nodeSetType(expr, typeInvalid())
         return semaVecRejected()
     }
     if (nodeIsNull(qualifier.child1)) {
-        semaErrorAt(expr, "`Vec.withCapacity` needs its element type")
-        diag_note("write `Vec<T>.withCapacity(n)`")
+        semaErrorAt(expr, "`Vec.".concat(name, "` needs its element type"))
+        if (name.equals("filled")) {
+            diag_note("write `Vec<T>.filled(n, value)`")
+        } else if (name.equals("new")) {
+            diag_note("write `Vec<T>()`, or annotate the binding and write `[]`")
+        } else {
+            diag_note("write `Vec<T>.withCapacity(n)`")
+        }
         nodeSetType(expr, typeInvalid())
         return semaVecRejected()
     }
@@ -255,15 +268,69 @@ internal fn semaVecAssociated(module: ASTNode, expr: ASTNode, qualifier: ASTNode
         return semaVecRejected()
     }
 
+    if (name.equals("filled") and semaVecArgCount(expr) != 2) {
+        semaErrorAt(expr, "`Vec<T>.filled` takes 2 arguments, a count and a value; found ".concat(
+            semaVecArgCount(expr).toString()))
+        diag_note("write `Vec<T>.filled(n, value)`")
+        nodeSetType(expr, typeInvalid())
+        return semaVecRejected()
+    }
+    if (name.equals("new") and semaVecArgCount(expr) != 0) {
+        semaErrorAt(expr, "`Vec<T>()` takes no arguments; found ".concat(semaVecArgCount(expr).toString()))
+        diag_note("`Vec<T>.withCapacity(n)` reserves room, and `Vec<T>.filled(n, value)` fills it")
+        nodeSetType(expr, typeInvalid())
+        return semaVecRejected()
+    }
     let callee = createNode(NodeKind.IDENTIFIER_EXPR)
     callee.s1 = "list_new_with_capacity"
+    if (name.equals("new")) { callee.s1 = "list_new" }
+    if (name.equals("filled")) {
+        callee.s1 = semaVecFilledCallee(module, expr, ptr_to_type(vecT.child))
+        if (callee.s1.equals("")) {
+            nodeSetType(expr, typeInvalid())
+            return semaVecRejected()
+        }
+    }
     nodeSpanFrom(callee, expr)
     expr.s1 = ""
     expr.child1 = node_to_ptr(callee)
     expr.child3 = ptr_null()
+    // The value is checked against `T` before the call is, because the call
+    // does not know `T`: that is what re-types the literal in
+    // `Vec<U8>.filled(n, 0)`, and what gives std.vec's generic its `T`.
+    if (name.equals("filled") and nodeExists(expr.child2)) {
+        let countNode = ptr_to_node(expr.child2)
+        if (nodeExists(countNode.next)) {
+            semaCheckValue(module, ptr_to_node(countNode.next), ptr_to_type(vecT.child),
+                           "Vec element")
+        }
+    }
     semaExpr(module, expr)
     nodeSetType(expr, vecT)
     return semaVecRewritten()
+}
+
+private fn semaVecArgCount(call: ASTNode) -> Int {
+    let mut count = 0
+    let mut p = call.child2
+    while (nodeExists(p)) {
+        count = count + 1
+        p = ptr_to_node(p).next
+    }
+    return count
+}
+
+// Which `filled` a `T` gets: the runtime's for a scalar, std.vec's generic copy
+// loop for anything else, or "" after reporting that std.vec is not imported.
+private fn semaVecFilledCallee(module: ASTNode, expr: ASTNode, elem: TypeInfo) -> String {
+    if (elem.kind == TypeKind.INT or elem.kind == TypeKind.FLOAT
+            or elem.kind == TypeKind.BOOL or elem.kind == TypeKind.CHAR) {
+        return "list_new_filled"
+    }
+    if (monoHasTemplate(module, "vecFilled", NodeKind.FUNCTION)) { return "vecFilled" }
+    semaErrorAt(expr, "`Vec<".concat(typeDisplay(elem), ">.filled` needs `import std.vec`"))
+    diag_note("a scalar element needs no import; any other is copied per element by std.vec")
+    return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -276,6 +343,7 @@ internal fn semaVecAssociated(module: ASTNode, expr: ASTNode, qualifier: ASTNode
 private fn semaRuntimeCallSpelling(name: String) -> String {
     if (name.equals("list_new")) { return "[]" }
     if (name.equals("list_new_with_capacity")) { return "Vec<T>.withCapacity(n)" }
+    if (name.equals("list_new_filled")) { return "Vec<T>.filled(n, x)" }
     if (name.equals("list_len")) { return "v.length" }
     if (name.equals("list_get")) { return "v[i]" }
     if (name.equals("list_push")) { return "v.push(x)" }

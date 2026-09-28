@@ -278,6 +278,11 @@ private fn generateFunction(func: ASTNode) {
     if (func.i1 == 3 and ir_debug_enabled() == 0) {
         ir_function_always_inline()
     }
+    // `cold fn` (src/parse/decl.psm). In a debug build too: it changes no frame
+    // the debugger shows, only where the optimiser puts the call.
+    if (nodeIsCold(func)) {
+        ir_function_cold()
+    }
     ir_clear_local_var_types()
     ir_clear_returned()
 
@@ -430,7 +435,9 @@ private fn countFunctionCallsitesNode(nodePtr: Ptr, callerSymbol: String) {
         if (nodeExists(targetPtr)) {
             let target = ptr_to_node(targetPtr)
             let recursive = functionSymbolName(target).equals(callerSymbol)
-            if (target.i1 == 0 and recursive == false) {
+            if (nodeIsCold(target)) {
+                // Never inlined, so its callsites are not counted.
+            } else if (target.i1 == 0 and recursive == false) {
                 target.i1 = 1
             } else {
                 target.i1 = 2
@@ -557,7 +564,7 @@ private fn markSingleLoopCallsiteFunctions(module: ASTNode) {
     let mut clearPtr = module.child1
     while (nodeExists(clearPtr)) {
         let decl = ptr_to_node(clearPtr)
-        if (decl.kind == NodeKind.FUNCTION) { decl.i1 = 0 }
+        if (decl.kind == NodeKind.FUNCTION and nodeIsCold(decl) == false) { decl.i1 = 0 }
         clearPtr = decl.next
     }
 
@@ -590,6 +597,11 @@ private fn markSingleLoopCallsiteFunctions(module: ASTNode) {
     ir_mark_guard_safe_fn("__builtin_max", 1)
     ir_mark_guard_safe_fn("__builtin_min", 1)
     ir_mark_guard_safe_fn("__builtin_abs", 1)
+    ir_mark_guard_safe_fn("__builtin_count_ones", 1)
+    ir_mark_guard_safe_fn("__builtin_leading_zeros", 1)
+    ir_mark_guard_safe_fn("__builtin_trailing_zeros", 1)
+    ir_mark_guard_safe_fn("__builtin_rotate_left", 1)
+    ir_mark_guard_safe_fn("__builtin_rotate_right", 1)
     // std.math's Float family, for the same reason: a square root or a sine
     // reads two registers and writes one. A libm call among them is still no
     // list's business -- the C library cannot reach a Prismio element block.
@@ -1848,6 +1860,13 @@ public fn generateModule(module: ASTNode) {
 
     ir_declare_function_begin("list_new_with_capacity_inline", "ptr")
     ir_declare_function_param("i32")
+    ir_declare_function_param("i32")
+    ir_declare_function_fresh()
+    ir_declare_function_end()
+
+    ir_declare_function_begin("list_new_filled_inline", "ptr")
+    ir_declare_function_param("i32")
+    ir_declare_function_param("i64")
     ir_declare_function_param("i32")
     ir_declare_function_fresh()
     ir_declare_function_end()

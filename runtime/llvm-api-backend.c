@@ -36,8 +36,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "prismio_llvm.h"
+
+#ifdef _WIN32
+// Lean, for the reason prismio_platform.h gives. Only the thread calls below.
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <pthread.h>
+#include <unistd.h>
+#endif
 
 #ifdef __APPLE__
 #include <sys/sysctl.h>
@@ -59,6 +71,15 @@
 #define MAX_CALL_ARGS 64
 #define MAX_PENDING_PARAMS 64
 #define NAME_LEN 128
+// A function's symbol is a mangled name -- the method, then every parameter's
+// type -- and a method on a model type with four struct parameters is already
+// past 128 bytes: `lowerNativeBlock__Struct_UmsProjectModel_..._List_Struct_UmsDiagnostic`
+// is 128. The definition used to be copied into a NAME_LEN buffer, the call site
+// was not, and the two symbols differed in their last byte: an undefined symbol
+// at link time naming a function that plainly exists. So a function name has
+// its own, larger buffer, and anything copied into a fixed buffer that would not
+// fit is a backend error rather than a silently different name.
+#define FN_NAME_LEN 1024
 
 static LLVMContextRef g_ctx;
 static LLVMModuleRef g_module;
@@ -95,7 +116,7 @@ static int g_param_count;
 
 // Function currently being built.
 static LLVMValueRef g_function;
-static char g_pending_fn_name[NAME_LEN];
+static char g_pending_fn_name[FN_NAME_LEN];
 static LLVMTypeRef g_pending_ret;
 static LLVMTypeRef g_pending_params[MAX_PENDING_PARAMS];
 static char g_pending_param_names[MAX_PENDING_PARAMS][NAME_LEN];
@@ -306,6 +327,9 @@ static StructType *struct_entry(const char *name) {
         if (strcmp(g_structs[i].name, name) == 0) return &g_structs[i];
     }
     if (g_struct_count >= 256) backend_fail("too many struct types", name);
+    // Looked up by this copy afterwards, so a truncated one would never match
+    // again and the next use would create a second, different type.
+    if (strlen(name) >= NAME_LEN) backend_fail("struct type name too long", name);
     // Created opaque; the body is set by ir_struct_type_end().
     LLVMTypeRef ty = LLVMStructCreateNamed(g_ctx, name);
     strncpy(g_structs[g_struct_count].name, name, NAME_LEN - 1);
@@ -329,6 +353,7 @@ static char g_struct_building[NAME_LEN];
 static int g_struct_split;
 
 void ir_struct_type_begin(const char *name) {
+    if (strlen(name) >= NAME_LEN) backend_fail("struct type name too long", name);
     strncpy(g_struct_building, name, NAME_LEN - 1);
     g_struct_building[NAME_LEN - 1] = '\0';
     g_struct_field_count = 0;
@@ -891,8 +916,8 @@ static int g_pending_param_noalias[MAX_PENDING_PARAMS];
 static int g_pending_ret_noalias;
 
 void ir_function_begin(const char *name, const char *ret_type) {
-    strncpy(g_pending_fn_name, name, NAME_LEN - 1);
-    g_pending_fn_name[NAME_LEN - 1] = '\0';
+    if (strlen(name) >= FN_NAME_LEN) backend_fail("function name too long", name);
+    snprintf(g_pending_fn_name, sizeof(g_pending_fn_name), "%s", name);
     g_pending_ret = type_from_key(ret_type);
     g_pending_param_count = 0;
     memset(g_pending_param_noalias, 0, sizeof(g_pending_param_noalias));
@@ -1064,6 +1089,19 @@ void ir_function_always_inline(void) {
     if (!kind) return;
     LLVMAddAttributeAtIndex(g_function, ~0U,
                             LLVMCreateEnumAttribute(g_ctx, kind, 0));
+}
+
+// `cold fn`: LLVM's `cold`, which also makes every block that calls it an
+// unlikely one, and `noinline`, because `cold` alone only lowers the inline
+// threshold -- and an internal function's only call wins that regardless.
+void ir_function_cold(void) {
+    if (!g_function) return;
+    const char *names[2] = { "cold", "noinline" };
+    for (int i = 0; i < 2; i++) {
+        unsigned kind = LLVMGetEnumAttributeKindForName(names[i], strlen(names[i]));
+        if (!kind) continue;
+        LLVMAddAttributeAtIndex(g_function, ~0U, LLVMCreateEnumAttribute(g_ctx, kind, 0));
+    }
 }
 
 void ir_function_end(void) {
@@ -6352,6 +6390,10 @@ void ir_print(void) {
 extern int prismio_argc;
 extern char **prismio_argv;
 
+// The arguments `prismio run` was given after `--`, held by build_driver.c for
+// whichever runner starts the program.
+extern char **compiler_pending_arguments(int *count);
+
 // Reports an LLVMErrorRef and consumes it. Always returns 1 so callers can
 // `return jit_failed(...)`.
 static int jit_failed(const char *what, LLVMErrorRef err) {
@@ -6372,10 +6414,11 @@ typedef enum {
     // on every platform, and is the whole of why `run --jit` fails on Windows
     // and nowhere else: a Mach-O executable exports its symbols to a `dlsym` by
     // default; an ELF one does when it was linked `-rdynamic`, which
-    // tools/bootstrap.sh and build_driver.c both pass for exactly this reason;
-    // a COFF executable exports nothing at all unless it was linked with an
-    // export table, so `GetProcAddress` over the running .exe finds none of the
-    // runtime a jitted module calls.
+    // tools/bootstrap.sh passes for exactly this reason; build_driver.c exports
+    // the native objects' symbols by list instead (unix_export_flags), falling
+    // back to `-rdynamic`; a COFF executable exports nothing at all unless it was
+    // linked with an export table, so `GetProcAddress` over the running .exe
+    // finds none of the runtime a jitted module calls.
     JIT_PROCESS_OPAQUE = 0,
     // It resolved, to something that is not the copy this process calls.
     JIT_PROCESS_FOREIGN,
@@ -6696,7 +6739,8 @@ int ir_curate_module(const char *runtime_ir, const char *const *names, int count
             if (strcmp(name, "list_new") == 0
                     || strcmp(name, "list_new_inline") == 0
                     || strcmp(name, "list_new_with_capacity") == 0
-                    || strcmp(name, "list_new_with_capacity_inline") == 0) {
+                    || strcmp(name, "list_new_with_capacity_inline") == 0
+                    || strcmp(name, "list_new_filled_inline") == 0) {
                 unsigned k_noalias = LLVMGetEnumAttributeKindForName("noalias", 7);
                 if (k_noalias) {
                     LLVMAddAttributeAtIndex(fn, 0u, LLVMCreateEnumAttribute(ctx, k_noalias, 0));
@@ -7046,6 +7090,27 @@ static void yield_to_workload_stubs(LLVMModuleRef program, LLVMModuleRef library
 // text-IR boundary sixteen times before optimization. The artifacts remain
 // independently replaceable and independently validated on disk, but linking
 // them is one transaction and the final clang invocation sees the same graph.
+// The merged module of a build, kept in memory for ir_emit_object rather than
+// printed to `out_path` and parsed straight back. For the benchmark suite that
+// round trip was 5 MB of text; for the compiler, 16 MB. `out_path` still names
+// it, so ir_emit_object can tell it is the module it was asked for.
+static int g_hold_merged = 0;
+static LLVMContextRef g_held_ctx = NULL;
+static LLVMModuleRef g_held_module = NULL;
+static char *g_held_path = NULL;
+
+void ir_hold_merged_module(int on) { g_hold_merged = on ? 1 : 0; }
+
+// A held module nothing took -- a build that failed before emission.
+void ir_release_held_module(void) {
+    if (g_held_module) LLVMDisposeModule(g_held_module);
+    if (g_held_ctx) LLVMContextDispose(g_held_ctx);
+    free(g_held_path);
+    g_held_module = NULL;
+    g_held_ctx = NULL;
+    g_held_path = NULL;
+}
+
 int ir_link_library_modules(const char *dest_ir,
                             const char *const *src_irs,
                             const int *link_modes, int module_count,
@@ -7112,6 +7177,16 @@ int ir_link_library_modules(const char *dest_ir,
     }
 
     if (!failed) prune_unused_imported_definitions(dm);
+    if (!failed && g_hold_merged) {
+        ir_release_held_module();
+        g_held_path = (char *)malloc(strlen(out_path) + 1);
+        if (g_held_path) {
+            strcpy(g_held_path, out_path);
+            g_held_ctx = ctx;
+            g_held_module = dm;
+            return 0;
+        }
+    }
     if (!failed && LLVMPrintModuleToFile(dm, out_path, &err) != 0) {
         fprintf(stderr, "ERROR: could not write merged program IR: %s\n",
                 err ? err : "(no detail)");
@@ -7123,12 +7198,17 @@ int ir_link_library_modules(const char *dest_ir,
     return failed;
 }
 
-int ir_jit_run_main(const char *program_name) {
-    if (!g_module) {
-        fprintf(stderr, "ERROR: --jit: no module was generated\n");
-        return 1;
-    }
-
+// Runs `main` of the module in `ir_path` -- the program's IR with the imported
+// standard-library bitcode already merged in (compiler_jit_run, build_driver.c).
+//
+// **It used to run the backend's own in-memory module**, which is the program
+// and nothing else. A build merges each imported `.plib`'s non-generic bitcode
+// into that module before it optimises; the JIT did not, so a program using
+// `std.map` failed with `Symbols not found: [ _mapInitialCapacity__Void, ... ]`
+// -- every standard-library function that is compiled once and shipped rather
+// than instantiated in the program. Reading the merged file is also what keeps
+// `--jit` off the emission path: codegen does not know the JIT exists.
+int ir_jit_run_file(const char *ir_path, const char *program_name) {
     // The JIT emits code for this process, so the *native* target and its
     // assembly printer are what it needs. ensure_all_targets() registers target
     // infos and MCs for cross-compilation and deliberately no printers, so
@@ -7136,23 +7216,20 @@ int ir_jit_run_main(const char *program_name) {
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
 
+    LLVMMemoryBufferRef source = NULL;
+    char *read_error = NULL;
+    if (LLVMCreateMemoryBufferWithContentsOfFile(ir_path, &source, &read_error) != 0) {
+        fprintf(stderr, "ERROR: --jit: could not read %s: %s\n", ir_path,
+                read_error ? read_error : "(no detail)");
+        if (read_error) LLVMDisposeMessage(read_error);
+        return 1;
+    }
+
     LLVMOrcLLJITRef jit = NULL;
     LLVMErrorRef err = LLVMOrcCreateLLJIT(&jit, NULL);
-    if (err) return jit_failed("could not create an LLJIT", err);
-
-    // **The module cannot be handed over directly.** LLJIT requires a module
-    // owned by the LLVMContext inside the ThreadSafeContext it is given, and
-    // this one was built in the backend's own context long before any of this
-    // existed. Round-tripping through an in-memory bitcode buffer is how the two
-    // are reconciled without codegen having to know the JIT exists -- which is
-    // the property that keeps `--jit` off the emission path. It costs one
-    // serialise and one parse of a module already in memory, against the clang
-    // compile and link this replaces.
-    LLVMMemoryBufferRef bitcode = LLVMWriteBitcodeToMemoryBuffer(g_module);
-    if (!bitcode) {
-        fprintf(stderr, "ERROR: --jit: could not serialise the module\n");
-        LLVMOrcDisposeLLJIT(jit);
-        return 1;
+    if (err) {
+        LLVMDisposeMemoryBuffer(source);
+        return jit_failed("could not create an LLJIT", err);
     }
 
     // Into a context of its own, which the ThreadSafeContext then adopts.
@@ -7166,8 +7243,8 @@ int ir_jit_run_main(const char *program_name) {
     LLVMModuleRef jitted = NULL;
     char *parse_error = NULL;
     // Takes the buffer either way, so it must not be disposed here.
-    if (LLVMParseIRInContext(jit_ctx, bitcode, &jitted, &parse_error) != 0) {
-        fprintf(stderr, "ERROR: --jit: could not re-read the module: %s\n",
+    if (LLVMParseIRInContext(jit_ctx, source, &jitted, &parse_error) != 0) {
+        fprintf(stderr, "ERROR: --jit: could not read the module: %s\n",
                 parse_error ? parse_error : "(no detail)");
         if (parse_error) LLVMDisposeMessage(parse_error);
         LLVMContextDispose(jit_ctx);
@@ -7266,25 +7343,35 @@ int ir_jit_run_main(const char *program_name) {
     // prog.psm`. Setting the compiler's copy too makes that case read the
     // program's arguments rather than quietly reporting the compiler's.
     //
-    // One argument, the program's own name: `compiler_run_executable` runs the
-    // built binary with no arguments, and `--jit` is a way of running the same
-    // program, not a different calling convention.
-    char *jit_argv[2];
+    // The program's own name and then whatever followed `--` on the command
+    // line -- exactly the vector compiler_spawn_wait gives the built binary,
+    // because `--jit` is a way of running the same program, not a different
+    // calling convention.
+    int extra = 0;
+    char **pending = compiler_pending_arguments(&extra);
+    char **jit_argv = (char **)malloc((size_t)(extra + 2) * sizeof(char *));
+    if (!jit_argv) {
+        LLVMOrcDisposeLLJIT(jit);
+        fprintf(stderr, "error: out of memory starting the jitted program\n");
+        return 1;
+    }
     jit_argv[0] = (char *)(program_name ? program_name : "prismio");
-    jit_argv[1] = NULL;
+    for (int i = 0; i < extra; i++) jit_argv[i + 1] = pending[i];
+    jit_argv[extra + 1] = NULL;
 
     int saved_argc = prismio_argc;
     char **saved_argv = prismio_argv;
-    prismio_argc = 1;
+    prismio_argc = extra + 1;
     prismio_argv = jit_argv;
 
     int (*entry)(int, char **) = (int (*)(int, char **))(uintptr_t)entry_address;
-    int status = entry(1, jit_argv);
+    int status = entry(extra + 1, jit_argv);
 
-    // Restored rather than left pointing at a stack array that is about to go
-    // away: the compiler keeps running after this returns.
+    // Restored rather than left pointing at an array that is about to be freed:
+    // the compiler keeps running after this returns.
     prismio_argc = saved_argc;
     prismio_argv = saved_argv;
+    free(jit_argv);
 
     LLVMOrcDisposeLLJIT(jit);
     return status;
@@ -7393,11 +7480,538 @@ static void ensure_codegen_initialized(void) {
     done = 1;
 }
 
+// ---------------------------------------------------------------------------
+// Parallel machine-code emission.
+//
+// Machine code is half of a large build's compile time (2.1 s of the compiler's
+// own 4.4 s at the time of writing, 0.43 s of the benchmark suite's 1.0 s), and
+// it was one thread. Instruction selection and register allocation are
+// per-function, so the work is embarrassingly parallel -- but LLVM's backend is
+// not thread-safe within one LLVMContext, so each thread needs a module of its
+// own.
+//
+// This is the split LLVM's own LTO code generator makes (LTOCodeGenerator's
+// parallel codegen over SplitModule), and the order matters: the **whole
+// program is optimised first, as one module**, and only then partitioned. That
+// is the difference from rustc's codegen units, which split before optimising
+// and so give up cross-unit inlining; here every inlining, IPO and
+// vectorisation decision has already been made on the whole program, and the
+// partitions only decide which thread lowers which function. The instructions
+// selected for a function do not depend on which object file it lands in.
+//
+// The optimised module is written once as bitcode; each thread parses it into
+// its own context, turns every function another partition owns into a
+// declaration, and emits its object. A local symbol referenced across a
+// partition boundary becomes a hidden global -- still invisible outside the
+// executable -- with the same name.
+
+// Below this many instructions per partition a split costs more than it
+// saves: each thread re-parses the whole module (about 5 ms per 10k
+// instructions here). The benchmark suite, ~50k instructions, measured 430 ms
+// whole, 247 ms in 2 partitions and 120 ms in 8.
+#define CODEGEN_MIN_PARTITION_INSTRUCTIONS 5000
+#define CODEGEN_MAX_PARTITIONS 8
+// A secondary thread's default stack is 512 KB on macOS and 1 MB on Windows,
+// and LLVM's code generator recurses: llvm::thread asks for 8 MB for exactly
+// this reason. The default was not a clean overflow but a corrupt one -- a
+// frame past the guard page wrote into memory another partition was parsing,
+// and that build spun forever inside the bitcode reader.
+#define CODEGEN_THREAD_STACK (16u * 1024u * 1024u)
+
+static const char partition_key[] = "prismio-partition";
+
+static int codegen_thread_budget(void) {
+    const char *env = getenv("PRISMIO_CODEGEN_THREADS");
+    if (env && *env) {
+        int n = atoi(env);
+        return n < 1 ? 1 : (n > 64 ? 64 : n);
+    }
+#ifdef _WIN32
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    int n = (int)info.dwNumberOfProcessors;
+#else
+    int n = (int)sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+    if (n < 1) n = 1;
+    return n > CODEGEN_MAX_PARTITIONS ? CODEGEN_MAX_PARTITIONS : n;
+}
+
+static unsigned function_instruction_count(LLVMValueRef f) {
+    unsigned n = 0;
+    for (LLVMBasicBlockRef b = LLVMGetFirstBasicBlock(f); b; b = LLVMGetNextBasicBlock(b)) {
+        for (LLVMValueRef i = LLVMGetFirstInstruction(b); i; i = LLVMGetNextInstruction(i)) n++;
+    }
+    return n;
+}
+
+static int is_local_linkage(LLVMLinkage linkage) {
+    return linkage == LLVMInternalLinkage || linkage == LLVMPrivateLinkage;
+}
+
+// How many partitions this module is worth, or 1 to emit it as it is. A -g
+// build stays whole: its DWARF names one compile unit, and dsymutil's debug map
+// expects to find it in one object.
+static int codegen_partition_count(LLVMModuleRef m, int opt_level) {
+    if (opt_level == 0) return 1;
+    if (LLVMGetModuleFlag(m, "Debug Info Version", 18)) return 1;
+    if (LLVMGetFirstGlobalAlias(m) || LLVMGetFirstGlobalIFunc(m)) return 1;
+    size_t asm_len = 0;
+    LLVMGetModuleInlineAsm(m, &asm_len);
+    if (asm_len) return 1;
+    int budget = codegen_thread_budget();
+    if (budget < 2) return 1;
+    unsigned long total = 0;
+    for (LLVMValueRef f = LLVMGetFirstFunction(m); f; f = LLVMGetNextFunction(f)) {
+        if (!LLVMIsDeclaration(f)) total += function_instruction_count(f);
+    }
+    unsigned long parts = total / CODEGEN_MIN_PARTITION_INSTRUCTIONS;
+    // PRISMIO_CODEGEN_THREADS=<n> is a measurement switch: exactly n partitions
+    // whatever the module's size, and 1 for the whole-module emission.
+    const char *forced = getenv("PRISMIO_CODEGEN_THREADS");
+    if (forced && *forced) parts = (unsigned long)budget;
+    if (parts < 2) return 1;
+    return parts > (unsigned long)budget ? budget : (int)parts;
+}
+
+// The partition a function belongs to, read back from the attribute
+// assign_partitions wrote; -1 for a declaration.
+static int function_partition(LLVMValueRef f) {
+    LLVMAttributeRef a = LLVMGetStringAttributeAtIndex(
+        f, LLVMAttributeFunctionIndex, partition_key, sizeof(partition_key) - 1);
+    if (!a) return -1;
+    unsigned len = 0;
+    const char *v = LLVMGetStringAttributeValue(a, &len);
+    int n = 0;
+    for (unsigned i = 0; i < len; i++) n = n * 10 + (v[i] - '0');
+    return n;
+}
+
+static void set_function_partition(LLVMValueRef f, int partition) {
+    char text[16];
+    int len = snprintf(text, sizeof(text), "%d", partition);
+    LLVMAddAttributeAtIndex(
+        f, LLVMAttributeFunctionIndex,
+        LLVMCreateStringAttribute(LLVMGetModuleContext(LLVMGetGlobalParent(f)), partition_key,
+                                  sizeof(partition_key) - 1, text, (unsigned)len));
+}
+
+typedef struct {
+    LLVMValueRef function;
+    unsigned weight;
+    unsigned order;
+} PartitionItem;
+
+static int partition_item_heavier_first(const void *a, const void *b) {
+    const PartitionItem *x = (const PartitionItem *)a;
+    const PartitionItem *y = (const PartitionItem *)b;
+    if (x->weight != y->weight) return x->weight > y->weight ? -1 : 1;
+    return x->order < y->order ? -1 : (x->order > y->order ? 1 : 0);
+}
+
+// Heaviest function first onto the lightest partition: deterministic, so the
+// same module always splits the same way, and balanced to within one function.
+static int assign_partitions(LLVMModuleRef m, int partitions) {
+    unsigned count = 0;
+    for (LLVMValueRef f = LLVMGetFirstFunction(m); f; f = LLVMGetNextFunction(f)) {
+        if (!LLVMIsDeclaration(f)) count++;
+    }
+    PartitionItem *items = (PartitionItem *)calloc(count ? count : 1, sizeof(PartitionItem));
+    unsigned long *load = (unsigned long *)calloc((size_t)partitions, sizeof(unsigned long));
+    if (!items || !load) { free(items); free(load); return 1; }
+    unsigned k = 0;
+    for (LLVMValueRef f = LLVMGetFirstFunction(m); f; f = LLVMGetNextFunction(f)) {
+        if (LLVMIsDeclaration(f)) continue;
+        items[k].function = f;
+        items[k].weight = function_instruction_count(f) + 1;
+        items[k].order = k;
+        k++;
+    }
+    qsort(items, count, sizeof(PartitionItem), partition_item_heavier_first);
+    for (unsigned i = 0; i < count; i++) {
+        int lightest = 0;
+        for (int p = 1; p < partitions; p++) {
+            if (load[p] < load[lightest]) lightest = p;
+        }
+        load[lightest] += items[i].weight;
+        set_function_partition(items[i].function, lightest);
+    }
+    free(items);
+    free(load);
+    return 0;
+}
+
+// The partition every user of `value` is in: -1 if none, -2 if more than one or
+// if any user is not an instruction (a constant can be copied anywhere).
+static int users_partition(LLVMValueRef value) {
+    int seen = -1;
+    for (LLVMUseRef u = LLVMGetFirstUse(value); u; u = LLVMGetNextUse(u)) {
+        LLVMValueRef user = LLVMGetUser(u);
+        if (!LLVMIsAInstruction(user)) return -2;
+        int p = function_partition(LLVMGetBasicBlockParent(LLVMGetInstructionParent(user)));
+        if (seen == -1) seen = p;
+        else if (seen != p) return -2;
+    }
+    return seen;
+}
+
+static void promote_to_hidden_global(LLVMValueRef value, unsigned index) {
+    size_t len = 0;
+    LLVMGetValueName2(value, &len);
+    if (len == 0) {
+        char name[48];
+        snprintf(name, sizeof(name), "__prismio.part.anon.%u", index);
+        LLVMSetValueName2(value, name, strlen(name));
+    }
+    LLVMSetLinkage(value, LLVMExternalLinkage);
+    LLVMSetVisibility(value, LLVMHiddenVisibility);
+    LLVMSetUnnamedAddress(value, LLVMNoUnnamedAddr);
+}
+
+// Every local a partition other than its owner's reaches has to become a
+// symbol the linker can resolve. Constants a function in another partition
+// reads are copied instead -- each partition keeps its own -- which leaves
+// literal and table placement exactly as the whole-module emission had it.
+static void promote_cross_partition_locals(LLVMModuleRef m) {
+    unsigned index = 0;
+    for (LLVMValueRef f = LLVMGetFirstFunction(m); f; f = LLVMGetNextFunction(f), index++) {
+        if (LLVMIsDeclaration(f) || !is_local_linkage(LLVMGetLinkage(f))) continue;
+        int users = users_partition(f);
+        if (users == -1 || users == function_partition(f)) continue;
+        promote_to_hidden_global(f, index);
+    }
+    for (LLVMValueRef g = LLVMGetFirstGlobal(m); g; g = LLVMGetNextGlobal(g), index++) {
+        if (LLVMIsDeclaration(g) || !is_local_linkage(LLVMGetLinkage(g))) continue;
+        if (LLVMIsGlobalConstant(g)) continue;
+        if (users_partition(g) >= -1) continue;
+        promote_to_hidden_global(g, index);
+    }
+}
+
+// A body another partition emits, reduced to a declaration: what
+// Function::deleteBody does, which the C API does not offer.
+//
+// **Three passes, and the order is the correctness.** A block is an operand of
+// every branch that targets it, so no block may be deleted while any
+// instruction of the function remains. An earlier version emptied and deleted
+// one block at a time; a branch in a later block still pointed at the freed
+// block, and erasing that branch wrote into its use list. Release LLVM does not
+// assert on it. With one thread the memory was rarely reused in time; with
+// eight, another partition's IR was allocated there and the damage surfaced as
+// PHIs, attributes and terminators corrupted in functions nobody had touched.
+static void delete_function_body(LLVMValueRef f) {
+    for (LLVMBasicBlockRef b = LLVMGetFirstBasicBlock(f); b; b = LLVMGetNextBasicBlock(b)) {
+        for (LLVMValueRef i = LLVMGetFirstInstruction(b); i; i = LLVMGetNextInstruction(i)) {
+            if (LLVMGetFirstUse(i)) LLVMReplaceAllUsesWith(i, LLVMGetPoison(LLVMTypeOf(i)));
+        }
+    }
+    for (LLVMBasicBlockRef b = LLVMGetFirstBasicBlock(f); b; b = LLVMGetNextBasicBlock(b)) {
+        LLVMValueRef i;
+        while ((i = LLVMGetFirstInstruction(b)) != NULL) LLVMInstructionEraseFromParent(i);
+    }
+    for (LLVMBasicBlockRef b = LLVMGetFirstBasicBlock(f); b; b = LLVMGetFirstBasicBlock(f)) {
+        LLVMDeleteBasicBlock(b);
+    }
+    if (LLVMHasPersonalityFn(f)) LLVMSetPersonalityFn(f, NULL);
+}
+
+typedef struct {
+    const char *bitcode;
+    size_t bitcode_size;
+    int partition;
+    const char *triple;
+    const char *cpu;
+    int opt_level;
+    int wasm;
+    char obj_path[1200];
+    char error[512];
+    int failed;
+} PartitionJob;
+
+static int emit_one_partition(PartitionJob *job) {
+    LLVMContextRef ctx = LLVMContextCreate();
+    LLVMMemoryBufferRef buf = LLVMCreateMemoryBufferWithMemoryRange(
+        job->bitcode, job->bitcode_size, "prismio-partition", 0);
+    LLVMModuleRef m = NULL;
+    if (LLVMParseBitcodeInContext2(ctx, buf, &m) != 0) {
+        snprintf(job->error, sizeof(job->error), "could not re-read the optimised module");
+        LLVMDisposeMemoryBuffer(buf);
+        LLVMContextDispose(ctx);
+        return 1;
+    }
+    LLVMDisposeMemoryBuffer(buf);
+
+    // Bodies other partitions own become declarations. Then, and only once
+    // every such body is gone, the locals among them go too: nothing left in
+    // this partition calls them, or promote_cross_partition_locals would have
+    // made them global. Deleting one as soon as its own body went left it
+    // behind whenever a later foreign body still called it -- an internal
+    // declaration, which is invalid IR.
+    for (LLVMValueRef f = LLVMGetFirstFunction(m); f; f = LLVMGetNextFunction(f)) {
+        int owner = function_partition(f);
+        LLVMRemoveStringAttributeAtIndex(f, LLVMAttributeFunctionIndex,
+                                         partition_key, sizeof(partition_key) - 1);
+        if (owner < 0 || owner == job->partition) continue;
+        delete_function_body(f);
+        if (!is_local_linkage(LLVMGetLinkage(f))) LLVMSetLinkage(f, LLVMExternalLinkage);
+    }
+    LLVMValueRef f = LLVMGetFirstFunction(m);
+    while (f) {
+        LLVMValueRef next = LLVMGetNextFunction(f);
+        if (LLVMIsDeclaration(f) && is_local_linkage(LLVMGetLinkage(f))) {
+            if (LLVMGetFirstUse(f)) {
+                snprintf(job->error, sizeof(job->error),
+                         "a local function another partition owns is still called here");
+                LLVMDisposeModule(m);
+                LLVMContextDispose(ctx);
+                return 1;
+            }
+            LLVMDeleteFunction(f);
+        }
+        f = next;
+    }
+    // A global with a symbol is defined once, by partition 0; the others
+    // declare it. Locals stay in every partition and globaldce keeps the ones
+    // each partition reads.
+    LLVMValueRef g = LLVMGetFirstGlobal(m);
+    while (g) {
+        LLVMValueRef next = LLVMGetNextGlobal(g);
+        LLVMLinkage linkage = LLVMGetLinkage(g);
+        if (job->partition != 0 && !LLVMIsDeclaration(g) && !is_local_linkage(linkage)) {
+            if (linkage == LLVMAppendingLinkage) {
+                LLVMDeleteGlobal(g);
+            } else {
+                LLVMSetInitializer(g, NULL);
+                LLVMSetLinkage(g, LLVMExternalLinkage);
+            }
+        }
+        g = next;
+    }
+
+    LLVMTargetRef target = NULL;
+    char *err = NULL;
+    int failed = 0;
+    // PRISMIO_CODEGEN_VERIFY: check each partition's module before it is
+    // lowered. A measurement switch for work on the split itself.
+    if (getenv("PRISMIO_CODEGEN_VERIFY")) {
+        char *msg = NULL;
+        if (LLVMVerifyModule(m, LLVMReturnStatusAction, &msg)) {
+            snprintf(job->error, sizeof(job->error), "invalid partition: %.400s",
+                     msg ? msg : "?");
+            failed = 1;
+        }
+        if (msg) LLVMDisposeMessage(msg);
+    }
+    if (LLVMGetTargetFromTriple(job->triple, &target, &err) != 0) {
+        snprintf(job->error, sizeof(job->error), "%s", err ? err : "unknown target");
+        if (err) LLVMDisposeMessage(err);
+        LLVMDisposeModule(m);
+        LLVMContextDispose(ctx);
+        return 1;
+    }
+    LLVMTargetMachineRef tm = LLVMCreateTargetMachine(
+        target, job->triple, job->cpu, "",
+        job->opt_level > 0 ? LLVMCodeGenLevelAggressive : LLVMCodeGenLevelNone,
+        job->wasm ? LLVMRelocStatic : LLVMRelocPIC, LLVMCodeModelDefault);
+
+    LLVMPassBuilderOptionsRef options = LLVMCreatePassBuilderOptions();
+    LLVMErrorRef perr = failed ? NULL : LLVMRunPasses(m, "globaldce", tm, options);
+    LLVMDisposePassBuilderOptions(options);
+    if (perr) {
+        char *msg = LLVMGetErrorMessage(perr);
+        snprintf(job->error, sizeof(job->error), "%s", msg ? msg : "globaldce failed");
+        LLVMDisposeErrorMessage(msg);
+        failed = 1;
+    }
+    if (!failed && LLVMTargetMachineEmitToFile(tm, m, job->obj_path, LLVMObjectFile, &err) != 0) {
+        snprintf(job->error, sizeof(job->error), "%s", err ? err : "code generation failed");
+        if (err) LLVMDisposeMessage(err);
+        failed = 1;
+    }
+    LLVMDisposeTargetMachine(tm);
+    LLVMDisposeModule(m);
+    LLVMContextDispose(ctx);
+    return failed;
+}
+
+#ifdef _WIN32
+static DWORD WINAPI partition_thread(LPVOID arg) {
+    PartitionJob *job = (PartitionJob *)arg;
+    job->failed = emit_one_partition(job);
+    return 0;
+}
+#else
+static void *partition_thread(void *arg) {
+    PartitionJob *job = (PartitionJob *)arg;
+    job->failed = emit_one_partition(job);
+    return NULL;
+}
+#endif
+
+void ir_partition_object_path(const char *obj_path, int partition, char *out, size_t size) {
+    if (partition == 0) snprintf(out, size, "%s", obj_path);
+    else snprintf(out, size, "%s.p%d.o", obj_path, partition);
+}
+
+// `obj_path` receives partition 0; partition k > 0 goes to the path
+// ir_partition_object_path names, and the driver links them all.
+static int emit_partitioned(LLVMModuleRef m, int partitions, const char *triple,
+                            const char *cpu, int opt_level, int wasm,
+                            const char *obj_path) {
+    if (assign_partitions(m, partitions) != 0) return 1;
+    promote_cross_partition_locals(m);
+    LLVMMemoryBufferRef bitcode = LLVMWriteBitcodeToMemoryBuffer(m);
+    if (!bitcode) return 1;
+
+    PartitionJob *jobs = (PartitionJob *)calloc((size_t)partitions, sizeof(PartitionJob));
+    if (!jobs) { LLVMDisposeMemoryBuffer(bitcode); return 1; }
+    for (int p = 0; p < partitions; p++) {
+        jobs[p].bitcode = LLVMGetBufferStart(bitcode);
+        jobs[p].bitcode_size = LLVMGetBufferSize(bitcode);
+        jobs[p].partition = p;
+        jobs[p].triple = triple;
+        jobs[p].cpu = cpu;
+        jobs[p].opt_level = opt_level;
+        jobs[p].wasm = wasm;
+        ir_partition_object_path(obj_path, p, jobs[p].obj_path, sizeof(jobs[p].obj_path));
+    }
+
+    // Partition 0 on this thread, the rest on their own. A thread that cannot
+    // start runs its partition here instead: slower, not wrong.
+#ifdef _WIN32
+    HANDLE *threads = (HANDLE *)calloc((size_t)partitions, sizeof(HANDLE));
+#else
+    pthread_t *threads = (pthread_t *)calloc((size_t)partitions, sizeof(pthread_t));
+#endif
+    int *started = (int *)calloc((size_t)partitions, sizeof(int));
+    for (int p = 1; p < partitions && threads && started; p++) {
+#ifdef _WIN32
+        threads[p] = CreateThread(NULL, CODEGEN_THREAD_STACK, partition_thread, &jobs[p],
+                                  STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+        started[p] = threads[p] != NULL;
+#else
+        pthread_attr_t attr;
+        started[p] = 0;
+        if (pthread_attr_init(&attr) == 0) {
+            if (pthread_attr_setstacksize(&attr, CODEGEN_THREAD_STACK) == 0) {
+                started[p] = pthread_create(&threads[p], &attr, partition_thread,
+                                            &jobs[p]) == 0;
+            }
+            pthread_attr_destroy(&attr);
+        }
+#endif
+    }
+    jobs[0].failed = emit_one_partition(&jobs[0]);
+    for (int p = 1; p < partitions; p++) {
+        if (threads && started && started[p]) {
+#ifdef _WIN32
+            WaitForSingleObject(threads[p], INFINITE);
+            CloseHandle(threads[p]);
+#else
+            pthread_join(threads[p], NULL);
+#endif
+        } else {
+            jobs[p].failed = emit_one_partition(&jobs[p]);
+        }
+    }
+
+    int failed = 0;
+    for (int p = 0; p < partitions; p++) {
+        if (!jobs[p].failed) continue;
+        fprintf(stderr, "ERROR: code generation failed (partition %d): %s\n", p, jobs[p].error);
+        failed = 1;
+    }
+    if (failed) {
+        for (int p = 0; p < partitions; p++) remove(jobs[p].obj_path);
+    }
+    free(started);
+    free(threads);
+    free(jobs);
+    LLVMDisposeMemoryBuffer(bitcode);
+    return failed;
+}
+
+// PRISMIO_BUILD_TRACE's stages inside ir_emit_object, which build_driver.c
+// otherwise reports as one number: the IR pipeline and machine-code emission
+// are different costs with different fixes.
+static int emit_trace_enabled(void) {
+    const char *v = getenv("PRISMIO_BUILD_TRACE");
+    return v && v[0] != '\0' && !(v[0] == '0' && v[1] == '\0');
+}
+
+static double emit_trace_ms(void) {
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1.0e6;
+}
+
+static void emit_trace_stage(const char *stage, double t0) {
+    if (!emit_trace_enabled()) return;
+    fprintf(stderr, "[build trace]   %-22s %8.1f ms\n", stage, emit_trace_ms() - t0);
+}
+
+// A closed executable's only root is `main`, so everything else it defines can
+// be internal -- what an LTO link's internalize step does. Before this, every
+// function the program module defined was external: the std functions compiled
+// from source into it (`strCapitalize`, `strPadCenter`, ...) and the tables
+// they reach were optimised at -O3, code-generated and kept by the linker
+// whether anything called them or not. The benchmark suite carried 136 `str*`
+// functions and 70 KB of Unicode case tables it never used.
+//
+// Internal linkage is also what lets the optimiser treat a single-caller
+// function as the caller's own code, and globaldce drops the rest before the
+// expensive passes see it. Measured over the benchmark suite against external
+// linkage: string_search 0.55x (the search specialised on its constant needle),
+// string_join 0.72x, binary_search 0.86x.
+//
+// **The cost is a slow path split out on purpose.** LLVM inlines an internal
+// function's *only* call whatever its size, so a cold half kept apart so its hot
+// half can inline into a caller's loop gets folded straight back: `mapInsert`
+// into `mapSet` (key_value_update 1.28x), `list_set` into
+// `list_set_inline_scalar` (quicksort 1.13x). Size used to keep them apart; now
+// `cold fn` in Prismio and PRISMIO_NOINLINE in the runtime say so, and a new split
+// needs the same.
+//
+// Only for a program whose every caller is inside this module. A target with
+// native sources, linked objects or exportDynamic may be called by name from
+// code the module cannot see, and the driver does not ask for this then.
+static void internalize_executable(LLVMModuleRef m) {
+    for (LLVMValueRef f = LLVMGetFirstFunction(m); f; f = LLVMGetNextFunction(f)) {
+        if (LLVMIsDeclaration(f)) continue;
+        size_t len = 0;
+        const char *name = LLVMGetValueName2(f, &len);
+        if (len == 4 && memcmp(name, "main", 4) == 0) continue;
+        if (len >= 5 && memcmp(name, "llvm.", 5) == 0) continue;
+        LLVMLinkage linkage = LLVMGetLinkage(f);
+        if (linkage == LLVMInternalLinkage || linkage == LLVMPrivateLinkage
+                || linkage == LLVMAvailableExternallyLinkage) continue;
+        LLVMSetLinkage(f, LLVMInternalLinkage);
+        LLVMSetVisibility(f, LLVMDefaultVisibility);
+        LLVMSetDLLStorageClass(f, LLVMDefaultStorageClass);
+    }
+    for (LLVMValueRef g = LLVMGetFirstGlobal(m); g; g = LLVMGetNextGlobal(g)) {
+        if (LLVMIsDeclaration(g)) continue;
+        size_t len = 0;
+        const char *name = LLVMGetValueName2(g, &len);
+        if (len >= 5 && memcmp(name, "llvm.", 5) == 0) continue;
+        LLVMLinkage linkage = LLVMGetLinkage(g);
+        if (linkage == LLVMInternalLinkage || linkage == LLVMPrivateLinkage
+                || linkage == LLVMAvailableExternallyLinkage
+                || linkage == LLVMAppendingLinkage) continue;
+        LLVMSetLinkage(g, LLVMInternalLinkage);
+        LLVMSetVisibility(g, LLVMDefaultVisibility);
+        LLVMSetDLLStorageClass(g, LLVMDefaultStorageClass);
+    }
+}
+
 // Compile the IR in `ir_path` to an object file. `triple` is the target the
 // user named, or NULL for the host. `opt_level` is 3, or 0 for a -g build --
-// the same pair compile_ir_to_object gave clang. Returns 0 on success.
+// the same pair compile_ir_to_object gave clang. `internalize` is set for a
+// program with no caller outside this module; see internalize_executable.
+// Returns 0 on success.
 int ir_emit_object(const char *ir_path, const char *obj_path, const char *triple,
-                   int opt_level) {
+                   int opt_level, int internalize, int *extra_objects) {
+    *extra_objects = 0;
     ensure_codegen_initialized();
 
     char chosen[256];
@@ -7419,17 +8033,27 @@ int ir_emit_object(const char *ir_path, const char *obj_path, const char *triple
         host_codegen_triple(chosen, sizeof(chosen));
     }
 
-    LLVMContextRef ctx = LLVMContextCreate();
+    double t_parse = emit_trace_ms();
+    LLVMContextRef ctx = NULL;
     LLVMMemoryBufferRef buf = NULL;
     LLVMModuleRef m = NULL;
     char *err = NULL;
-    if (LLVMCreateMemoryBufferWithContentsOfFile(ir_path, &buf, &err) != 0
+    if (g_held_module && g_held_path && strcmp(g_held_path, ir_path) == 0) {
+        ctx = g_held_ctx;
+        m = g_held_module;
+        g_held_ctx = NULL;
+        g_held_module = NULL;
+        free(g_held_path);
+        g_held_path = NULL;
+    } else if ((ctx = LLVMContextCreate()) == NULL
+        || LLVMCreateMemoryBufferWithContentsOfFile(ir_path, &buf, &err) != 0
         || LLVMParseIRInContext(ctx, buf, &m, &err) != 0) {
         fprintf(stderr, "ERROR: could not read %s: %s\n", ir_path, err ? err : "?");
         if (err) LLVMDisposeMessage(err);
         LLVMContextDispose(ctx);
         return 1;
     }
+    emit_trace_stage("parse merged IR", t_parse);
 
     LLVMTargetRef target = NULL;
     if (LLVMGetTargetFromTriple(chosen, &target, &err) != 0) {
@@ -7462,18 +8086,32 @@ int ir_emit_object(const char *ir_path, const char *obj_path, const char *triple
         LLVMDisposeTargetData(td);
     }
 
+    // PRISMIO_SAVE_IR=<file> writes the module the pipeline is about to run on:
+    // the whole program, libraries merged. A measurement switch, for timing
+    // `opt` and `llc` stages on exactly what a build compiles.
+    const char *save_ir = getenv("PRISMIO_SAVE_IR");
+    if (save_ir && *save_ir && LLVMPrintModuleToFile(m, save_ir, &err) != 0) {
+        fprintf(stderr, "warning: PRISMIO_SAVE_IR: %s\n", err ? err : "?");
+        if (err) { LLVMDisposeMessage(err); err = NULL; }
+    }
+
+    // globaldce first, so nothing unreachable from `main` is optimised at all.
+    if (internalize) internalize_executable(m);
     // cc1's pipeline tuning at -O2 and above: unrolling and interleaving on,
     // both vectorizers on. SLP is the one PipelineTuningOptions defaults off.
-    char pipeline[32];
-    snprintf(pipeline, sizeof(pipeline), "default<O%d>", opt_level);
+    char pipeline[48];
+    snprintf(pipeline, sizeof(pipeline), "%sdefault<O%d>",
+             internalize ? "globaldce," : "", opt_level);
     LLVMPassBuilderOptionsRef options = LLVMCreatePassBuilderOptions();
     int vectorize = opt_level >= 2;
     LLVMPassBuilderOptionsSetLoopUnrolling(options, vectorize);
     LLVMPassBuilderOptionsSetLoopInterleaving(options, vectorize);
     LLVMPassBuilderOptionsSetLoopVectorization(options, vectorize);
     LLVMPassBuilderOptionsSetSLPVectorization(options, vectorize);
+    double t_opt = emit_trace_ms();
     LLVMErrorRef perr = LLVMRunPasses(m, pipeline, tm, options);
     LLVMDisposePassBuilderOptions(options);
+    emit_trace_stage("IR pipeline", t_opt);
 
     int failed = 0;
     if (perr) {
@@ -7483,10 +8121,23 @@ int ir_emit_object(const char *ir_path, const char *obj_path, const char *triple
         failed = 1;
     }
 
-    if (!failed) {
+    int partitions = failed ? 1 : codegen_partition_count(m, opt_level);
+    if (partitions > 1) {
+        double t_emit = emit_trace_ms();
+        failed = emit_partitioned(m, partitions, chosen, default_target_cpu(chosen),
+                                  opt_level, wasm, obj_path);
+        if (emit_trace_enabled()) {
+            fprintf(stderr, "[build trace]   %d codegen partitions\n", partitions);
+        }
+        emit_trace_stage("machine code (parallel)", t_emit);
+        if (!failed) *extra_objects = partitions - 1;
+    } else if (!failed) {
         char *path = (char *)malloc(strlen(obj_path) + 1);
         strcpy(path, obj_path);
-        if (LLVMTargetMachineEmitToFile(tm, m, path, LLVMObjectFile, &err) != 0) {
+        double t_emit = emit_trace_ms();
+        int emit_failed = LLVMTargetMachineEmitToFile(tm, m, path, LLVMObjectFile, &err) != 0;
+        emit_trace_stage("machine code", t_emit);
+        if (emit_failed) {
             fprintf(stderr, "ERROR: code generation failed: %s\n", err ? err : "?");
             if (err) LLVMDisposeMessage(err);
             failed = 1;
@@ -7504,14 +8155,24 @@ int ir_emit_object(const char *ir_path, const char *obj_path, const char *triple
 
 // No real headers, no code generation: the caller falls back to clang.
 int ir_emit_object(const char *ir_path, const char *obj_path, const char *triple,
-                   int opt_level) {
-    (void)ir_path; (void)obj_path; (void)triple; (void)opt_level;
+                   int opt_level, int internalize, int *extra_objects) {
+    (void)ir_path; (void)obj_path; (void)triple; (void)opt_level; (void)internalize;
+    *extra_objects = 0;
     return -1;
+}
+
+void ir_partition_object_path(const char *obj_path, int partition, char *out, size_t size) {
+    snprintf(out, size, "%s", obj_path);
+    (void)partition;
 }
 
 const char *ir_host_macos_version(void) { return ""; }
 
-int ir_jit_run_main(const char *program_name) {
+void ir_hold_merged_module(int on) { (void)on; }
+void ir_release_held_module(void) {}
+
+int ir_jit_run_file(const char *ir_path, const char *program_name) {
+    (void)ir_path;
     (void)program_name;
     fprintf(stderr,
             "ERROR: --jit needs an LLVM with the C headers installed.\n"

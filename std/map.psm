@@ -131,6 +131,70 @@ public fn mapNew<K: Key + Copy, V>() -> Map<K, V> {
                        tombstones: 0, longest: 0, placed: 0, strong: false }
 }
 
+// Room for `count` entries before the first rehash: the smallest power of two
+// that keeps `count` at or under half full (mapInsert's growth rule), and never
+// fewer buckets than mapNew's.
+//
+// **Grown from mapNew, not built beside it, and that is a leak fix.** A second
+// function allocating a Map's columns gives AIF two containers that
+// `m.entryKeys` may name, and a key mapInsert copies in is then judged able to
+// land in either: tier T3, no element release, and every String key leaked
+// (KNOWN_ISSUES, "A struct built by two constructors"). One construction site
+// keeps one container per column.
+public fn mapWithCapacity<K: Key + Copy, V>(count: Int) -> Map<K, V> {
+    let m: Map<K, V> = mapNew<K, V>()
+    let mut buckets = m.mask + 1
+    if (buckets / 2 >= count) { return m }
+    while (buckets / 2 < count) { buckets = buckets * 2 }
+    list_reserve(m.entryKeys, count)
+    list_reserve(m.entryValues, count)
+    list_reserve(m.slots, buckets)
+    for i in (m.mask + 1)..<buckets { list_push(m.slots, -1) }
+    m.mask = buckets - 1
+    return m
+}
+
+// A map literal whose keys it does not own -- literals, names, keys of a type
+// that owns nothing -- in one call: `{ "a": 1, "b": 2 }` reaches codegen as
+// `mapFromEntries(2, ["a", "b"], [1, 2])` (src/sema/maps.psm). Sized once, so
+// building it never rehashes.
+//
+// **A producer, and that is the point of it.** It builds the map it returns, so
+// the literal's result is owned wherever it lands. `mapPutAll` below returns the
+// map it was given, and a pass-through's result stored in a struct field is
+// never released (KNOWN_ISSUES, "A pass-through result in a struct field"), so a
+// literal is built this way whenever it can be. The frame arrays hold nothing
+// they would have to release, and a `[K]` parameter does not carry its length,
+// so sema passes the count it wrote.
+public fn mapFromEntries<K: Key + Copy, V>(n: Int, keys: [K], values: [V]) -> Map<K, V> {
+    let m: Map<K, V> = mapWithCapacity(n)
+    for i in 0..<n { mapSet(m, keys[i], values[i]) }
+    return m
+}
+
+// One entry of a map literal whose key the literal owns: `{ s.concat("!"): 7 }`
+// reaches codegen as `mapPut(mapWithCapacity(1), s.concat("!"), 7)`, where the
+// key is an argument temporary and released after the call. Handed over inside
+// a frame array it leaked -- an array frees none of its elements (KNOWN_ISSUES,
+// "A frame array frees none of its elements"). Keys the literal does not own go
+// through `mapPutAll` below; src/sema/maps.psm chooses. A key written twice keeps
+// its last value, as `set` would -- sema refuses the case it can see, two equal
+// literal keys.
+public fn mapPut<K: Key + Copy, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
+    mapSet(m, key, value)
+    return m
+}
+
+// A run of entries whose keys the literal does not own -- literals, names, and
+// keys of a type that owns nothing -- in one call, so a table of three hundred
+// entries is one call deep rather than three hundred (the backend nests at most
+// 64). The frame arrays hold nothing they would have to release. A `[K]`
+// parameter does not carry its length, so sema passes the count it wrote.
+public fn mapPutAll<K: Key + Copy, V>(m: Map<K, V>, n: Int, keys: [K], values: [V]) -> Map<K, V> {
+    for i in 0..<n { mapSet(m, keys[i], values[i]) }
+    return m
+}
+
 public fn mapLen<K: Key + Copy, V>(m: Map<K, V>) -> Int {
     return list_len(m.entryKeys)
 }
@@ -366,7 +430,12 @@ public fn mapSet<K: Key + Copy, V>(m: Map<K, V>, key: K, value: V) -> Bool {
 // hash the same key twice and probe the same bucket twice, with nothing able to
 // see that they were the same key. Split, the hot half inlines and both probes
 // land in the caller where the optimiser can look at them together.
-private fn mapInsert<K: Key + Copy, V>(m: Map<K, V>, key: K, value: V, at: Int) {
+//
+// **`cold`, because the split is not enough on its own.** An executable
+// internalises its functions, and LLVM inlines an internal function's only call
+// however large it is: `mapInsert` went straight back into `mapSet`, which then
+// inlined nowhere, and key_value_update measured 1.28x until this was marked.
+private cold fn mapInsert<K: Key + Copy, V>(m: Map<K, V>, key: K, value: V, at: Int) {
     // The key is **copied in**, not moved: a parameter is a borrow, so
     // `list_push(m.entryKeys, key)` is "cannot move out of borrowed value", which is
     // exactly why an owned key needs the separate `Copy` bound. A
@@ -428,11 +497,20 @@ public fn mapValueAt<K: Key + Copy, V>(m: Map<K, V>, index: Int) -> V {
 
 // The methods are the API; the `map*` functions above are what they call.
 //
-//     let ages: Map<String, Int> = mapNew()
+//     let ages = Map<String, Int>()      // or `let ages: Map<String, Int>()`
 //     ages.set("ada", 36)
 //     if (ages.has("ada")) { println(ages["ada"]) }
 //     ages.remove("ada")
+//
+//     let stock: Map<String, Int> = { "apple": 3, "pear": 5 }
+//     let empty: Map<String, Int>        // an empty Map, as `= {}` is
 impl<K: Key + Copy, V> Map<K, V> {
+    // `Map<K, V>()` is this (src/sema/checker.psm, semaTypeCall).
+    public fn new() -> Map<K, V> { return mapNew<K, V>() }
+
+    // Room for `count` entries before the table first grows.
+    public fn withCapacity(count: Int) -> Map<K, V> { return mapWithCapacity<K, V>(count) }
+
     public prop length(self) -> Int { return list_len(self.entryKeys) }
     public prop isEmpty(self) -> Bool { return list_len(self.entryKeys) == 0 }
 

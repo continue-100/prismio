@@ -1048,6 +1048,87 @@ internal fn monoMatchParam(module: ASTNode, tn: ASTNode, actual: TypeInfo, param
     return ptr_to_node(ptr_null())
 }
 
+// `let m: Map<String, Int> = Map()`, `= mapNew()`, `= Map.withCapacity(n)`: a
+// generic call whose arguments cannot solve a type parameter, in a context that
+// names the type it must produce. The parameter is solved from the template's
+// declared return type against `expected`, and the answer is written onto the
+// call as the explicit type arguments the reader could have written -- so what
+// follows is the explicit-arguments path, bounds and all.
+//
+// Only a call that the arguments alone leave unsolved is touched: one that
+// resolved before resolves the same way, so no program that compiled changes.
+internal fn monoTypeArgsFromExpected(module: ASTNode, call: ASTNode, expected: TypeInfo) {
+    if (typeIsValid(expected) == false or nodeExists(call.child3)) { return }
+    let callee = ptr_to_node(call.child1)
+    let mut name = ""
+    // Where the answer goes: the call's own arguments for `f()`, or the type's
+    // for `Map()` and `Map.new()`, which semaTypeCall and semaTypeFunctionCall
+    // read as `Map<String, Int>.new()`.
+    let mut typeName = ""
+    if (callee.kind == NodeKind.IDENTIFIER_EXPR) {
+        if (ir_has_var_type(callee.s1) == 1) { return }
+        if (monoHasTemplate(module, callee.s1, NodeKind.FUNCTION)) {
+            name = callee.s1
+        } else if (monoHasTemplate(module, callee.s1.concat(".new"), NodeKind.FUNCTION)) {
+            name = callee.s1.concat(".new")
+            typeName = callee.s1
+        }
+    } else if (callee.kind == NodeKind.MEMBER_ACCESS_EXPR) {
+        let target = ptr_to_node(callee.child1)
+        if (target.kind != NodeKind.IDENTIFIER_EXPR or ir_has_var_type(target.s1) == 1) { return }
+        if (monoHasTemplate(module, target.s1.concat(".", callee.s1), NodeKind.FUNCTION)) {
+            name = target.s1.concat(".", callee.s1)
+            typeName = target.s1
+        }
+    }
+    if (name.equals("")) { return }
+
+    let mut templatePtr = module.child2
+    while (nodeExists(templatePtr)) {
+        let template = ptr_to_node(templatePtr)
+        if (template.kind == NodeKind.FUNCTION and template.s1.equals(name)
+                and nodeExists(template.child3)) {
+            let params = template.s2
+            let solved = nodeList()
+            let mut fromArgs = true
+            let mut solvedAll = true
+            for i in 0..<monoParamCount(params) {
+                let paramName = monoParamName(params, i)
+                let mut answer = monoSolveTypeParam(module, template, call.child2, paramName)
+                if (nodeIsNull(node_to_ptr(answer))) {
+                    fromArgs = false
+                    answer = monoMatchParam(module, ptr_to_node(template.child3), expected, paramName)
+                }
+                if (nodeIsNull(node_to_ptr(answer))) {
+                    solvedAll = false
+                } else {
+                    nodeListPush(solved, answer)
+                }
+            }
+            // Solved from the arguments alone: monoResolveGenericCall does that.
+            if (fromArgs) { return }
+            if (solvedAll) {
+                let written = createNode(NodeKind.TYPE_ANNOTATION)
+                nodeSpanFrom(written, callee)
+                written.i2 = 1
+                written.child1 = solved.head
+                if (typeName.equals("")) {
+                    written.s1 = name.clone()
+                    call.child3 = node_to_ptr(written)
+                } else if (callee.kind == NodeKind.IDENTIFIER_EXPR) {
+                    written.s1 = typeName.clone()
+                    call.child3 = node_to_ptr(written)
+                } else {
+                    written.s1 = typeName.clone()
+                    callee.child1 = node_to_ptr(written)
+                }
+                return
+            }
+        }
+        templatePtr = template.next
+    }
+}
+
 private fn monoSolveTypeParam(module: ASTNode, template: ASTNode, argPtr: Ptr, paramName: String) -> ASTNode {
     let mut param = template.child1
     let mut arg = argPtr

@@ -138,6 +138,30 @@ char* prismio_executable_directory(void);
 char* command_quote_arg(const char* arg);
 int execute_command(const char* command);
 
+// --- subprocesses: an argument vector, never a shell line ---
+// What std.process wraps as `Process`, and what the driver starts every program
+// and project command step with. The modes are one spelling on both sides of the
+// seam: std/process.psm passes the same three integers.
+#define PRISMIO_STDIO_INHERIT 0
+#define PRISMIO_STDIO_PIPE    1
+#define PRISMIO_STDIO_DISCARD 2
+
+// Every field is 64-bit so that no padding separates this declaration from the
+// one in std/process.psm; the handle needs the width anyway, since a Windows
+// HANDLE is a pointer.
+typedef struct {
+    int64_t handle;
+    int64_t stdin_fd;
+    int64_t stdout_fd;
+    int64_t stderr_fd;
+    int64_t error;
+} PrismioSpawnOut;
+
+void proc_spawn_begin(const char* program);
+void proc_spawn_arg(const char* argument);
+int  proc_spawn_run(int stdin_mode, int stdout_mode, int stderr_mode, PrismioSpawnOut* out);
+int  proc_wait(int64_t handle);
+
 // --- REQUIREMENTS 15: tasks and channels ---
 // prismio_task_* are compiler-emitted: `spawn f(x)` and `join t` lower to them,
 // so no program declares them by hand. The chan_* set is ordinary FFI surface a

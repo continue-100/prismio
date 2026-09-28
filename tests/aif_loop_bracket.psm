@@ -1,0 +1,28 @@
+// A once-called function whose Vec lives for one iteration of its own loop, and
+// one whose Vec lives for the whole call. Both are bracketed by regime (a) only
+// if nothing stops it; the first must not be, because the caller's region lasts
+// the whole call and would keep every iteration's block until it returns.
+
+fn perIteration(rounds: Int) -> Int {
+    let mut checksum = 0
+    for r in 0..<rounds {
+        let mut values: Vec<Int> = []
+        for i in 0..<64 {
+            values.push(i + r)
+        }
+        checksum = checksum + values[r % 64]
+    }
+    return checksum
+}
+
+fn wholeCall(n: Int) -> Int {
+    let mut values: Vec<Int> = []
+    for i in 0..<n {
+        values.push(i)
+    }
+    return values[n - 1]
+}
+
+fn main() -> Int {
+    return (perIteration(100) + wholeCall(64)) % 256
+}

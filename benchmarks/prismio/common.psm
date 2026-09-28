@@ -24,9 +24,14 @@ struct BenchBand {
     steps: Int
 }
 
-enum BenchTree {
-    Empty,
-    Node(BenchTree, Int, BenchTree)
+// C++'s `BenchTree` with its two `unique_ptr`s and Rust's with two
+// `Option<Box<_>>`: a node per allocation, an absent child as `none`. A struct
+// rather than an enum so that `recursive_tree_rebuild` can add to a node in
+// place, as the other two do, instead of rebuilding the tree every pass.
+struct BenchTree {
+    value: Int,
+    left: BenchTree?,
+    right: BenchTree?
 }
 
 public fn benchRandom(seed: Int) -> Int {

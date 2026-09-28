@@ -542,10 +542,35 @@ def verify(info: dict) -> bool:
 
 # ---------------------------------------------------------------------------
 
+# What the compiler's build.ums names to compile and link against LLVM. Two
+# response files at fixed, project-relative paths, because a manifest cannot
+# read JSON and must not hard-code this machine's paths: whatever was chosen --
+# the pinned release or an adopted install -- ends up spelled the same way to
+# `native { responseFile(...) }` and `link { responseFile(...) }`.
+COMPILE_RSP = THIRD_PARTY / "llvm-compile.rsp"
+LINK_RSP = THIRD_PARTY / "llvm-link.rsp"
+
+
+def write_response_files(info: dict) -> None:
+    include = Path(info["include"]).as_posix()
+    COMPILE_RSP.write_text(f'"-I{include}"\n')
+    if info.get("link_rsp"):
+        LINK_RSP.write_text(Path(info["link_rsp"]).read_text())
+        return
+    # An adopted install is linked as a library, by the name its file carries:
+    # `libLLVM-C.dylib` is `-lLLVM-C`, apt's `libLLVM.so` is `-lLLVM`.
+    library = info["link_library"]
+    stem = library[3:] if library.startswith("lib") else library
+    stem = stem.split(".")[0]
+    LINK_RSP.write_text(f'"-L{Path(info["lib"]).as_posix()}"\n-l{stem}\n')
+
+
 def write_config(info: dict) -> None:
     THIRD_PARTY.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(info, indent=2) + "\n")
-    log(f"Wrote {CONFIG_PATH.relative_to(REPO_ROOT)}")
+    write_response_files(info)
+    log(f"Wrote {CONFIG_PATH.relative_to(REPO_ROOT)}, "
+        f"{COMPILE_RSP.relative_to(REPO_ROOT)} and {LINK_RSP.relative_to(REPO_ROOT)}")
 
 
 def report(info: dict) -> None:

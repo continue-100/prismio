@@ -50,6 +50,17 @@ impl Int {
     let MAX: Int = 2147483647
     let MIN: Int = -2147483648
 
+    // Bits: the ones set, the zeros above the highest one and below the lowest
+    // (a zero has as many as the type is wide), and the value rotated by `n`
+    // places, taken modulo the width. Each is one LLVM intrinsic, so one
+    // instruction -- `cnt`, `clz`, `ror` -- and the other integer types below
+    // have the same five.
+    public fn countOnes(self) -> Int { return __builtin_count_ones(self) }
+    public fn leadingZeros(self) -> Int { return __builtin_leading_zeros(self) }
+    public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
+    public fn rotateLeft(self, n: Int) -> Int { return __builtin_rotate_left(self, n) }
+    public fn rotateRight(self, n: Int) -> Int { return __builtin_rotate_right(self, n) }
+
     // `lo` when below it, `hi` when above it. With `lo > hi` the answer is `hi`:
     // the upper bound is applied last.
     public fn clamp(self, lo: Int, hi: Int) -> Int {
@@ -152,6 +163,13 @@ impl I64 {
     let MAX: I64 = 9223372036854775807
     let MIN: I64 = -9223372036854775808
 
+    public fn countOnes(self) -> Int { return __builtin_count_ones(self) }
+    public fn leadingZeros(self) -> Int { return __builtin_leading_zeros(self) }
+    public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
+    public fn rotateLeft(self, n: Int) -> I64 { return __builtin_rotate_left(self, n) }
+    public fn rotateRight(self, n: Int) -> I64 { return __builtin_rotate_right(self, n) }
+
+
     public fn abs(self) -> I64 {
         if (self < 0) { return 0 - self }
         return self
@@ -204,31 +222,67 @@ impl I64 {
 impl I8 {
     let MAX: I8 = 127
     let MIN: I8 = -128
+
+    public fn countOnes(self) -> Int { return __builtin_count_ones(self) }
+    public fn leadingZeros(self) -> Int { return __builtin_leading_zeros(self) }
+    public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
+    public fn rotateLeft(self, n: Int) -> I8 { return __builtin_rotate_left(self, n) }
+    public fn rotateRight(self, n: Int) -> I8 { return __builtin_rotate_right(self, n) }
 }
 
 impl I16 {
     let MAX: I16 = 32767
     let MIN: I16 = -32768
+
+    public fn countOnes(self) -> Int { return __builtin_count_ones(self) }
+    public fn leadingZeros(self) -> Int { return __builtin_leading_zeros(self) }
+    public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
+    public fn rotateLeft(self, n: Int) -> I16 { return __builtin_rotate_left(self, n) }
+    public fn rotateRight(self, n: Int) -> I16 { return __builtin_rotate_right(self, n) }
 }
 
 impl U8 {
     let MAX: U8 = 255
     let MIN: U8 = 0
+
+    public fn countOnes(self) -> Int { return __builtin_count_ones(self) }
+    public fn leadingZeros(self) -> Int { return __builtin_leading_zeros(self) }
+    public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
+    public fn rotateLeft(self, n: Int) -> U8 { return __builtin_rotate_left(self, n) }
+    public fn rotateRight(self, n: Int) -> U8 { return __builtin_rotate_right(self, n) }
 }
 
 impl U16 {
     let MAX: U16 = 65535
     let MIN: U16 = 0
+
+    public fn countOnes(self) -> Int { return __builtin_count_ones(self) }
+    public fn leadingZeros(self) -> Int { return __builtin_leading_zeros(self) }
+    public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
+    public fn rotateLeft(self, n: Int) -> U16 { return __builtin_rotate_left(self, n) }
+    public fn rotateRight(self, n: Int) -> U16 { return __builtin_rotate_right(self, n) }
 }
 
 impl U32 {
     let MAX: U32 = 4294967295
     let MIN: U32 = 0
+
+    public fn countOnes(self) -> Int { return __builtin_count_ones(self) }
+    public fn leadingZeros(self) -> Int { return __builtin_leading_zeros(self) }
+    public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
+    public fn rotateLeft(self, n: Int) -> U32 { return __builtin_rotate_left(self, n) }
+    public fn rotateRight(self, n: Int) -> U32 { return __builtin_rotate_right(self, n) }
 }
 
 impl U64 {
     let MAX: U64 = 18446744073709551615
     let MIN: U64 = 0
+
+    public fn countOnes(self) -> Int { return __builtin_count_ones(self) }
+    public fn leadingZeros(self) -> Int { return __builtin_leading_zeros(self) }
+    public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
+    public fn rotateLeft(self, n: Int) -> U64 { return __builtin_rotate_left(self, n) }
+    public fn rotateRight(self, n: Int) -> U64 { return __builtin_rotate_right(self, n) }
 }
 
 // ---------------------------------------------------------------------------

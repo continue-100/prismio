@@ -47,7 +47,7 @@ RESET = "" if WINDOWS else "\033[0m"
 
 DEFAULT_PREFIX = r"C:\Program Files\Prismio" if WINDOWS else "/usr/local"
 EXE = "prismio.exe" if WINDOWS else "prismio"
-LIB_FILES = ["backend.lib", "backend.a", "runtime.hash"]
+LIB_FILES = ["runtime.hash"]
 RUNTIME_MODULES = ["lang_runtime", "program_support"]
 
 PROBE = """import std.io

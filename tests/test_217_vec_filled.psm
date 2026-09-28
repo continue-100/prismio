@@ -1,0 +1,73 @@
+// `Vec<T>.filled(n, value)`: `n` copies of `value`, as `std::vector<T>(n, value)`
+// and `vec![value; n]`. A scalar `T` is one runtime allocation and fill -- the
+// widths below are the four typed stores and the memset it chooses between. A
+// `String` or a struct goes through std.vec's copy loop, one copy per element,
+// and each copy is its own: changing one element changes no other.
+
+import std.io
+import std.vec
+
+struct Point {
+    x: Int,
+    y: Int
+}
+
+impl Copy for Point {
+    fn copyOf(self) -> Point { return Point { x: self.x, y: self.y } }
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let ints = Vec<Int>.filled(1000, -1)
+    if (ints.length != 1000 or ints[0] != -1 or ints[999] != -1) { return fail("Int") }
+    if (ints.capacity < ints.length) { return fail("Int capacity") }
+
+    let zeros = Vec<Int>.filled(1000, 0)
+    if (zeros[500] != 0) { return fail("zero is a memset") }
+
+    let bytes = Vec<U8>.filled(17, 200)
+    if (bytes.length != 17 or bytes[16] != 200) { return fail("U8: a literal re-typed") }
+    let shorts = Vec<U16>.filled(9, 65535)
+    if (shorts[8] != 65535) { return fail("U16") }
+    let wide = Vec<I64>.filled(5, 5000000000)
+    if (wide[4] != 5000000000) { return fail("I64") }
+    let flags = Vec<Bool>.filled(33, true)
+    if (flags[32] == false) { return fail("Bool") }
+    let halves = Vec<Float>.filled(3, 0.5)
+    if (halves[2] != 0.5) { return fail("Float keeps its bit pattern") }
+    let letters = Vec<Char>.filled(2, 'q')
+    if (letters[1] != 'q') { return fail("Char") }
+
+    // Computed arguments, an empty result, and an ordinary Vec afterwards.
+    let n = 3 * 7
+    let seed = n - 30
+    let mut grown = Vec<Int>.filled(n, seed)
+    if (grown.length != 21 or grown[20] != -9) { return fail("computed arguments") }
+    grown[3] = 4
+    grown.push(5)
+    if (grown[3] != 4 or grown[2] != -9 or grown[21] != 5 or grown.length != 22) {
+        return fail("set and push after filled")
+    }
+    let mut empty = Vec<Int>.filled(0, 9)
+    if (empty.length != 0) { return fail("zero count") }
+    empty.push(1)
+    if (empty[0] != 1) { return fail("push onto an empty filled") }
+
+    // Not scalars: a copy per element.
+    let mut words = Vec<String>.filled(4, "a string longer than the inline form")
+    if (words.length != 4 or words[3] != "a string longer than the inline form") {
+        return fail("String")
+    }
+    words[0] = "changed"
+    if (words[1] != "a string longer than the inline form") { return fail("String copies") }
+    let points = Vec<Point>.filled(3, Point { x: 1, y: 2 })
+    if (points.length != 3 or points[2].y != 2) { return fail("struct") }
+
+    println("ok")
+    return 0
+}

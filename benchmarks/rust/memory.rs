@@ -44,7 +44,8 @@ pub fn nested_collection(scale: i32) -> i32 {
 }
 
 pub fn large_buffer_copy(scale: i32) -> i32 {
-    let n = 500_000 * scale; let source: Vec<i32> = (0..n).map(|i| i%4093).collect(); let mut target = vec![0; n as usize];
+    let n = 500_000 * scale;
+    let source: Vec<i32> = (0..n).map(|i| i%4093).collect(); let mut target = vec![0; n as usize];
     for _ in 0..8 { for i in 0..n as usize { target[i] = source[i]; } }
     target.into_iter().fold(0, |sum,value| (sum+value)%BENCH_MOD)
 }

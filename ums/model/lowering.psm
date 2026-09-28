@@ -8,6 +8,10 @@ import ums.parser.ast
 import std.string
 
 
+private fn umsSpanOf(statement: UmsAstStatement) -> UmsSpan {
+    return UmsSpan { line: statement.line, col: statement.col, len: statement.len }
+}
+
 // Lowering an AST document into the model, as methods on the model being built.
 // Every one of these took `project` as its first parameter; an `impl` block is a
 // naming construct, so this is the same code with the receiver named as one.
@@ -64,6 +68,7 @@ impl UmsProjectModel {
                                       "project.name is declared more than once")
                     } else {
                         self.metadata.name = property.value.text.clone()
+                        self.metadata.nameSpan = umsSpanOf(property)
                     }
                 }
             } else if (property.name.equals("version")) {
@@ -73,6 +78,7 @@ impl UmsProjectModel {
                                       "project.version is declared more than once")
                     } else {
                         self.metadata.version = property.value.text.clone()
+                        self.metadata.versionSpan = umsSpanOf(property)
                     }
                 }
             } else if (property.name.equals("prismio")) {
@@ -82,6 +88,7 @@ impl UmsProjectModel {
                                       "project.prismio is declared more than once")
                     } else {
                         self.metadata.prismioVersion = property.value.text.clone()
+                        self.metadata.prismioSpan = umsSpanOf(property)
                     }
                 }
             } else if (property.name.equals("description")) {
@@ -90,6 +97,7 @@ impl UmsProjectModel {
                                   "project.description is declared more than once")
                 } else {
                     self.metadata.descriptionDeclared = true
+                    self.metadata.descriptionSpan = umsSpanOf(property)
                     if (self.lowerString(diagnostics, property, "project.description")) {
                         self.metadata.description = property.value.text.clone()
                     }
@@ -100,6 +108,7 @@ impl UmsProjectModel {
                                   "project.license is declared more than once")
                 } else {
                     self.metadata.licenseDeclared = true
+                    self.metadata.licenseSpan = umsSpanOf(property)
                     if (self.lowerString(diagnostics, property, "project.license")) {
                         self.metadata.license = property.value.text.clone()
                     }
@@ -110,6 +119,7 @@ impl UmsProjectModel {
                                   "project.licenseFile is declared more than once")
                 } else {
                     self.metadata.licenseFileDeclared = true
+                    self.metadata.licenseFileSpan = umsSpanOf(property)
                     if (self.lowerString(diagnostics, property, "project.licenseFile")) {
                         self.metadata.licenseFile = property.value.text.clone()
                     }
@@ -120,6 +130,7 @@ impl UmsProjectModel {
                                   "project.authors is declared more than once")
                 } else {
                     self.metadata.authorsDeclared = true
+                    self.metadata.authorsSpan = umsSpanOf(property)
                     self.lowerAuthors(diagnostics, property)
                 }
             } else {
@@ -147,11 +158,9 @@ impl UmsProjectModel {
                 } else if (__builtin_string_len(property.value.text) == 0) {
                     self.lowerError(diagnostics, property, "UMS2404",
                                   "toolchain.host cannot be empty")
-                } else if (property.value.text.charAt(0) == '/' or
-                           property.value.text.charAt(0) == '\\' or
-                           property.value.text.charAt(1) == ':') {
+                } else if (umsHostPathValid(property.value.text) == false) {
                     self.lowerError(diagnostics, property, "UMS2405",
-                                  "toolchain.host must be relative to the project root")
+                                  "toolchain.host must be a path under .prismio/, with no `..`")
                 } else {
                     self.toolchain.host = property.value.text.clone()
                 }
@@ -178,13 +187,13 @@ impl UmsProjectModel {
             else if (declaration.name.equals("search")) { kind = UmsLinkKind.SEARCH }
             else if (declaration.name.equals("file")) { kind = UmsLinkKind.FILE }
             else if (declaration.name.equals("framework")) { kind = UmsLinkKind.FRAMEWORK }
-            else if (declaration.name.equals("component")) { kind = UmsLinkKind.COMPONENT }
+            else if (declaration.name.equals("responseFile")) { kind = UmsLinkKind.RESPONSE_FILE }
 
             if (declaration.kind != UmsAstStatementKind.CALL or
                 declaration.hasBlock or kind == UmsLinkKind.UNKNOWN) {
                 self.lowerError(diagnostics, declaration, "UMS2108",
                     "unknown link declaration '".concat(declaration.name,
-                                                        "'; expected library, search, file, framework or component"))
+                                                        "'; expected library, search, file, framework or responseFile"))
             } else if (declaration.arguments.length != 1 or
                        declaration.arguments[0].kind != UmsAstValueKind.STRING) {
                 self.lowerError(diagnostics, declaration, "UMS2109",
@@ -198,12 +207,61 @@ impl UmsProjectModel {
         }
     }
 
+    // `native { source(...) include(...) define(...) flag(...) responseFile(...) }`.
+    // Each call takes one or more strings, so a list of sources can be one call or
+    // one per line; the order of every argument is kept, because the order of
+    // flags and of objects on a link line is meaningful.
+    private fn lowerNative(self, document: UmsAstDocument,
+                                block: UmsAstStatement,
+                                target: UmsTarget,
+                                inout diagnostics: Vec<UmsDiagnostic>) {
+        if (block.arguments.length != 0) {
+            self.lowerError(diagnostics, block, "UMS2111",
+                          "native takes no arguments")
+            return
+        }
+        for i in 0..<block.children.length {
+            let declaration = document.statements[block.children[i]]
+            let mut kind = UmsNativeKind.UNKNOWN
+            if (declaration.name.equals("source")) { kind = UmsNativeKind.SOURCE }
+            else if (declaration.name.equals("include")) { kind = UmsNativeKind.INCLUDE }
+            else if (declaration.name.equals("define")) { kind = UmsNativeKind.DEFINE }
+            else if (declaration.name.equals("flag")) { kind = UmsNativeKind.FLAG }
+            else if (declaration.name.equals("responseFile")) { kind = UmsNativeKind.RESPONSE_FILE }
+
+            if (declaration.kind != UmsAstStatementKind.CALL or
+                declaration.hasBlock or kind == UmsNativeKind.UNKNOWN) {
+                self.lowerError(diagnostics, declaration, "UMS2112",
+                    "unknown native declaration '".concat(declaration.name,
+                                                          "'; expected source, include, define, flag or responseFile"))
+            } else if (declaration.arguments.length == 0) {
+                self.lowerError(diagnostics, declaration, "UMS2113",
+                    declaration.name.concat(" requires at least one string argument"))
+            } else {
+                for j in 0..<declaration.arguments.length {
+                    let value = declaration.arguments[j]
+                    if (value.kind != UmsAstValueKind.STRING) {
+                        umsDiagnosticAdd(diagnostics, "UMS2113", self.manifestPath,
+                                         value.line, value.col, value.len,
+                                         declaration.name.concat(" takes strings"))
+                    } else {
+                        target.natives.push(umsNativeInput(kind, value.text,
+                                  value.line, value.col, value.len))
+                    }
+                }
+            }
+        }
+    }
+
     private fn lowerBody(self, document: UmsAstDocument,
                     call: UmsAstStatement,
                     target: UmsTarget,
                     inout diagnostics: Vec<UmsDiagnostic>) -> String {
         let mut entry = ""
         let mut linkBlocks = 0
+        let mut nativeBlocks = 0
+        let mut runtimeDeclared = false
+        let mut exportDeclared = false
         let mut i = 0
         while (i < call.children.length) {
             let property = document.statements[call.children[i]]
@@ -216,11 +274,47 @@ impl UmsProjectModel {
                 } else {
                     self.lowerLinkBlock(document, property, target, diagnostics)
                 }
+            } else if (property.kind == UmsAstStatementKind.CALL and
+                       property.hasBlock and property.name.equals("native")) {
+                nativeBlocks = nativeBlocks + 1
+                if (nativeBlocks > 1) {
+                    self.lowerError(diagnostics, property, "UMS2110",
+                                  "target native is declared more than once")
+                } else {
+                    self.lowerNative(document, property, target, diagnostics)
+                }
+            } else if (property.kind == UmsAstStatementKind.ASSIGNMENT and
+                       property.name.equals("runtime")) {
+                if (runtimeDeclared) {
+                    self.lowerError(diagnostics, property, "UMS2102",
+                                  "target runtime is declared more than once")
+                } else if (self.lowerString(diagnostics, property, "target runtime")) {
+                    runtimeDeclared = true
+                    if (property.value.text.equals("installed") or property.value.text.equals("none")) {
+                        target.runtime = property.value.text.clone()
+                    } else {
+                        self.lowerError(diagnostics, property, "UMS2114",
+                            "target runtime is \"installed\" or \"none\", not \"".concat(
+                                property.value.text, "\""))
+                    }
+                }
+            } else if (property.kind == UmsAstStatementKind.ASSIGNMENT and
+                       property.name.equals("exportDynamic")) {
+                if (exportDeclared) {
+                    self.lowerError(diagnostics, property, "UMS2102",
+                                  "target exportDynamic is declared more than once")
+                } else if (property.value.kind != UmsAstValueKind.BOOLEAN) {
+                    self.lowerError(diagnostics, property, "UMS2115",
+                                  "target exportDynamic must be true or false")
+                } else {
+                    exportDeclared = true
+                    target.exportDynamic = property.value.text.equals("true")
+                }
             } else if (property.kind != UmsAstStatementKind.ASSIGNMENT or
                        property.name.equals("entry") == false) {
                 self.lowerError(diagnostics, property, "UMS2101",
                     "unknown target property '".concat(property.name,
-                                                       "'; expected 'entry' or 'link'"))
+                                                       "'; expected entry, runtime, exportDynamic, native or link"))
             } else if (self.lowerString(diagnostics, property, "target entry")) {
                 if (__builtin_string_len(entry) > 0) {
                     self.lowerError(diagnostics, property, "UMS2102",
@@ -391,7 +485,7 @@ impl UmsProjectModel {
             if (child.kind != UmsAstStatementKind.ASSIGNMENT) {
                 self.lowerCommandStep(child, command, diagnostics)
             } else if (child.name.equals("description") == false) {
-                self.lowerError(diagnostics, child, "UMS2504",
+                self.lowerError(diagnostics, child, "UMS2509",
                     "unknown command property '".concat(child.name, "'; expected 'description'"))
             } else if (self.lowerString(diagnostics, child, "command description")) {
                 descriptions = descriptions + 1
@@ -420,6 +514,56 @@ impl UmsProjectModel {
                 self.lowerCommand(document, call, diagnostics)
             }
             i = i + 1
+        }
+    }
+}
+
+impl UmsProjectModel {
+
+    // `profiles { debug { debugInfo = false } release { overflowChecks = true } }`.
+    // Every block is checked; only the one naming the profile being built changes
+    // anything, since a build has exactly one profile.
+    private fn lowerProfiles(self, document: UmsAstDocument,
+                             block: UmsAstStatement,
+                             inout diagnostics: Vec<UmsDiagnostic>) {
+        let mut seenDebug = false
+        let mut seenRelease = false
+        for i in 0..<block.children.length {
+            let profile = document.statements[block.children[i]]
+            let isDebug = profile.name.equals("debug")
+            let isRelease = profile.name.equals("release")
+            if (profile.kind != UmsAstStatementKind.CALL or profile.hasBlock == false or
+                profile.arguments.length != 0 or (isDebug == false and isRelease == false)) {
+                self.lowerError(diagnostics, profile, "UMS2701",
+                    "profiles holds debug { ... } and release { ... }, not '".concat(profile.name, "'"))
+                continue
+            }
+            if ((isDebug and seenDebug) or (isRelease and seenRelease)) {
+                self.lowerError(diagnostics, profile, "UMS2702",
+                    "profile '".concat(profile.name, "' is declared more than once"))
+                continue
+            }
+            if (isDebug) { seenDebug = true } else { seenRelease = true }
+            let selected = profile.name.equals(self.build.profile)
+            for j in 0..<profile.children.length {
+                let setting = document.statements[profile.children[j]]
+                let known = setting.name.equals("debugInfo") or setting.name.equals("overflowChecks")
+                if (setting.kind != UmsAstStatementKind.ASSIGNMENT or known == false) {
+                    self.lowerError(diagnostics, setting, "UMS2703",
+                        "unknown profile setting '".concat(setting.name,
+                                                           "'; expected debugInfo or overflowChecks"))
+                } else if (setting.value.kind != UmsAstValueKind.BOOLEAN) {
+                    self.lowerError(diagnostics, setting, "UMS2704",
+                        "profile setting '".concat(setting.name, "' must be true or false"))
+                } else if (selected) {
+                    let on = setting.value.text.equals("true")
+                    if (setting.name.equals("debugInfo")) {
+                        self.build.debugInfo = on
+                    } else {
+                        self.build.overflowChecks = on
+                    }
+                }
+            }
         }
     }
 }
@@ -501,6 +645,7 @@ internal fn umsLowerDocument(document: UmsAstDocument, root: String, manifestPat
     let mut targetBlocks = 0
     let mut commandBlocks = 0
     let mut dependencyBlocks = 0
+    let mut profileBlocks = 0
     let mut i = 0
 
     while (i < document.roots.length) {
@@ -512,7 +657,11 @@ internal fn umsLowerDocument(document: UmsAstDocument, root: String, manifestPat
         } else if (block.name.equals("project")) {
             projectBlocks = projectBlocks + 1
             if (projectBlocks == 1) {
+                project.metadata.blockSpan = umsSpanOf(block)
                 project.lowerMetadata(document, block, diagnostics)
+            } else {
+                project.lowerError(diagnostics, block, "UMS2007",
+                                   "build.ums may contain only one project block")
             }
         } else if (block.name.equals("toolchain")) {
             toolchainBlocks = toolchainBlocks + 1
@@ -522,21 +671,41 @@ internal fn umsLowerDocument(document: UmsAstDocument, root: String, manifestPat
             }
             if (toolchainBlocks == 1) {
                 project.lowerToolchain(document, block, diagnostics)
+            } else {
+                project.lowerError(diagnostics, block, "UMS2010",
+                                   "build.ums may contain only one toolchain block")
             }
         } else if (block.name.equals("targets")) {
             targetBlocks = targetBlocks + 1
             if (targetBlocks == 1) {
                 project.lowerTargets(document, block, diagnostics)
+            } else {
+                project.lowerError(diagnostics, block, "UMS2008",
+                                   "build.ums may contain only one targets block")
             }
         } else if (block.name.equals("commands")) {
             commandBlocks = commandBlocks + 1
             if (commandBlocks == 1) {
                 project.lowerCommands(document, block, diagnostics)
+            } else {
+                project.lowerError(diagnostics, block, "UMS2013",
+                                   "build.ums may contain only one commands block")
             }
         } else if (block.name.equals("dependencies")) {
             dependencyBlocks = dependencyBlocks + 1
             if (dependencyBlocks == 1) {
                 project.lowerDependencies(document, block, diagnostics)
+            } else {
+                project.lowerError(diagnostics, block, "UMS2009",
+                                   "build.ums may contain only one dependencies block")
+            }
+        } else if (block.name.equals("profiles")) {
+            profileBlocks = profileBlocks + 1
+            if (profileBlocks == 1) {
+                project.lowerProfiles(document, block, diagnostics)
+            } else {
+                project.lowerError(diagnostics, block, "UMS2014",
+                                   "build.ums may contain only one profiles block")
             }
         } else {
             project.lowerError(diagnostics, block, "UMS2006",
@@ -545,25 +714,5 @@ internal fn umsLowerDocument(document: UmsAstDocument, root: String, manifestPat
         i = i + 1
     }
 
-    if (projectBlocks > 1) {
-        umsDiagnosticAdd(diagnostics, "UMS2007", manifestPath, 0, 0, 0,
-                         "build.ums may contain only one project block")
-    }
-    if (toolchainBlocks > 1) {
-        umsDiagnosticAdd(diagnostics, "UMS2010", manifestPath, 0, 0, 0,
-                         "build.ums may contain only one toolchain block")
-    }
-    if (targetBlocks > 1) {
-        umsDiagnosticAdd(diagnostics, "UMS2008", manifestPath, 0, 0, 0,
-                         "build.ums may contain only one targets block")
-    }
-    if (commandBlocks > 1) {
-        umsDiagnosticAdd(diagnostics, "UMS2013", manifestPath, 0, 0, 0,
-                         "build.ums may contain only one commands block")
-    }
-    if (dependencyBlocks > 1) {
-        umsDiagnosticAdd(diagnostics, "UMS2009", manifestPath, 0, 0, 0,
-                         "build.ums may contain only one dependencies block")
-    }
     return project
 }

@@ -1,0 +1,7 @@
+// expect-error: `Vec<T>()` takes no arguments; found 1
+import std.io
+
+fn main() -> Int {
+    let v = Vec<Int>(3)
+    return v.length
+}

@@ -20,25 +20,18 @@ public fn benchFibonacci(scale: Int) -> Int {
     let mut a = 1
     let mut b = 1
     let mut checksum = 0
-    let mut i = 0
-    while (i < limit) {
+    for _ in 0..<limit {
         let c = (a + b) % 1000003
         a = b
         b = c
         checksum = (checksum + c) % 1000000007
-        i = i + 1
     }
     return checksum
 }
 
 public fn benchPrimeSieve(scale: Int) -> Int {
     let n = 100000 * scale
-    let mut prime: Vec<Bool> = Vec<Bool>.withCapacity(n + 1)
-    let mut i = 0
-    while (i <= n) {
-        prime.push(true)
-        i = i + 1
-    }
+    let mut prime = Vec<Bool>.filled(n + 1, true)
     prime[0] = false
     prime[1] = false
     let mut p = 2
@@ -54,13 +47,11 @@ public fn benchPrimeSieve(scale: Int) -> Int {
     }
     let mut count = 0
     let mut sum = 0
-    let mut k = 2
-    while (k <= n) {
-        if (prime[k]) {
+    for i in 2..n {
+        if (prime[i]) {
             count = count + 1
-            sum = (sum + k) % 1000000007
+            sum = (sum + i) % 1000000007
         }
-        k = k + 1
     }
     return (sum + count) % 1000000007
 }
@@ -68,14 +59,12 @@ public fn benchPrimeSieve(scale: Int) -> Int {
 public fn benchGcdLcm(scale: Int) -> Int {
     let limit = 300000 * scale
     let mut checksum = 0
-    let mut i = 1
-    while (i <= limit) {
+    for i in 1..limit {
         let a = i % 30000 + 1
         let b = (i * 17) % 30000 + 1
         let g = benchGcd(a, b)
         let l = (a / g) * b
         checksum = (checksum + g + l) % 1000000007
-        i = i + 1
     }
     return checksum
 }
@@ -84,15 +73,12 @@ public fn benchBinarySearch(scale: Int) -> Int {
     let n = 100000 * scale
     let queries = 500000 * scale
     let mut values: Vec<Int> = Vec<Int>.withCapacity(n)
-    let mut i = 0
-    while (i < n) {
+    for i in 0..<n {
         values.push(i * 2)
-        i = i + 1
     }
     let mut found = 0
     let mut seed = 7
-    let mut q = 0
-    while (q < queries) {
+    for _ in 0..<queries {
         seed = benchRandom(seed)
         let needle = seed % (n * 2)
         let mut low = 0
@@ -111,7 +97,6 @@ public fn benchBinarySearch(scale: Int) -> Int {
             }
         }
         if (hit) { found = found + 1 }
-        q = q + 1
     }
     return found
 }
@@ -141,24 +126,31 @@ public fn benchQuickRange(inout values: Vec<Int>, low: Int, high: Int) {
     if (i < high) { benchQuickRange(values, i, high) }
 }
 
-public fn benchQuicksort(scale: Int) -> Int {
-    let n = 25000 * scale
+// The input and the result check `quicksort` and `mergesort` share, as C++'s
+// `random_values` and `sorted_checksum` and Rust's are.
+public fn benchRandomValues(n: Int) -> Vec<Int> {
     let mut values: Vec<Int> = Vec<Int>.withCapacity(n)
     let mut seed = 19
-    let mut i = 0
-    while (i < n) {
+    for _ in 0..<n {
         seed = benchRandom(seed)
         values.push(seed)
-        i = i + 1
     }
-    benchQuickRange(values, 0, n - 1)
+    return values
+}
+
+public fn benchSortedChecksum(values: Vec<Int>) -> Int {
+    let n = values.length
     let mut checksum = 0
-    let mut k = 0
-    while (k < n) {
-        checksum = (checksum + values[k]) % 1000000007
-        k = k + 97
+    for i in 0..<n step 97 {
+        checksum = (checksum + values[i]) % 1000000007
     }
     return checksum + values[n - 1]
+}
+
+public fn benchQuicksort(scale: Int) -> Int {
+    let mut values = benchRandomValues(25000 * scale)
+    benchQuickRange(values, 0, values.length - 1)
+    return benchSortedChecksum(values)
 }
 
 public fn benchMergeRange(inout values: Vec<Int>, inout scratch: Vec<Int>, low: Int, high: Int) {
@@ -189,33 +181,16 @@ public fn benchMergeRange(inout values: Vec<Int>, inout scratch: Vec<Int>, low: 
         right = right + 1
         out = out + 1
     }
-    let mut i = low
-    while (i < high) {
+    for i in low..<high {
         values[i] = scratch[i]
-        i = i + 1
     }
 }
 
 public fn benchMergesort(scale: Int) -> Int {
-    let n = 25000 * scale
-    let mut values: Vec<Int> = Vec<Int>.withCapacity(n)
-    let mut scratch: Vec<Int> = Vec<Int>.withCapacity(n)
-    let mut seed = 19
-    let mut i = 0
-    while (i < n) {
-        seed = benchRandom(seed)
-        values.push(seed)
-        scratch.push(0)
-        i = i + 1
-    }
-    benchMergeRange(values, scratch, 0, n)
-    let mut checksum = 0
-    let mut k = 0
-    while (k < n) {
-        checksum = (checksum + values[k]) % 1000000007
-        k = k + 97
-    }
-    return checksum + values[n - 1]
+    let mut values = benchRandomValues(25000 * scale)
+    let mut scratch = Vec<Int>.filled(values.length, 0)
+    benchMergeRange(values, scratch, 0, values.length)
+    return benchSortedChecksum(values)
 }
 
 public fn benchStringSearch(scale: Int) -> Int {
@@ -236,13 +211,8 @@ public fn benchStringSearch(scale: Int) -> Int {
 public fn benchGraphBfs(scale: Int) -> Int {
     let width = 120 * scale
     let total = width * width
-    let mut seen: Vec<Bool> = Vec<Bool>.withCapacity(total)
+    let mut seen = Vec<Bool>.filled(total, false)
     let mut queue: Vec<Int> = Vec<Int>.withCapacity(total)
-    let mut i = 0
-    while (i < total) {
-        seen.push(false)
-        i = i + 1
-    }
     queue.push(0)
     seen[0] = true
     let mut head = 0
@@ -288,13 +258,7 @@ public fn benchGraphBfs(scale: Int) -> Int {
 public fn benchKnapsack(scale: Int) -> Int {
     let capacity = 800 * scale
     let items = 180
-    let mut best: Vec<Int> = Vec<Int>.withCapacity(capacity + 1)
-
-    let mut c = 0
-    while (c <= capacity) {
-        best.push(0)
-        c = c + 1
-    }
+    let mut best = Vec<Int>.filled(capacity + 1, 0)
 
     for i in 1..items {
         let weight = (i * 37) % 97 + 1
@@ -307,29 +271,25 @@ public fn benchKnapsack(scale: Int) -> Int {
     return best[capacity]
 }
 
-public fn benchBuildTree(depth: Int, seed: Int) -> BenchTree {
-    if (depth == 0) { return BenchTree.Empty }
-    return BenchTree.Node(benchBuildTree(depth - 1, seed * 2), seed,
-                          benchBuildTree(depth - 1, seed * 2 + 1))
+public fn benchBuildTree(depth: Int, seed: Int) -> BenchTree? {
+    if (depth == 0) { return none }
+    let left = benchBuildTree(depth - 1, seed * 2)
+    let right = benchBuildTree(depth - 1, seed * 2 + 1)
+    return BenchTree { value: seed, left: left, right: right }
 }
 
-public fn benchTreeSum(tree: BenchTree) -> Int {
-    match (tree) {
-        BenchTree.Empty => { return 0 }
-        BenchTree.Node(left, value, right) => {
-            return (benchTreeSum(left) + value + benchTreeSum(right)) % 1000000007
-        }
-    }
+public fn benchTreeSum(tree: BenchTree?) -> Int {
+    if (tree == none) { return 0 }
+    let node = expect(tree)
+    return ((benchTreeSum(node.left) + node.value) % 1000000007 + benchTreeSum(node.right)) % 1000000007
 }
 
 public fn benchTreeTraversal(scale: Int) -> Int {
     let depth = 13 + scale / 4
     let tree = benchBuildTree(depth, 1)
     let mut checksum = 0
-    let mut i = 0
-    while (i < 8 * scale) {
+    for _ in 0..<8 * scale {
         checksum = (checksum + benchTreeSum(tree)) % 1000000007
-        i = i + 1
     }
     return checksum
 }
@@ -400,33 +360,18 @@ public fn benchDijkstraShortestPath(scale: Int) -> Int {
     let vCount = 1000 * scale
     let eCount = vCount + 5000 * scale
 
-    let mut head: Vec<Int> = Vec<Int>.withCapacity(vCount)
-    let mut vi = 0
-    while (vi < vCount) {
-        head.push(-1)
-        vi = vi + 1
-    }
-
-    let mut edgeTo: Vec<Int> = Vec<Int>.withCapacity(eCount)
-    let mut edgeWeight: Vec<Int> = Vec<Int>.withCapacity(eCount)
-    let mut edgeNext: Vec<Int> = Vec<Int>.withCapacity(eCount)
-    let mut ei = 0
-    while (ei < eCount) {
-        edgeTo.push(0)
-        edgeWeight.push(0)
-        edgeNext.push(0)
-        ei = ei + 1
-    }
+    let mut head = Vec<Int>.filled(vCount, -1)
+    let mut edgeTo = Vec<Int>.filled(eCount, 0)
+    let mut edgeWeight = Vec<Int>.filled(eCount, 0)
+    let mut edgeNext = Vec<Int>.filled(eCount, 0)
 
     let mut edgeIdx = 0
-    let mut ri = 0
-    while (ri < vCount) {
+    for ri in 0..<vCount {
         edgeTo[edgeIdx] = (ri + 1) % vCount
         edgeWeight[edgeIdx] = (ri % 30) + 1
         edgeNext[edgeIdx] = head[ri]
         head[ri] = edgeIdx
         edgeIdx = edgeIdx + 1
-        ri = ri + 1
     }
 
     let mut seed = 47
@@ -446,12 +391,7 @@ public fn benchDijkstraShortestPath(scale: Int) -> Int {
     }
 
     let inf = 1000000000
-    let mut dist: Vec<Int> = Vec<Int>.withCapacity(vCount)
-    let mut di = 0
-    while (di < vCount) {
-        dist.push(inf)
-        di = di + 1
-    }
+    let mut dist = Vec<Int>.filled(vCount, inf)
     dist[0] = 0
 
     let mut heap: Vec<I64> = Vec<I64>.withCapacity(eCount)
@@ -479,14 +419,11 @@ public fn benchDijkstraShortestPath(scale: Int) -> Int {
     }
 
     let mut checksum: I64 = 0
-    let mut i = 0
-    while (i < vCount) {
-        let d = dist[i]
-        if (d < inf) {
-            let term = ((d as I64) * ((i % 100 + 1) as I64)) % 1000000007
+    for i in 0..<vCount {
+        if (dist[i] < inf) {
+            let term = ((dist[i] as I64) * ((i % 100 + 1) as I64)) % 1000000007
             checksum = (checksum + term) % 1000000007
         }
-        i = i + 1
     }
 
     return checksum as Int
@@ -496,27 +433,20 @@ public fn benchLz4Compress(scale: Int) -> Int {
     let n = 20000 * scale
     // Bytes, as the other two arms compress: a `Vec<Int>` here was four times the
     // input they read, which took the Prismio arm's working set out of L1.
-    let mut input: Vec<U8> = Vec<U8>.withCapacity(n)
+    let mut input = Vec<U8>.filled(n, 0)
 
     let mut seed = 83
-
     for i in 0..<n {
         seed = benchRandom(seed)
         if (i > 20 and (seed % 4) == 0) {
             let offset = 12 + (seed % 8)
-            input.push(input[i - offset])
+            input[i] = input[i - offset]
         } else {
-            input.push((32 + (seed % 95)) as U8)
+            input[i] = (32 + (seed % 95)) as U8
         }
     }
 
-    let mut table: Vec<Int> = Vec<Int>.withCapacity(4096)
-
-    let mut ti = 0
-    while (ti < 4096) {
-        table.push(-1)
-        ti = ti + 1
-    }
+    let mut table = Vec<Int>.filled(4096, -1)
 
     let mut pos = 0
     let mut tokenCount = 0
@@ -543,7 +473,7 @@ public fn benchLz4Compress(scale: Int) -> Int {
             }
 
             let offset = pos - refPos
-            let term: I64 = (literalLen * 10007 + matchLen * 31 + offset) as I64
+            let term: I64 = (literalLen as I64) * 10007 + ((matchLen * 31 + offset) as I64)
             checksum = (checksum * 31 + term) % 1000000007
             tokenCount = tokenCount + 1
             literalLen = 0
@@ -582,81 +512,80 @@ public fn benchBuildOneExpr(depth: Int, s: BenchSeedHolder) -> String {
     return inner + " " + right + ")"
 }
 
-public fn benchParseSExpr(text: String, p: BenchPosHolder, inout nodes: Vec<Int>) -> Int {
+// One node per expression, as C++'s `std::unique_ptr<SExprASTNode>` and Rust's
+// `Box` build it, and freed with the tree. `Empty` is C++'s null: what a parse
+// at the end of the text answers.
+//
+// Until 2026-09-27 this arm stored three `Int`s per node in one flat `Vec`,
+// because the natural enum tree double-freed and, spelled another way, leaked
+// 14,505 of its 65,719 allocations. Both are fixed; this tree measures 65,718
+// allocated and 65,718 released under `--verify`, so the three arms now pay for
+// the same allocations.
+enum BenchSExpr {
+    Empty,
+    Num(Int),
+    Op(Int, BenchSExpr, BenchSExpr)
+}
+
+public fn benchParseSExpr(text: String, p: BenchPosHolder) -> BenchSExpr {
     let n = text.length
     while (p.val < n and (text.byteAt(p.val) == 32 or text.byteAt(p.val) == 10)) {
         p.val = p.val + 1
     }
-    if (p.val >= n) { return -1 }
+    if (p.val >= n) { return BenchSExpr.Empty }
     if (text.byteAt(p.val) == 40) { // '('
         p.val = p.val + 1
         while (p.val < n and text.byteAt(p.val) == 32) {
             p.val = p.val + 1
         }
-        let opByte = text.byteAt(p.val)
+        let op = text.byteAt(p.val)
         p.val = p.val + 1
-        let leftIdx = benchParseSExpr(text, p, nodes)
-        let rightIdx = benchParseSExpr(text, p, nodes)
+        let left = benchParseSExpr(text, p)
+        let right = benchParseSExpr(text, p)
         while (p.val < n and text.byteAt(p.val) == 32) {
             p.val = p.val + 1
         }
         if (p.val < n and text.byteAt(p.val) == 41) { // ')'
             p.val = p.val + 1
         }
-        let nodeIdx = nodes.length / 3
-        nodes.push(opByte)
-        nodes.push(leftIdx)
-        nodes.push(rightIdx)
-        return nodeIdx
-    } else {
-        let mut num = 0
-        while (p.val < n and text.byteAt(p.val) >= 48 and text.byteAt(p.val) <= 57) {
-            num = num * 10 + (text.byteAt(p.val) - 48)
-            p.val = p.val + 1
-        }
-        let nodeIdx = nodes.length / 3
-        nodes.push(num)
-        nodes.push(-1)
-        nodes.push(-1)
-        return nodeIdx
+        return BenchSExpr.Op(op, left, right)
     }
+    let mut num = 0
+    while (p.val < n and text.byteAt(p.val) >= 48 and text.byteAt(p.val) <= 57) {
+        num = num * 10 + (text.byteAt(p.val) - 48)
+        p.val = p.val + 1
+    }
+    return BenchSExpr.Num(num)
 }
 
-public fn benchEvalNode(nodes: Vec<Int>, idx: Int) -> Int {
-    let val = nodes[idx * 3]
-    let leftIdx = nodes[idx * 3 + 1]
-    if (leftIdx == -1) {
-        return val
+public fn benchEvalSExpr(e: BenchSExpr) -> Int {
+    match (e) {
+        BenchSExpr.Empty => { return 0 }
+        BenchSExpr.Num(value) => { return value }
+        BenchSExpr.Op(op, l, r) => {
+            let left = benchEvalSExpr(l) as I64
+            let right = benchEvalSExpr(r) as I64
+            if (op == 43) { return ((left + right) % 1000000007) as Int } // '+'
+            if (op == 45) { return ((left - right + 1000000007) % 1000000007) as Int } // '-'
+            return ((left * right) % 1000000007) as Int
+        }
     }
-    let rightIdx = nodes[idx * 3 + 2]
-    let left: I64 = benchEvalNode(nodes, leftIdx) as I64
-    let right: I64 = benchEvalNode(nodes, rightIdx) as I64
-    if (val == 43) { return ((left + right) % 1000000007) as Int } // '+'
-    if (val == 45) { return ((left - right + 1000000007) % 1000000007) as Int } // '-'
-    if (val == 42) { return ((left * right) % 1000000007) as Int } // '*'
-    return 0
 }
 
 public fn benchSExprParse(scale: Int) -> Int {
     let count = 400 * scale
     let s = BenchSeedHolder { val: 42 }
     let mut allText = ""
-    let mut i = 0
-    while (i < count) {
+    for _ in 0..<count {
         allText = allText + benchBuildOneExpr(4, s) + "\n"
-        i = i + 1
     }
 
-    let mut nodes: Vec<Int> = []
     let p = BenchPosHolder { val: 0 }
     let n = allText.length
     let mut checksum: I64 = 0
     while (p.val < n) {
-        let root = benchParseSExpr(allText, p, nodes)
-        if (root >= 0) {
-            let ev: I64 = benchEvalNode(nodes, root) as I64
-            checksum = (checksum + ev) % 1000000007
-        }
+        let expr = benchParseSExpr(allText, p)
+        checksum = (checksum + (benchEvalSExpr(expr) as I64)) % 1000000007
     }
     return checksum as Int
 }
@@ -676,29 +605,21 @@ public fn benchWordFrequency(scale: Int) -> Int {
     let words = text.splitWhitespace()
     let counts: Map<String, Int> = mapNew<String, Int>()
 
-    let mut i = 0
-    let total = words.length
-    while (i < total) {
-        let word = words[i]
+    for word in words {
         mapSet(counts, word, mapGetOr(counts, word, 0) + 1)
-        i = i + 1
     }
 
     let vocabulary = "the quick brown fox jumps over lazy dog while naps".splitWhitespace()
     let mut tally: Vec<Int> = Vec<Int>.withCapacity(vocabulary.length)
-    let mut v = 0
-    while (v < vocabulary.length) {
-        tally.push(mapGetOr(counts, vocabulary[v], 0))
-        v = v + 1
+    for word in vocabulary {
+        tally.push(mapGetOr(counts, word, 0))
     }
 
     sort(tally)
 
     let mut checksum = mapLen(counts)
-    let mut t = 0
-    while (t < tally.length) {
+    for t in 0..<tally.length {
         checksum = (checksum + (t + 1) * tally[t]) % 1000000007
-        t = t + 1
     }
     return checksum
 }
@@ -711,21 +632,16 @@ public fn benchSortStrings(scale: Int) -> Int {
     let n = 20000 * scale
     let mut items: Vec<String> = Vec<String>.withCapacity(n)
     let mut seed = 7
-    let mut i = 0
-    while (i < n) {
+    for i in 0..<n {
         seed = benchRandom(seed)
         items.push("key".concat((seed % 65521).toString(), "-", (i % 977).toString()))
-        i = i + 1
     }
 
     sort(items)
 
     let mut checksum = 0
-    let mut k = 0
-    while (k < n) {
-        let word = items[k]
-        checksum = (checksum + (k + 1) * (word.charAt(3) as Int)) % 1000000007
-        k = k + 1
+    for k in 0..<n {
+        checksum = (checksum + (k + 1) * (items[k].charAt(3) as Int)) % 1000000007
     }
     return checksum
 }
@@ -745,34 +661,23 @@ public fn benchEditDistance(scale: Int) -> Int {
     // pointer exchange in C++ and Rust and a copy here, and a per-row copy in
     // all three would measure `memcpy` -- which `large_buffer_copy` already
     // does. Toggling an offset is the same program in every arm.
-    let mut table: Vec<Int> = Vec<Int>.withCapacity(2 * stride)
-    let mut fill = 0
-    while (fill < 2 * stride) {
-        table.push(0)
-        fill = fill + 1
-    }
-    let mut j = 0
-    while (j <= columns) {
+    let mut table = Vec<Int>.filled(2 * stride, 0)
+    for j in 0..columns {
         table[j] = j
-        j = j + 1
     }
 
-    let mut i = 1
-    while (i <= rows) {
+    for i in 1..rows {
         let current = (i % 2) * stride
         let previous = ((i - 1) % 2) * stride
         table[current] = i
         let leftChar = left.charAt(i - 1)
-        let mut c = 1
-        while (c <= columns) {
+        for c in 1..columns {
             let cost = 1 - ((leftChar == right.charAt(c - 1)) as Int)
             let deletion = table[previous + c] + 1
             let insertion = table[current + c - 1] + 1
             let substitution = table[previous + c - 1] + cost
             table[current + c] = min(min(deletion, insertion), substitution)
-            c = c + 1
         }
-        i = i + 1
     }
     return table[(rows % 2) * stride + columns]
 }

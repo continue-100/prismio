@@ -4,6 +4,19 @@ import ums.dependency.dependency
 import std.string
 
 
+// Where a declaration was written, so validation -- which runs on the lowered
+// model, after the syntax is gone -- can still point at it. A span of zeros is
+// "nowhere in particular" and prints as the manifest path alone.
+struct UmsSpan {
+    line: Int,
+    col: Int,
+    len: Int
+}
+
+internal fn umsSpanNone() -> UmsSpan {
+    return UmsSpan { line: 0, col: 0, len: 0 }
+}
+
 struct UmsProjectMetadata {
     name: String,
     version: String,
@@ -15,15 +28,34 @@ struct UmsProjectMetadata {
     descriptionDeclared: Bool,
     licenseDeclared: Bool,
     licenseFileDeclared: Bool,
-    authorsDeclared: Bool
+    authorsDeclared: Bool,
+    // The project block, for a required property that was never written, and
+    // then one span per property.
+    blockSpan: UmsSpan,
+    nameSpan: UmsSpan,
+    versionSpan: UmsSpan,
+    prismioSpan: UmsSpan,
+    descriptionSpan: UmsSpan,
+    licenseSpan: UmsSpan,
+    licenseFileSpan: UmsSpan,
+    authorsSpan: UmsSpan
 }
 
 // Build policy is intentionally not part of project metadata. Profiles and
 // cross-target settings can grow here without changing the project's identity.
+//
+// `debugInfo` and `overflowChecks` are the selected profile's settings: `debug`
+// starts with both on and `release` with both off, and a `profiles` block may
+// change either (lowering applies the selected profile's block, and validates
+// every block). The debug profile's `-g` also drops the program's object step
+// to -O0, because a variable folded into a register is one a debugger cannot
+// show.
 struct UmsBuildConfiguration {
     profile: String,
     stateDirectory: String,
-    buildDirectory: String
+    buildDirectory: String,
+    debugInfo: Bool,
+    overflowChecks: Bool
 }
 
 // Read by the installed compiler before it lowers the complete manifest. The
@@ -31,6 +63,33 @@ struct UmsBuildConfiguration {
 // once this host exists, that host owns the real UMS parse and command.
 struct UmsToolchainConfiguration {
     host: String
+}
+
+// `toolchain.host` names an executable the launcher runs on every command, so it
+// is confined to the project's own build state: relative, no `..` component, and
+// under `.prismio/`. That directory is build output a checkout does not carry,
+// which is half of why a cloned repository cannot choose a program for
+// `prismio` to start; the host stamp beside a promoted host is the other half.
+// Public because the launcher's prefix reader applies the same rule before it
+// trusts the path, and a second copy would be a second answer.
+public fn umsHostPathValid(path: String) -> Bool {
+    let length = __builtin_string_len(path)
+    if (length == 0) { return false }
+    if (path.charAt(0) == '/' or path.charAt(0) == '\\') { return false }
+    if (length > 1 and path.charAt(1) == ':') { return false }
+    if (path.startsWith(".prismio/") == false and path.startsWith(".prismio\\") == false) {
+        return false
+    }
+    let mut start = 0
+    for i in 0..<(length + 1) {
+        if (i == length or path.charAt(i) == '/' or path.charAt(i) == '\\') {
+            if (i - start == 2 and path.charAt(start) == '.' and path.charAt(start + 1) == '.') {
+                return false
+            }
+            start = i + 1
+        }
+    }
+    return true
 }
 
 struct UmsProjectModel {
@@ -59,12 +118,22 @@ internal fn umsProjectModel(root: String, manifestPath: String, profile: String)
             descriptionDeclared: false,
             licenseDeclared: false,
             licenseFileDeclared: false,
-            authorsDeclared: false
+            authorsDeclared: false,
+            blockSpan: umsSpanNone(),
+            nameSpan: umsSpanNone(),
+            versionSpan: umsSpanNone(),
+            prismioSpan: umsSpanNone(),
+            descriptionSpan: umsSpanNone(),
+            licenseSpan: umsSpanNone(),
+            licenseFileSpan: umsSpanNone(),
+            authorsSpan: umsSpanNone()
         },
         build: UmsBuildConfiguration {
             profile: profile.clone(),
             stateDirectory: ".prismio".clone(),
-            buildDirectory: "build".clone()
+            buildDirectory: "build".clone(),
+            debugInfo: profile.equals("debug"),
+            overflowChecks: profile.equals("debug")
         },
         toolchain: UmsToolchainConfiguration { host: "".clone() },
         targets: [],

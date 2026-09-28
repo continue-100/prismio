@@ -6,6 +6,7 @@ import ast.types
 import ir.bridge
 import common.diagnostics
 import common.float_builtins
+import common.int_builtins
 import sema.flow
 import std.string
 
@@ -30,6 +31,16 @@ internal fn semaBuiltinCallType(name: String, argPtr: Ptr) -> TypeInfo {
     if (name.equals("__builtin_max")) { return typeInt() }
     if (name.equals("__builtin_min")) { return typeInt() }
     if (name.equals("__builtin_abs")) { return typeInt() }
+    // Integer bit operations on any width: a count answers an Int, a rotation
+    // the operand's own type, so `x.rotateLeft(7)` on a U64 stays a U64.
+    if (intBitCountBuiltin(name)) { return typeInt() }
+    if (intRotateBuiltin(name)) {
+        if (nodeExists(argPtr)) {
+            let rotated = nodeGetType(ptr_to_node(argPtr))
+            if (rotated.kind == TypeKind.INT) { return rotated }
+        }
+        return typeInt()
+    }
     // Float's square root, rounding, exponentials and trigonometry: one family,
     // tabled in src/common/float_builtins.psm, lowered to LLVM's intrinsic where
     // there is one and to libm's function where there is not.
@@ -123,6 +134,7 @@ internal fn semaBuiltinCallType(name: String, argPtr: Ptr) -> TypeInfo {
 
     if (name.equals("list_new")) { return typeList(typeInvalid()) }
     if (name.equals("list_new_with_capacity")) { return typeList(typeInvalid()) }
+    if (name.equals("list_new_filled")) { return typeList(typeInvalid()) }
     if (name.equals("list_len")) { return typeInt() }
     if (name.equals("list_push")) { return typeVoid() }
     if (name.equals("list_set")) { return typeVoid() }
@@ -240,6 +252,23 @@ internal fn semaCheckBuiltinCall(module: ASTNode, call: ASTNode, name: String, a
     if (name.equals("__builtin_abs")) {
         if (semaCheckArity(call, name, argPtr, 1) == false) { return true }
         semaCheckValue(module, ptr_to_node(argPtr), typeInt(), "integer abs operand")
+        return true
+    }
+
+    // The operand keeps its own width -- the count of a U8's leading zeros is
+    // out of 8 -- so it is typed by semaExpr rather than checked against Int.
+    if (intBitCountBuiltin(name) or intRotateBuiltin(name)) {
+        let mut arity = 1
+        if (intRotateBuiltin(name)) { arity = 2 }
+        if (semaCheckArity(call, name, argPtr, arity) == false) { return true }
+        let operand = ptr_to_node(argPtr)
+        let operandT = semaExpr(module, operand)
+        if (typeIsValid(operandT) and operandT.kind != TypeKind.INT) {
+            semaErrorAt(operand, "bit operations take an integer, found ".concat(typeDisplay(operandT)))
+        }
+        if (arity == 2) {
+            semaCheckValue(module, ptr_to_node(operand.next), typeInt(), "rotation distance")
+        }
         return true
     }
 
@@ -403,6 +432,17 @@ internal fn semaCheckBuiltinCall(module: ASTNode, call: ASTNode, name: String, a
     if (name.equals("list_new_with_capacity")) {
         if (semaCheckArity(call, name, argPtr, 1) == false) { return true }
         semaCheckValue(module, ptr_to_node(argPtr), typeInt(), "list_new_with_capacity")
+        return true
+    }
+    // `Vec<T>.filled(n, value)` for a scalar `T`. src/sema/vec.psm has already
+    // checked the value against `T` -- this call does not know `T` -- so a
+    // literal was re-typed there the way `let x: U8 = 0` re-types one, and
+    // semaExpr here reads that answer back.
+    if (name.equals("list_new_filled")) {
+        if (semaCheckArity(call, name, argPtr, 2) == false) { return true }
+        let countNode = ptr_to_node(argPtr)
+        semaCheckValue(module, countNode, typeInt(), "list_new_filled")
+        semaExpr(module, ptr_to_node(countNode.next))
         return true
     }
     if (name.equals("list_len")) {

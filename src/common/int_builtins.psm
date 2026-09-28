@@ -1,0 +1,20 @@
+// The integer bit operations: what std.math's `countOnes`, `leadingZeros`,
+// `trailingZeros`, `rotateLeft` and `rotateRight` lower to, on every width.
+//
+// Here rather than in sema for float_builtins.psm's reason: sema types a call,
+// codegen emits it and AIF describes it, and a name one of them misses fails
+// quietly. Each is one LLVM intrinsic (`ctpop`, `ctlz`, `cttz`, `fshl`, `fshr`),
+// so none is a call at run time.
+
+import std.string
+
+// The counts, which answer an Int whatever the operand's width.
+public fn intBitCountBuiltin(name: String) -> Bool {
+    return name.equals("__builtin_count_ones") or name.equals("__builtin_leading_zeros")
+        or name.equals("__builtin_trailing_zeros")
+}
+
+// The rotations, which answer the operand's own type.
+public fn intRotateBuiltin(name: String) -> Bool {
+    return name.equals("__builtin_rotate_left") or name.equals("__builtin_rotate_right")
+}

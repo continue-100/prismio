@@ -58,6 +58,21 @@ it is still the reason for Phase 1. But Phase 1 is now justified by the ABI
 (§1's first item) and by allocation counts, not by a benchmark gap. Re-measure
 on the machine the original number came from before quoting a speedup.
 
+**Re-measured 2026-09-28 on Apple Silicon (M-series, 4P+6E), where the
+original number came from.** 21 alternating runs of the suite binaries: Prismio
+is **1.63x of C++ and 2.07x of Rust**. At 1M messages (a standalone copy at 200x
+scale), C++ spends 0.06 s user and 0.16 s system, and Prismio 0.16 s user and
+0.26 s system. The user-time gap is the box: the IR of `stage1` is a `malloc`
+before every `chan_send`, and `stage2` an `rt_free` after every receive, each
+freed on a different thread from the one that allocated it. The system-time gap
+is more blocking and waking, because each side is slower per message.
+
+Two runtime-only changes were tried that day and **reverted as noise**:
+counting waiters so a send or receive signals only when someone is blocked, and
+wrapping the ring with a compare instead of `%`. Median 0.968x, minimum 1.006x.
+This agrees with the topology result below: the lock and the signalling are not
+the cost. Phase 1 is.
+
 The runtime (`runtime/program_support.c`) is a mutex and two condition
 variables over a `void*` ring, with `%` to wrap. Task start is one OS thread per
 `spawn`, with at most three word-sized arguments.

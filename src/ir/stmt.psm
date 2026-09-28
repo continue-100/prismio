@@ -1117,6 +1117,7 @@ private fn generateFor(stmt: ASTNode) {
     let endLabel = ir_get_label()
     let savedGuard = irLoopFlatGuard
     let savedProof = irLoopRangeProof
+    let savedPush = irLoopPushGuard
     let savedHeaderList = irLoopHeaderBoundList
     let savedHeaderIndex = irLoopHeaderBoundIndex
     let savedHeaderActive = irLoopHeaderBoundActive
@@ -1141,6 +1142,7 @@ private fn generateFor(stmt: ASTNode) {
                          direction < 0)
     irLoopFlatGuard = savedGuard.clone()
     irLoopRangeProof = savedProof
+    irLoopPushGuard = savedPush.clone()
     irLoopHeaderBoundList = savedHeaderList.clone()
     irLoopHeaderBoundIndex = savedHeaderIndex.clone()
     irLoopHeaderBoundActive = savedHeaderActive
@@ -1163,6 +1165,7 @@ private fn generateForDirection(stmt: ASTNode, endLabel: Int, plain: String, end
     irLoopHoistedBoundList = ""
     irLoopHoistedBoundValue = ""
     irLoopHoistedDataValue = ""
+    irLoopPushGuard = generateForPushGuard(stmt, endVal, down)
     let flatSlot = generateLoopFlatGuard(ptr_null(), ptr_to_node(stmt.child3))
     let mut rangeSlot = ""
     let mut proof = 0

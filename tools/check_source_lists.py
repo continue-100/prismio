@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Check that every hand-maintained list of toolchain sources agrees.
 
-The set of C files that make up the toolchain is written down in the compiler
-driver, both bootstrap scripts, and the packager. Runtime files are packaged as
-individual bitcode modules; compiler-only files are packaged in the backend
-archive. This check keeps those roles from drifting silently.
+Two sets of C files are written down in several places, and each place is
+someone's source of truth:
+
+- **The compiler's sources** -- every `runtime/*.c` -- are the `native` sources
+  of the `prismio` target in `build.ums`, which is how `prismio build` makes a
+  compiler, and `RUNTIME_SOURCES` in both bootstrap scripts, which is how a
+  compiler is made from the seed with no compiler at all.
+- **The runtime's sources** -- the part linked into every compiled program --
+  are `prismio_toolchain_files[]` in build_driver.c (what `runtime-hash`
+  hashes) and `RUNTIME_BITCODE` in tools/package.py (what is packaged).
 
 Adding a file to runtime/ should fail loudly here until every list knows about
 it, which is cheaper than discovering it on someone else's machine.
@@ -37,10 +43,9 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def toolchain_table():
-    """The authoritative list: prismio_toolchain_files[] in build_driver.c.
-
-    Returns (all_files, compiled_files, backend_only, runtime_lib)."""
+def runtime_table():
+    """prismio_toolchain_files[] in build_driver.c: the runtime's files, headers
+    included. Returns the `.c` entries."""
     text = read(RUNTIME / "build_driver.c")
     m = re.search(
         r"static const PrismioToolchainFile prismio_toolchain_files\[\]\s*=\s*\{(.*?)\n\};",
@@ -49,18 +54,27 @@ def toolchain_table():
     )
     if not m:
         raise Failure("could not find prismio_toolchain_files[] in build_driver.c")
-
-    entries = re.findall(
-        r'\{\s*"([^"]+)"\s*,\s*(\d)\s*,\s*(?:"[^"]*"|NULL)\s*,\s*(\d)\s*\}', m.group(1)
-    )
+    entries = re.findall(r'\{\s*"([^"]+)"\s*\}', m.group(1))
     if not entries:
         raise Failure("prismio_toolchain_files[] parsed as empty")
+    return [name for name in entries if name.endswith(".c")]
 
-    all_files = [name for name, _, _ in entries]
-    compiled = [name for name, comp, _ in entries if comp == "1"]
-    runtime_lib = [name for name, comp, rt in entries if comp == "1" and rt == "1"]
-    backend = [name for name, comp, rt in entries if comp == "1" and rt == "0"]
-    return all_files, compiled, backend, runtime_lib
+
+def manifest_native_sources():
+    """The `source(...)` arguments of build.ums, in order, as runtime/ file names.
+
+    Read with a pattern rather than the UMS parser, for the reason every reader
+    here is a pattern: this runs before any compiler exists."""
+    text = read(REPO / "build.ums")
+    names = []
+    for call in re.findall(r"\bsource\(([^)]*)\)", text):
+        for value in re.findall(r'"([^"]+)"', call):
+            if not value.startswith("runtime/"):
+                raise Failure(f"build.ums names a native source outside runtime/: {value}")
+            names.append(value[len("runtime/"):])
+    if not names:
+        raise Failure("build.ums declares no native sources")
+    return names
 
 
 def bootstrap_ps1_list():
@@ -79,26 +93,6 @@ def bootstrap_sh_list():
     return m.group(1).split()
 
 
-def package_lists():
-    """The LIBRARIES table in tools/package.py.
-
-    Parsed rather than imported, for the reason every other reader here is
-    parsed: this script is the thing that catches a packaging list drifting from
-    prismio_toolchain_files[], and importing the module under test would let a
-    syntax error in it read as "no lists to compare" instead of a failure.
-    """
-    text = read(TOOLS / "package.py")
-    m = re.search(r"^LIBRARIES = \{(.*?)^\}", text, re.S | re.M)
-    if not m:
-        raise Failure("could not find LIBRARIES in package.py")
-    out = {}
-    for name, sources in re.findall(r'"(\w+)":\s*\[(.*?)\]', m.group(1), re.S):
-        out[name] = re.findall(r'"([^"]+)"', sources)
-    if not out:
-        raise Failure("LIBRARIES in package.py lists no archives")
-    return out
-
-
 def package_runtime_bitcode():
     text = read(TOOLS / "package.py")
     m = re.search(r"^RUNTIME_BITCODE\s*=\s*\[(.*?)\]", text, re.S | re.M)
@@ -110,12 +104,6 @@ def package_runtime_bitcode():
 def main() -> int:
     problems = []
 
-    try:
-        all_files, compiled, backend, runtime_lib = toolchain_table()
-    except Failure as exc:
-        print(f"FAILED: {exc}")
-        return 1
-
     def compare(label, actual, expected):
         if list(actual) != list(expected):
             problems.append(
@@ -124,20 +112,22 @@ def main() -> int:
             )
 
     try:
-        # Every .c in runtime/ must appear in the table. A file nobody compiles is
+        compiler = manifest_native_sources()
+        runtime = runtime_table()
+
+        # Every .c in runtime/ is a compiler source. A file nobody compiles is
         # dead weight at best and a silently-missing feature at worst.
         on_disk = sorted(
             p.name for p in RUNTIME.glob("*.c") if p.name not in IGNORED_SOURCES
         )
-        compare("runtime/*.c on disk vs prismio_toolchain_files[]", on_disk, sorted(compiled))
+        compare("runtime/*.c on disk vs build.ums native sources", on_disk, sorted(compiler))
+        compare("tools/bootstrap.ps1 $runtimeSources", bootstrap_ps1_list(), compiler)
+        compare("tools/bootstrap.sh RUNTIME_SOURCES", bootstrap_sh_list(), compiler)
 
-        compare("tools/bootstrap.ps1 $runtimeSources", bootstrap_ps1_list(), compiled)
-        compare("tools/bootstrap.sh RUNTIME_SOURCES", bootstrap_sh_list(), compiled)
-
-        packaged = package_lists()
-        compare("tools/package.py runtime bitcode", package_runtime_bitcode(), runtime_lib)
-        compare("tools/package.py backend archive", packaged.get("backend", []), backend)
-
+        compare("tools/package.py RUNTIME_BITCODE", package_runtime_bitcode(), runtime)
+        missing = [name for name in runtime if name not in compiler]
+        if missing:
+            problems.append("runtime sources the compiler does not compile: " + " ".join(missing))
     except Failure as exc:
         print(f"FAILED: {exc}")
         return 1
@@ -149,8 +139,8 @@ def main() -> int:
         print("Fix every list above, then re-run this check.")
         return 1
 
-    print(f"Toolchain source lists agree ({len(compiled)} compiled sources, "
-          f"{len(runtime_lib)} in runtime, {len(backend)} in backend).")
+    print(f"Toolchain source lists agree ({len(compiler)} compiler sources, "
+          f"{len(runtime)} in the runtime).")
     return 0
 
 

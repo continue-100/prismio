@@ -48,6 +48,7 @@ internal fn parseDeclaration(p: Parser) -> ASTNode {
     if (p.checkVal(TokenType.KEYWORD, "let")) { return parseVariableDecl(p) }
     if (p.checkVal(TokenType.KEYWORD, "extern")) { return parseExternDecl(p) }
     if (p.checkVal(TokenType.KEYWORD, "fn") or p.atPropDecl()) { return parseFunctionDecl(p) }
+    if (p.atColdDecl()) { return parseColdFunctionDecl(p) }
     if (p.checkVal(TokenType.KEYWORD, "struct")) { return parseStructDecl(p) }
     if (p.checkVal(TokenType.KEYWORD, "enum")) { return parseEnumDecl(p) }
     if (p.checkVal(TokenType.KEYWORD, "impl")) { return parseImplDecl(p) }
@@ -105,6 +106,7 @@ private fn visibilityLevel(p: Parser) -> Int {
 
     let next = p.peek()
     if (next.type == TokenType.IDENTIFIER and next.value.equals("prop")) { return level }
+    if (next.type == TokenType.IDENTIFIER and next.value.equals("cold")) { return level }
     if (next.type != TokenType.KEYWORD) { return -1 }
     if (next.value.equals("fn")) { return level }
     if (next.value.equals("extern")) { return level }
@@ -120,6 +122,36 @@ private fn visibilityLevel(p: Parser) -> Int {
 private fn visibilityIsEnforced(p: Parser) -> Bool {
     let next = p.peek()
     return next.value.equals("fn") or next.value.equals("extern") or next.value.equals("prop")
+        or next.value.equals("cold")
+}
+
+// `cold fn fail(message: String)` -- a function that rarely runs: an error
+// path, or the slow half of an operation split so the fast half can be
+// inlined. It is never inlined into its callers, and a branch that calls it is
+// laid out as the unlikely one (LLVM's `cold` and `noinline`, which is Rust's
+// `#[cold]` with `#[inline(never)]`).
+//
+// Declared rather than inferred, because nothing in a body says how often it
+// runs. The need is concrete: an executable internalises every function but
+// `main`, and LLVM inlines an internal function's only call however large it
+// is. `mapSet`'s insert half, split out so the update half could be inlined
+// into a caller's loop, was inlined back into `mapSet` -- which then grew too
+// large to be inlined anywhere, and key_value_update ran 1.28x slower.
+//
+// **Contextual**, like `prop` and the visibility markers: `cold` is a marker
+// only directly before `fn`, so a variable named `cold` keeps compiling.
+private fn atColdDecl(p: Parser) -> Bool {
+    if (p.check(TokenType.IDENTIFIER) == false) { return false }
+    if (p.current().value.equals("cold") == false) { return false }
+    let next = p.peek()
+    return next.type == TokenType.KEYWORD and next.value.equals("fn")
+}
+
+private fn parseColdFunctionDecl(p: Parser) -> ASTNode {
+    p.advance()
+    let fnNode = parseFunctionDecl(p)
+    nodeMarkCold(fnNode)
+    return fnNode
 }
 
 // `prop length(self) -> Int` -- a property: a function read as `s.length`, which
@@ -1126,10 +1158,13 @@ private fn parseImplDecl(p: Parser) -> ASTNode {
         let methodVisibility = p.visibilityLevel()
         if (methodVisibility >= 0) { p.advance() }
 
+        let methodIsCold = p.atColdDecl()
+        if (methodIsCold) { p.advance() }
         if (p.checkVal(TokenType.KEYWORD, "fn") == false and p.atPropDecl() == false) {
             p.fatal("an `impl` block holds `fn`, `prop` and `let` declarations, found ".concat(parserDescribe(p.current())))
         }
         let method = parseFunctionDecl(p)
+        if (methodIsCold) { nodeMarkCold(method) }
         method.s2 = parseImplMethodParams(p, header.s1, method.s2)
         // A function with no `self` belongs to the type: `impl Config { fn
         // make() -> Config }` is `Config.make()`, and its name says so, so two

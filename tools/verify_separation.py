@@ -14,8 +14,10 @@ itself must contain the backend.
 
 Two independent checks, because they can fail separately:
 
-  1. Runtime-bitcode and backend-archive symbol tables (nm) -- proves the
-     artifacts were built from the right translation units in the first place.
+  1. Runtime-bitcode and compiler symbol tables (nm) -- proves the artifacts
+     were built from the right translation units in the first place. The
+     backend ships inside the compiler and nowhere else: there is no backend
+     archive in a package, because nothing a user builds can link one.
   2. A byte signature in the produced executable -- proves the *link step* only
      pulled in the runtime. A linked binary's symbol table says nothing about
      which static-archive members were folded in, so nm cannot answer this one;
@@ -105,7 +107,7 @@ def main() -> int:
 
     print("Toolchain artifact contents")
     runtime_modules = sorted((dist / "lib" / "runtime").glob("*.bc"))
-    backend_lib = find_library(dist, "backend")
+    compiler = dist / "bin" / ("prismio.exe" if WINDOWS else "prismio")
     expected_runtime = {
         "lang_runtime.bc", "lang_runtime.verify.bc",
         "program_support.bc", "program_support.verify.bc",
@@ -115,13 +117,14 @@ def main() -> int:
           ", ".join(path.name for path in runtime_modules) or "none")
     check("no monolithic native runtime archive is shipped",
           find_library(dist, "runtime") is None)
-    check("backend library exists", backend_lib is not None,
-          backend_lib.name if backend_lib else "none")
+    check("no compiler backend archive is shipped",
+          find_library(dist, "backend") is None)
+    check("the compiler exists", compiler.is_file(), str(compiler))
 
-    if runtime_modules and backend_lib:
+    if runtime_modules and compiler.is_file():
         runtime_symbols = "\n".join(defined_symbols(nm, path)
                                     for path in runtime_modules)
-        backend_symbols = defined_symbols(nm, backend_lib)
+        backend_symbols = defined_symbols(nm, compiler)
 
         # Mach-O nm prefixes C symbols with an underscore; match both flavours.
         ir_defined = re.compile(r"^\S* +[TtDdSsBb] +_?ir_[a-z]", re.M)
@@ -129,18 +132,22 @@ def main() -> int:
         in_backend = len(ir_defined.findall(backend_symbols))
         check("runtime modules define no ir_* backend symbols", in_runtime == 0,
               f"found {in_runtime}")
-        check("backend library defines the ir_* backend symbols", in_backend > 0,
-              f"found {in_backend}")
+        # A Windows executable has no symbol table for nm to read -- only an
+        # export table -- so there the byte signature below is the check that
+        # the backend is in the compiler.
+        if not WINDOWS:
+            check("the compiler defines the ir_* backend symbols", in_backend > 0,
+                  f"found {in_backend}")
 
         check("runtime modules provide proc_wait",
               "proc_wait" in runtime_symbols)
-        check("backend library provides compiler_build_executable",
-              "compiler_build_executable" in backend_symbols)
+        if not WINDOWS:
+            check("the compiler provides compiler_build_executable",
+                  "compiler_build_executable" in backend_symbols)
         check("runtime modules do NOT provide compiler_build_executable",
               "compiler_build_executable" not in runtime_symbols)
 
     print("\nCompiled user program")
-    compiler = dist / "bin" / ("prismio.exe" if WINDOWS else "prismio")
     probe_dir = Path(tempfile.mkdtemp())
     try:
         source = probe_dir / "probe.psm"

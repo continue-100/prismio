@@ -187,6 +187,11 @@ internal fn semaMarkSliceBinding(name: String, value: ASTNode, isDeclaration: Bo
 // Type-check a value against an expected type, allowing a bare integer literal to
 // take on any sized integer type (so `let x: U8 = 200` and `f(200)` type-check).
 internal fn semaCheckValue(module: ASTNode, valNode: ASTNode, expected: TypeInfo, context: String) -> TypeInfo {
+    // `{ k: v }` becomes a call, or `{}` a `default`, before either is checked --
+    // so the `default` below sees `{}` as it sees one that was written.
+    if (valNode.kind == NodeKind.MAP_LITERAL_EXPR) {
+        if (semaMapLiteral(module, valNode, expected) == false) { return typeInvalid() }
+    }
     // `default` becomes the expected type's value here, and is then checked as
     // the literal it became -- so `0` still adopts `U8` below.
     if (valNode.kind == NodeKind.DEFAULT_EXPR) {
@@ -243,6 +248,9 @@ internal fn semaCheckValue(module: ASTNode, valNode: ASTNode, expected: TypeInfo
     if (semaListLiteral(module, valNode, expected)) {
         return nodeGetType(valNode)
     }
+
+    // `let m: Map<String, Int> = Map()`: type arguments only the context knows.
+    if (valNode.kind == NodeKind.CALL_EXPR) { monoTypeArgsFromExpected(module, valNode, expected) }
 
     let actual = semaExpr(module, valNode)
     semaExpectAssignable(valNode, context, expected, actual)

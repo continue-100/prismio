@@ -478,12 +478,20 @@ private fn mergeModuleImports(merged: ASTNode, module: ASTNode, baseDir: String,
     return seen
 }
 
-// Finds a standard module in a source checkout or an installed toolchain. The
-// order is the one developers.prismio.org/runtime/supported-surface documents:
-// a `std/` in the entry's directory or any enclosing one
-// wins over the toolchain's `stdlib/`, which is what makes a checkout of the
-// compiler build against its own tree -- and means an application's own `std/`
-// directory shadows the shipped one.
+// Whether `dir` is a Prismio checkout: the one kind of directory whose `std/`
+// is the standard library rather than a directory that happens to be named so.
+private fn isPrismioCheckout(dir: String) -> Bool {
+    return file_exists(join_path(join_path(dir, "runtime"), "lang_runtime.c")) == 1
+}
+
+// Finds a standard module in a source checkout or an installed toolchain.
+//
+// A `std/` in the entry's directory or any enclosing one wins over the
+// toolchain's `stdlib/` -- **only when that directory is a Prismio checkout**,
+// which is what makes a checkout of the compiler build against its own tree.
+// It used to be any directory: a project holding its own `std/io.psm` got that
+// one file from itself and every other module from the install, one file at a
+// time, while the docs said a local `std/` could not shadow the library.
 //
 // **So a program inside the checkout never reads a `.plib`**, and a defect on
 // that path is invisible to every fixture under `tests/`: `sort()` failed to
@@ -495,7 +503,7 @@ private fn mergeModuleImports(merged: ASTNode, module: ASTNode, baseDir: String,
 // `std/map.psm` in a checkout is `stdlib/map.plib` once installed.
 public fn standardModulePath(baseDir: String, leaf: String) -> String {
     let besideEntry = join_path(baseDir, "std/".concat(leaf))
-    if (file_exists(besideEntry) == 1) { return besideEntry }
+    if (file_exists(besideEntry) == 1 and isPrismioCheckout(baseDir)) { return besideEntry }
 
     // Then each enclosing directory, nearest first. One level was enough for as
     // long as everything that imported `std.*` sat directly under the checkout
@@ -510,7 +518,7 @@ public fn standardModulePath(baseDir: String, leaf: String) -> String {
     // shape that never reaches one.
     let mut dir = get_directory(baseDir)
     repeat(64) {
-        if (file_exists(join_path(dir, "std/".concat(leaf))) == 1) {
+        if (file_exists(join_path(dir, "std/".concat(leaf))) == 1 and isPrismioCheckout(dir)) {
             return join_path(dir, "std/".concat(leaf))
         }
         let parent = get_directory(dir)

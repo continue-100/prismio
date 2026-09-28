@@ -1,0 +1,267 @@
+// Project commands: the `commands { command("name") { ... } }` a manifest
+// declares, run as `prismio <name> [args...]`, and which names the toolchain
+// keeps for itself.
+//
+// UMS owns what a command *is* -- its steps and their validation. This file owns
+// running one: where each step starts, what it is given, and what its exit
+// status means for the command.
+
+import std.io
+import common.diagnostics
+import std.string
+import std.process
+import driver.compile
+import ums.ums
+import ums.model.workspace
+import ums.model.diagnostic
+import ums.targets.target
+import project.ums_cli
+import project.host
+
+// Whether a program is on PATH; see runtime/build_driver.c.
+public extern fn compiler_program_on_path(name: String borrow) -> Int
+
+// The verbs `main` dispatches before it looks for a project command, and so the
+// names a manifest cannot take. `main.psm`'s dispatch is the other half of this
+// list: every name it tests before calling runUmsProjectCommand is here, and
+// this is the list the P1039 note and the P1062 check both read. The hidden
+// `--internal-host-abi` and the flags need no entry, because a command name must
+// start with a letter or a digit (UMS2601); a name ending `.psm` is caught below,
+// since `prismio x.psm` builds that file.
+public fn prismioBuiltinCommands() -> Vec<String> {
+    let mut names: Vec<String> = []
+    names.push("init")
+    names.push("build")
+    names.push("run")
+    names.push("test")
+    names.push("clean")
+    names.push("check")
+    names.push("bootstrap")
+    names.push("aif")
+    names.push("dump-ast")
+    names.push("runtime-hash")
+    return names
+}
+
+private fn umsReservedCommandName(name: String) -> Bool {
+    if (name.endsWith(".psm")) { return true }
+    let builtins = prismioBuiltinCommands()
+    for i in 0..<builtins.length {
+        if (builtins[i].equals(name)) { return true }
+    }
+    return false
+}
+
+// `init, build, run, ...` -- the P1039 note.
+public fn prismioBuiltinCommandList() -> String {
+    let builtins = prismioBuiltinCommands()
+    let mut out = ""
+    for i in 0..<builtins.length {
+        if (i > 0) { out = out.concat(", ") }
+        out = out.concat(builtins[i])
+    }
+    return out
+}
+
+// Built-ins win at dispatch, so a manifest taking one of these names has written
+// a command that could never run. Saying so when the manifest loads beats a
+// project finding out the day the toolchain gains a verb.
+public fn rejectReservedCommandNames(workspace: UmsWorkspace) -> Int {
+    let mut index = 0
+    let mut rejected = 0
+    while (index < workspace.commandCount()) {
+        let declared = workspace.command(index)
+        if (umsReservedCommandName(declared.name)) {
+            diag_error_code("P1062",
+                "a project command cannot be named ".concat(diagQuote(declared.name)))
+            diag_note("that name is a built-in command and built-ins win; rename it in build.ums")
+            rejected = 1
+        }
+        index = index + 1
+    }
+    return rejected
+}
+
+// `--release` picks the profile a command's build steps use and is forwarded as
+// well, so one flag reaches both halves of `prismio dist --release`: the targets
+// it builds and the script it runs.
+private fn umsCommandProfile(startIndex: Int) -> String {
+    for i in startIndex..<process.args.count {
+        if (process.args[i].equals("--release")) { return "release" }
+    }
+    return "debug"
+}
+
+// A relative program resolves against the project root, because `build.ums` is
+// discovered upward: the working directory is wherever the user stood, while a
+// path in the manifest was written relative to the manifest. A bare name carries
+// no separator and is left for PATH to answer.
+private fn umsShellProgram(root: String, program: String) -> String {
+    for i in 0..<__builtin_string_len(program) {
+        let current = program.charAt(i)
+        if (current == '/' or current == '\\') { return umsNativePath(root, program) }
+    }
+    return program.clone()
+}
+
+// A step's arguments, in order, with `args` replaced by what the user typed
+// after the command name. Each is one element of the child's argument vector,
+// so nothing in it is ever read as shell syntax.
+private fn pushStepArguments(step: UmsCommandStep, forwardFrom: Int) {
+    for index in 0..<step.arguments.length {
+        let argument = step.arguments[index]
+        if (argument.forwarded) {
+            for forwarded in forwardFrom..<process.args.count {
+                compiler_spawn_arg(process.args[forwarded])
+            }
+        } else {
+            compiler_spawn_arg(argument.text)
+        }
+    }
+}
+
+// What this host calls Python, as the program and the arguments before the
+// script.
+//
+// Windows ships the interpreter as `python` and generally has no `python3`,
+// and on a machine without Python its `python` can be the Microsoft Store stub,
+// which prints an advertisement and exits 9009. `py` is the launcher the
+// python.org installer puts on PATH, so it is preferred when it is there. Every
+// other platform has had `python` mean Python 2 often enough that `python3` is
+// the only safe spelling.
+private fn umsPythonInterpreter() -> String {
+    if (host_is_windows() == 0) { return "python3" }
+    if (compiler_program_on_path("py") == 1) {
+        compiler_spawn_arg("-3")
+        return "py"
+    }
+    return "python"
+}
+
+// A `.py` or `.psm` named by a `run` step. Validation proved the file exists
+// under the project root and that the extension is one of these two.
+//
+// The `.psm` case compiles into `tools/` under the profile's artifact directory:
+// a tool built by a command is build output, and `clean` removes that directory.
+// Not the profile directory itself, where a tool named like a target -- or like
+// the project's compiler host -- overwrote it. It is not a declared target and
+// deliberately does not become one: a target is something the project builds
+// every time, and a tool is something it runs when asked.
+private fn runUmsScriptStep(workspace: UmsWorkspace, step: UmsCommandStep,
+                            forwardFrom: Int) -> Int {
+    let root = workspace.project.root
+    let scriptPath = umsNativePath(root, step.subject)
+
+    if (step.subject.endsWith(".py")) {
+        let interpreter = umsPythonInterpreter()
+        compiler_spawn_arg(scriptPath)
+        pushStepArguments(step, forwardFrom)
+        return compiler_spawn_wait(interpreter, root)
+    }
+
+    let toolDirectory = join_path(join_path(workspace.plan.artifactRoot,
+                                            workspace.project.build.profile), "tools")
+    if (make_directory(toolDirectory) != 0) {
+        diag_error_code("P1089", "could not create ".concat(toolDirectory))
+        return 1
+    }
+    let toolPath = join_path(toolDirectory, compiler_default_exe_path(pathLeaf(step.subject)))
+    // A tool links only the installed runtime: whatever native inputs the last
+    // target built in this process declared are not its to inherit.
+    compiler_link_reset()
+    if (compileSource(scriptPath, toolPath.clone(), umsProfileOptions(workspace)) != 0) {
+        return 1
+    }
+    pushStepArguments(step, forwardFrom)
+    return compiler_spawn_wait(toolPath, root)
+}
+
+// Runs one step and answers its exit status. Every step starts in the project
+// root: the manifest's relative paths -- `--out dist`, a compiler path under
+// `.prismio/` -- were written relative to it, and a command run from a
+// subdirectory used to hand them to a process standing somewhere else.
+private fn runUmsCommandStep(workspace: UmsWorkspace, step: UmsCommandStep,
+                             forwardFrom: Int) -> Int {
+    let root = workspace.project.root
+    if (step.kind == UmsCommandStepKind.SHELL) {
+        pushStepArguments(step, forwardFrom)
+        return compiler_spawn_wait(umsShellProgram(root, step.subject), root)
+    }
+
+    let index = umsTargetFind(workspace.project.targets, step.subject)
+    if (index < 0) {
+        // UMS2606 and UMS2607 proved a `run` subject that is not a target is a
+        // script that exists; `build` never reaches here, because UMS2603 makes
+        // a build step naming no target a manifest error.
+        return runUmsScriptStep(workspace, step, forwardFrom)
+    }
+    let target = workspace.project.targets[index]
+
+    // Rebuilding the host stages a candidate the *launcher* promotes once this
+    // process exits, so every later step in the command would still run the
+    // previous compiler while reading as though it ran the new one.
+    if (isUmsHostTarget(workspace, target)) {
+        diag_error_code("P1061",
+            "a command step cannot build the toolchain.host target: ".concat(diagQuote(step.subject)))
+        diag_note("run `prismio build` first; the rebuilt compiler is promoted only after that process exits")
+        return 1
+    }
+    if (buildUmsTarget(workspace, target) != 0) { return 1 }
+    if (step.kind == UmsCommandStepKind.BUILD) { return 0 }
+    pushStepArguments(step, forwardFrom)
+    return compiler_spawn_wait(target.outputPath, root)
+}
+
+// Returns -1 when this is not a project command, so `main` can report the
+// unknown-command diagnostic it would have reported anyway. Every built-in verb
+// has already declined the name by the time this runs, and that ordering is the
+// whole of the "built-ins win" rule -- there is no second check enforcing it.
+//
+// A failing step ends the command with that step's own exit status, so a
+// command wrapping a test runner or a linter reports what the tool reported.
+// A step that could not be started at all (-1) is 127, the shell's number for
+// "not found".
+public fn runUmsProjectCommand(name: String, forwardFrom: Int) -> Int {
+    let workspace = umsLoadProject(".", umsCommandProfile(forwardFrom))
+    if (__builtin_string_len(workspace.project.manifestPath) == 0) { return -1 }
+
+    let found = workspace.findCommand(name)
+    if (found < 0) { return -1 }
+    if (umsProjectUsable(workspace) == false) { return 1 }
+
+    let declared = workspace.command(found)
+    for index in 0..<declared.steps.length {
+        let step = declared.steps[index]
+        let mut status = runUmsCommandStep(workspace, step, forwardFrom)
+        if (status != 0) {
+            if (status < 0) { status = 127 }
+            let stepNumber = index + 1
+            let failedStep = " failed at step ".concat(stepNumber.toString(), " (", diagQuote(step.subject), ")")
+            diag_error_code("P1059",
+                "project command ".concat(diagQuote(declared.name), failedStep,
+                                          ", exit status ", status.toString()))
+            return status
+        }
+    }
+    return 0
+}
+
+// Listed by `--help` and when a command is not recognised, because the built-in
+// list on its own sends a reader hunting for a typo in a name their project does
+// define.
+public fn listUmsProjectCommands() {
+    let workspace = umsLoadProject(".", "debug")
+    if (workspace.commandCount() == 0) { return }
+    println("")
+    println("Project commands declared in build.ums:")
+    for index in 0..<workspace.commandCount() {
+        let declared = workspace.command(index)
+        print("  prismio ")
+        print(declared.name)
+        if (__builtin_string_len(declared.description) > 0) {
+            print("  --  ")
+            print(declared.description)
+        }
+        println("")
+    }
+}

@@ -16,6 +16,8 @@ import driver.compile
 import driver.imports
 import common.target
 import project.ums_cli
+import project.host
+import project.commands
 import std.process
 
 // Both malloc and hand the buffer over: compiler_default_exe_path sprintfs into
@@ -56,45 +58,54 @@ Usage:
 
 Project commands -- these read build.ums, found at or above the
 working directory, and write to .prismio/build/<profile>/:
-  prismio init [name]              start a project here, or in a new directory
-  prismio build [--release]        build every target
-  prismio run [--release]          build, then run the executable target
-  prismio test [--release]         build and run every test target
-  prismio clean [--release]        remove this profile's build output
-  prismio <name> [args...]         run a command the manifest declares
+  prismio init [name]                        start a project here, or in a new directory
+  prismio build [--release] [target...]      build every target, or the ones named
+  prismio run [--release] [target] [-- args...]
+                                             build, then run the executable target
+  prismio test [--release] [test...]         build and run the test targets
+  prismio clean [--release]                  remove this profile's build output
+  prismio <name> [args...]                   run a command the manifest declares
 
 Single-file commands -- these name a source and need no manifest:
+  prismio build <source.psm> [-o output] [-g] [-O0..-O3] [--overflow-checks]
+                [--target <triple>] [--sysroot <sdk>]
+  prismio run <source.psm> [-o output] [-g] [--overflow-checks] [--jit]
+                [-- args...]
+  prismio check <source.psm> [--diagnostic-format=json]
+                [--overlay <file.psm> <text>] [--module <name>]
 
-  prismio build [source.psm] [-o output.exe] [-g] [--verify]
-                [--overflow-checks] [--target <triple>] [--sysroot <sdk>]
+  prismio --version            which compiler, LLVM and standard library
+  prismio --help-all           every command and flag, the compiler-development ones too
 
-  prismio run <source.psm> [-o output.exe] [-g] [--verify] [--jit]
-                           [--overflow-checks]
+      The debug profile builds with -g and --overflow-checks; --release
+      builds optimised with neither. A manifest can change either in a
+      `profiles` block.
 
-  prismio check <source.psm> [--diagnostic-format=json] [--overlay <file.psm> <text>]
-                             [--module <name>]
-  prismio bootstrap [source.psm] [-o output.exe] [-g]
-  prismio runtime-hash
-  prismio dump-ast <source.psm>
-  prismio aif <source.psm> [--manifest] [--summary] [--layout] [--copyable-collections] [--theta-fields] [--budget=N]
-                           [--target <triple>]
-
-  prismio aif <source.psm> --why=<ID|symbol>   explain one allocation decision
-  prismio build|aif <source.psm> --force-layout=<Type>:<hot>   emit a named layout candidate
-
-      -g emits DWARF: line tables, functions, scopes, locals and struct
-      layouts, so the program can be run under lldb or gdb. It also drops
-      the object step to -O0, because a variable folded into a register is
-      a variable a debugger cannot show you. Distinct from --debug, which
-      is the analysis level and says nothing about debug info.
+      -g emits DWARF, so the program can be run under lldb or gdb, and
+      drops the object step to -O0: a variable folded into a register is a
+      variable a debugger cannot show you.
 
       --target takes an LLVM target triple -- x86_64-apple-macos,
       aarch64-linux-android, x86_64-pc-windows-msvc,
-      x86_64-unknown-linux-gnu, wasm32-unknown-unknown. LLVM validates
-      it and answers with the pointer width and data layout, so there
-      is no list of supported targets to fall out of date. --sysroot
-      points clang at that target's SDK, and a cross build links
-      runtime-<triple> rather than the host's runtime.
+      x86_64-unknown-linux-gnu, wasm32-unknown-unknown. --sysroot points
+      clang at that target's SDK.
+"""
+
+// What `--help` leaves out: the commands and flags for working on the compiler
+// and its memory model rather than on a program.
+let USAGE_DEVELOPER =
+"""
+Compiler-development commands:
+  prismio runtime-hash
+  prismio dump-ast <source.psm>
+  prismio aif <source.psm> [--manifest] [--summary] [--layout] [--copyable-collections]
+                           [--theta-fields] [--budget=N] [--target <triple>]
+  prismio aif <source.psm> --why=<ID|symbol>   explain one allocation decision
+  prismio build|aif <source.psm> --force-layout=<Type>:<hot>   emit a named layout candidate
+  prismio build <source.psm> --verify | --debug
+
+      --debug is the zero-analysis level and says nothing about debug info;
+      --verify builds with the allocation ledger.
 
       check --overlay reads <file.psm>, wherever the program reaches it, from
       the file <text> instead -- an editor's unsaved buffer. Check a module
@@ -102,15 +113,13 @@ Single-file commands -- these name a source and need no manifest:
       shares: `prismio check src/main.psm --overlay src/parse/stmt.psm buf`.
       --module names a module checked on its own, as its importers name it:
       `prismio check std/map.psm --module std.map`.
-
-    build/run link against the installed Prismio runtime only.
-    A project command is the same command with no source named: `prismio build`
-    builds the project, `prismio build main.psm` builds one file.
-    bootstrap builds the compiler itself from the repository sources,
-    linking the compiler backend and the LLVM C API it calls.
 """
 
 private fn printUsage() { diag_print_help(USAGE) }
+
+// After an argument error the usage is a pointer, not the page: sixty lines of
+// help after every typo buried the one line that said what was wrong.
+private fn pointAtUsage() { diag_note("run `prismio --help` for usage") }
 
 // LAYOUT 8's forced candidate: `--force-layout=<Type>:<hot>`.
 //
@@ -221,7 +230,7 @@ private fn cliRuntimeHash() -> Int {
 private fn cliCheck() -> Int {
     if (process.args.count <= 2) {
         diag_error_code("P1025", "missing source file")
-        printUsage()
+        pointAtUsage()
         return 1
     }
 
@@ -236,7 +245,7 @@ private fn cliCheck() -> Int {
         } else if (option.equals("--overlay")) {
             if (checkArg + 2 >= process.args.count) {
                 diag_error_code("P1073", "`--overlay` needs the file and the file holding its text")
-                printUsage()
+                pointAtUsage()
                 return 1
             }
             overlay = process.args[checkArg + 1].clone()
@@ -245,14 +254,14 @@ private fn cliCheck() -> Int {
         } else if (option.equals("--module")) {
             if (checkArg + 1 >= process.args.count) {
                 diag_error_code("P1076", "`--module` needs the name the file is imported by")
-                printUsage()
+                pointAtUsage()
                 return 1
             }
             module = process.args[checkArg + 1].clone()
             checkArg = checkArg + 1
         } else {
             diag_error_code("P1026", "unknown argument ".concat(diagQuote(option)))
-            printUsage()
+            pointAtUsage()
             return 1
         }
         checkArg = checkArg + 1
@@ -267,7 +276,7 @@ private fn cliCheck() -> Int {
 private fn cliDumpAst() -> Int {
     if (process.args.count <= 2) {
         diag_error_code("P1027", "missing source file")
-        printUsage()
+        pointAtUsage()
         return 1
     }
     return dumpAstCommand(process.args[2])
@@ -280,7 +289,7 @@ private fn cliDumpAst() -> Int {
 private fn cliAif() -> Int {
     if (process.args.count <= 2) {
         diag_error_code("P1028", "missing source file")
-        printUsage()
+        pointAtUsage()
         return 1
     }
 
@@ -369,7 +378,7 @@ private fn cliAif() -> Int {
             aifArg = aifArg + 1
         } else {
             diag_error_code("P1033", "unknown argument ".concat(diagQuote(flag)))
-            printUsage()
+            pointAtUsage()
             return 1
         }
         aifArg = aifArg + 1
@@ -379,67 +388,7 @@ private fn cliAif() -> Int {
     aifWhy, aifLayout, aifManifest)
 }
 
-// Compiler development. The command itself selects the build mode -- there is
-// no flag and no environment variable -- so one binary can build user programs
-// against the installed runtime and still bootstrap against repository sources.
-private fn cliBootstrap() -> Int {
-    // The mode is fixed here rather than parsed: no flag turns it off, which is
-    // what lets one binary build user programs against the installed runtime and
-    // still bootstrap against repository sources.
-    let mut path = "src/main.psm"
-    let mut argIndex = 2
-
-    if (process.args.count > 2) {
-        let candidate = process.args[2]
-        // Every flag `bootstrap` accepts has to be named here too, or it
-        // is taken for the source path and the build silently compiles a
-        // file called `-g`.
-        if (candidate.equals("-o") == false and candidate.equals("-g") == false) {
-            path = candidate
-            argIndex = 3
-        }
-    }
-
-    let mut outputFile = compiler_default_exe_path(path)
-    let mut bootstrapDebugInfo = false
-
-    while (argIndex < process.args.count) {
-        let barg = process.args[argIndex]
-        if (barg.equals("-o")) {
-            if (argIndex + 1 >= process.args.count) {
-                diag_error_code("P1034", "`-o` requires an output path")
-                return 1
-            }
-            outputFile = process.args[argIndex + 1]
-            argIndex = argIndex + 2
-        } else if (barg.equals("-g")) {
-            // The compiler is the largest Prismio program there is, and it
-            // was the one program that could not be stepped through.
-            bootstrapDebugInfo = true
-            argIndex = argIndex + 1
-        } else {
-            diag_error_code("P1035", "unknown argument ".concat(diagQuote(barg)))
-            printUsage()
-            return 1
-        }
-    }
-
-    return compileSource(path, outputFile, false, true, false, false,
-    bootstrapDebugInfo, false, false)
-}
-
 fn main() -> Int {
-    let mut path: String
-    let mut outputFile: String
-    let mut command: String
-
-    let mut runAfterBuild = false
-    let mut bootstrapMode = false
-    let mut verifyMode = false
-    let mut jitMode = false
-    let mut debugMode = false
-    let mut argIndex = 0
-
     // Answered before host routing, and that ordering is the point: the question
     // is what *this* executable emits against, and a forwarded answer would
     // describe the project host being asked about rather than the compiler
@@ -453,6 +402,7 @@ fn main() -> Int {
 
     if (process.args.count <= 1) {
         printUsage()
+        listUmsProjectCommands()
         return 1
     }
 
@@ -460,13 +410,20 @@ fn main() -> Int {
 
     if (first.equals("--help") or first.equals("-h")) {
         printUsage()
+        listUmsProjectCommands()
+        return 0
+    }
+    if (first.equals("--help-all")) {
+        printUsage()
+        diag_print_help(USAGE_DEVELOPER)
+        listUmsProjectCommands()
         return 0
     }
 
     // Reports the LLVM actually loaded rather than the one built against, so a
     // version mismatch is visible without having to provoke it.
     if (first.equals("--version") or first.equals("-V")) { return cliVersion() }
-    // Reports the hash of the runtime sources on disk. tools/package.ps1 records it
+    // Reports the hash of the runtime sources on disk. tools/package.py records it
     // beside the packaged libraries so later builds can detect drift, and it keeps
     // that hash defined in exactly one place -- here, in C -- rather than
     // reimplemented in the packaging script.
@@ -481,16 +438,15 @@ fn main() -> Int {
     // that comparison is the only real defence against a transfer function that
     // is subtly wrong and yields a silently wrong tier rather than a crash.
     if (first.equals("aif")) { return cliAif() }
-    // Compiler development. The command itself selects the build mode -- there is no
-    // flag and no environment variable -- so a single binary can build user programs
-    // against the installed runtime and still bootstrap against repository sources.
-    if (first.equals("bootstrap")) { return cliBootstrap() }
-    // `build`, `run` and `clean` are each two commands wearing one name: with a
-    // source they act on that file, and with none they act on the project
-    // `build.ums` describes. What tells them apart is whether the next argument
-    // names a source, and a leading `-` is a flag rather than a path -- which is
-    // what lets `prismio build --release` be the project build it reads as.
-    let projectMode = process.args.count <= 2 or process.args[2].startsWith("-")
+    // A compiler is built like any other program: from its project's build.ums,
+    // which names its C sources. The command that used to build one from a table
+    // compiled into every compiler is gone, and says where it went.
+    if (first.equals("bootstrap")) {
+        diag_error_code("P1034", "`prismio bootstrap` has been removed")
+        diag_note("build the compiler from its checkout with `prismio build`; its build.ums names the sources")
+        diag_note("with no compiler at all, tools/bootstrap.sh --seed (bootstrap.ps1 on Windows) builds one from the committed seed")
+        return 1
+    }
 
     if (first.equals("init")) {
         if (process.args.count > 3) {
@@ -501,10 +457,17 @@ fn main() -> Int {
         return initUmsProject("")
     }
 
+    // `build`, `run` and `clean` are each two commands wearing one name: with a
+    // source they act on that file, and with none they act on the project
+    // `build.ums` describes. A source is named by its `.psm`, so anything else --
+    // a flag, a target's name, nothing -- is the project command. That is what
+    // lets `prismio build --release` and `prismio run server` read as they do,
+    // and what turned `prismio build app` from "cannot read app" into a build of
+    // the target named app.
+    let projectMode = process.args.count <= 2 or process.args[2].endsWith(".psm") == false
+
     if (first.equals("test")) {
-        let profile = projectProfile(2)
-        if (profile.equals("")) { return 1 }
-        return testUmsProject(profile)
+        return testUmsProject(projectRequest(2, "test"))
     }
 
     if (first.equals("clean")) {
@@ -512,36 +475,30 @@ fn main() -> Int {
             diag_error_code("P1037", "`clean` acts on the project and takes no source file")
             return 1
         }
-        let profile = projectProfile(2)
-        if (profile.equals("")) { return 1 }
-        return cleanUmsProject(profile)
+        let request = projectRequest(2, "clean")
+        if (request.valid == false) { return 1 }
+        return cleanUmsProject(request.profile)
     }
 
-    if (first.equals("build") or first.equals("run")) {
-        if (projectMode) {
-            let profile = projectProfile(2)
-            if (profile.equals("")) { return 1 }
-            return buildUmsProject(profile, first.equals("run"))
-        }
+    if ((first.equals("build") or first.equals("run")) and projectMode) {
+        return buildUmsProject(projectRequest(2, first), first.equals("run"))
+    }
 
-        // `process.args[1]` again rather than naming `first` twice: assigning `first`
-        // would move it, but `first` is still needed below (CODE_STYLE, affine strings).
+    let options = compileOptions()
+    let mut path = ""
+    let mut argIndex = 0
+    let mut command = "build"
+    if (first.equals("build") or first.equals("run")) {
         command = process.args[1]
-        runAfterBuild = first.equals("run")
+        options.runAfterBuild = first.equals("run")
         argIndex = 3
         path = process.args[2]
-        if (path.equals("run") or path.equals("build")) {
-            diag_error_code("P1038", "use either `build` or `run`, not both")
-            return 1
-        }
     } else if (first.endsWith(".psm")) {
         // `prismio foo.psm` has always meant `prismio build foo.psm`, and still
         // does. Narrowed to a path-shaped argument, because the unnarrowed
         // version is what turned every mistyped command into a file that could
         // not be read: `prismio test` reported `cannot read test`, sending the
         // reader to the filesystem when the answer was the command name.
-        command = "build"
-        runAfterBuild = false
         path = first
         argIndex = 2
     } else {
@@ -551,20 +508,28 @@ fn main() -> Int {
         // `first` is moved into `path` by the branch above, so the name is read
         // again from argv rather than reused here.
         diag_error_code("P1039", "unknown command ".concat(diagQuote(process.args[1])))
-        diag_note("commands: init, build, run, test, clean, check, aif, dump-ast, bootstrap, runtime-hash")
+        diag_note("commands: ".concat(prismioBuiltinCommandList()))
         listUmsProjectCommands()
         return 1
     }
 
-    outputFile = compiler_default_exe_path(path)
-
-    let mut debugInfo = false
-    let mut optimized = false
+    let mut outputFile = compiler_default_exe_path(path)
 
     while (argIndex < process.args.count) {
         let mut arg = process.args[argIndex]
 
-        if (arg.equals("-o")) {
+        if (arg.equals("--")) {
+            // Everything after it belongs to the program `run` starts, verbatim --
+            // a `-o` there is the program's flag, not this command's.
+            if (command.equals("run") == false) {
+                diag_error_code("P1079", "`--` passes arguments to the program `run` starts, and `build` starts none")
+                return 1
+            }
+            for i in (argIndex + 1)..<process.args.count {
+                compiler_spawn_arg(process.args[i])
+            }
+            argIndex = process.args.count
+        } else if (arg.equals("-o")) {
             if (argIndex + 1 >= process.args.count) {
                 diag_error_code("P1040", "`-o` requires an output path")
                 return 1
@@ -580,7 +545,7 @@ fn main() -> Int {
                 return 1
             }
             ir_set_opt_level(level)
-            optimized = level > 0
+            options.optimized = level > 0
             argIndex = argIndex + 1
         } else if (arg.equals("--target")) {
             if (argIndex + 1 >= process.args.count) {
@@ -598,7 +563,7 @@ fn main() -> Int {
             // *this* process, so a named target could only ever be ignored.
             // Silently running host code for someone who asked for wasm32 is the
             // worst of the three available behaviours.
-            if (jitMode) {
+            if (options.jit) {
                 diag_error_code("P1044", "`--jit` and `--target` cannot be combined")
                 diag_note("the JIT runs the module in this process, so it can only ever target the host")
                 return 1
@@ -614,29 +579,22 @@ fn main() -> Int {
         } else if (arg.equals("--verify")) {
             // SPEC 7.3. Slower and heavier by design: the mode exists to be run
             // by CI, not by users.
-            verifyMode = true
+            options.verify = true
             argIndex = argIndex + 1
         } else if (arg.equals("--overflow-checks")) {
             // RFC 0560's model: check in debug, wrap in release. `Int` is signed
             // 32-bit and wraps -- decided by measurement, RESULTS-int-width.md --
             // and this is what makes the wrap a diagnostic rather than a silence.
-            //
-            // **Off by default and it can never be otherwise.** A checked
-            // operation is 5.4x-6.0x the plain one, not because the check is
-            // expensive but because a branch per operation defeats vectorization
-            // outright. Rust ties this to `debug-assertions`; Prismio has no
-            // profile concept yet, so it is an explicit flag and the default is
-            // the release answer.
-            //
-            // Set on the backend rather than threaded through codegen, because
-            // every arithmetic site reads it and none of them decides it.
-            ir_set_overflow_checks(1)
+            // A checked operation is 5.4x-6.0x the plain one, because a branch
+            // per operation defeats vectorization, so a single-file build leaves
+            // it off unless asked. A project's debug profile turns it on.
+            options.overflowChecks = true
             argIndex = argIndex + 1
         } else if (arg.equals("--jit")) {
             // `run` without the clang compile and the link. Off by default and
             // scoped to `run`, so codegen and every emission path are untouched:
             // this adds a way of executing the module, not a way of producing
-            // one. See ir_jit_run_main in runtime/llvm-api-backend.c.
+            // one. See ir_jit_run_file in runtime/llvm-api-backend.c.
             if (command.equals("run") == false) {
                 diag_error_code("P1046", "`--jit` is only meaningful with `prismio run`")
                 diag_note("`build` produces an object; there is nothing to run in this process")
@@ -647,7 +605,7 @@ fn main() -> Int {
                 diag_note("the JIT runs the module in this process, so it can only ever target the host")
                 return 1
             }
-            jitMode = true
+            options.jit = true
             argIndex = argIndex + 1
         } else if (arg.equals("-g")) {
             // Source-level debug info, and nothing else -- not an analysis level
@@ -656,7 +614,7 @@ fn main() -> Int {
             // neighbouring `--debug` is SPEC 7.1's zero-analysis level and the
             // collision of names is unfortunate and not worth renaming a
             // released flag over.
-            debugInfo = true
+            options.debugInfo = true
             argIndex = argIndex + 1
         } else if (arg.equals("--debug")) {
             // SPEC 7.1/7.2's zero-analysis level. `max` is deliberately not
@@ -664,7 +622,7 @@ fn main() -> Int {
             // `release` -- the bounds it raises are never reached and there is no
             // monomorphization cap to raise -- and a flag whose settings cannot
             // be told apart is a check that cannot fail.
-            debugMode = true
+            options.debug = true
             argIndex = argIndex + 1
         } else if (arg.startsWith("--force-layout=")) {
             // LAYOUT 8 selects the measured winner, so the flag has to reach the
@@ -679,21 +637,23 @@ fn main() -> Int {
                 diag_error_code("P1049", "use either `build` or `run`, not both")
                 return 1
             }
-
+            // `prismio foo.psm out` -- the shorthand's second word is the output.
             if (command.equals("build") and argIndex == 2) {
                 // Re-read rather than `outputFile = arg`: that moves `arg`, and
-                // move state is per name for the whole body, so the `else` below
-                // would report a use of a moved value on a path that never ran.
+                // move state is per name for the whole body, so the diagnostic
+                // below would report a use of a moved value on a path that never ran.
                 outputFile = process.args[argIndex]
                 argIndex = argIndex + 1
-            } else {
-                diag_error_code("P1050", "unknown argument ".concat(diagQuote(arg)))
-                printUsage()
-                return 1
+                continue
             }
+            diag_error_code("P1050", "unknown argument ".concat(diagQuote(arg)))
+            if (command.equals("run")) {
+                diag_note("arguments for the program go after `--`: `prismio run file.psm -- ".concat(arg, "`"))
+            }
+            pointAtUsage()
+            return 1
         }
     }
 
-    return compileSource(path, outputFile, runAfterBuild, bootstrapMode, verifyMode, debugMode,
-    debugInfo, optimized, jitMode)
+    return compileSource(path, outputFile, options)
 }

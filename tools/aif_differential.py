@@ -25,6 +25,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from executable import resolve_executable
+
 REPO = Path(__file__).resolve().parent.parent
 PROTOTYPE = REPO / "aif" / "prototype" / "aif.py"
 
@@ -199,6 +201,7 @@ def main():
     compiler = Path(args.compiler)
     if not compiler.is_absolute():
         compiler = REPO / compiler
+    compiler = resolve_executable(compiler)
     if not compiler.exists():
         print(f"no such compiler: {compiler}")
         return 1

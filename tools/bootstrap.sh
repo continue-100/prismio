@@ -57,7 +57,8 @@ if [ -z "$COMPILER" ] && [ -z "$SEED" ] && [ -z "$PRINT_KEY" ]; then
 fi
 
 
-# Must match prismio_toolchain_files[] in runtime/build_driver.c.
+# Must match the native sources of the prismio target in build.ums; checked by
+# tools/check_source_lists.py.
 RUNTIME_SOURCES="lang_runtime.c program_support.c build_driver.c ir_symbols.c aif_containers.c aif_support.c diagnostics.c llvm-api-backend.c"
 
 green() { printf '\033[32m%s\033[0m\n' "$1"; }

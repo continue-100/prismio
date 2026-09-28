@@ -1,0 +1,37 @@
+// `_` between two digits groups them and means nothing: `1_000_000` is a
+// million in every radix, in a fraction and in an exponent. neg_214 and neg_215
+// hold the two spellings the scanner refuses.
+
+import std.io
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    if (1_000_000 != 1000000) { return fail("thousands") }
+    if (1_00_000 != 100000) { return fail("lakh grouping") }
+    if (1__000 != 1000) { return fail("a run of separators") }
+    if (0xFF_FF != 65535) { return fail("hex") }
+    if (0b1010_0001 != 161) { return fail("binary") }
+    if (0o7_5_5 != 493) { return fail("octal") }
+    if (-2_147_483_648 != -2147483648) { return fail("Int.MIN") }
+
+    let mask: U64 = 0xFFFF_FFFF_FFFF_FFFF
+    if (mask != 18446744073709551615) { return fail("U64 max") }
+
+    if (3.141_592 != 3.141592) { return fail("fraction digits") }
+    if (1_000.5 != 1000.5) { return fail("integer part of a float") }
+    if (6.022e2_3 != 6.022e23) { return fail("exponent digits") }
+
+    let mut total = 0
+    for i in 0..<1_0 {
+        total = total + i
+    }
+    if (total != 45) { return fail("a range bound") }
+
+    println("ok")
+    return 0
+}

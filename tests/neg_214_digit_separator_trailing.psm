@@ -1,0 +1,9 @@
+// expect-error: a digit separator `_` goes between two digits
+// A trailing `_` separates nothing. Before separators existed this lexed as the
+// number followed by the name `_`, which no rule accepts either.
+import std.io
+
+fn main() -> Int {
+    let budget = 1_000_
+    return budget
+}

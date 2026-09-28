@@ -30,6 +30,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from executable import resolve_executable
+
 REPO = Path(__file__).resolve().parent.parent
 # The project host first, because it is the compiler the working tree just built.
 DEFAULT_CANDIDATES = (
@@ -54,7 +56,7 @@ def main() -> int:
         # Resolved, because the banner below reports the path relative to the
         # repository and a relative --compiler raised ValueError there rather
         # than running anything.
-        source = Path(args.compiler).resolve()
+        source = resolve_executable(args.compiler)
         if not source.is_file():
             print(f"run_suite: --compiler is not a file: {source}")
             return 1

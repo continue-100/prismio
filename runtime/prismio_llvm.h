@@ -45,6 +45,7 @@
 #ifdef PRISMIO_LLVM_REAL_HEADERS
 
 #include <llvm-c/Analysis.h>
+#include <llvm-c/BitReader.h>
 #include <llvm-c/BitWriter.h>
 #include <llvm-c/Core.h>
 #include <llvm-c/DebugInfo.h>

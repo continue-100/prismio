@@ -1,0 +1,287 @@
+// The map literal: `{ "Alice": 20, "Bob": 25 }`, and `{}`.
+//
+// A MAP_LITERAL_EXPR never survives sema. It is rewritten **in place** into an
+// expression every later pass already lowers, as `default` is:
+//
+//   { "a": 1, "b": 2 }       ->  mapFromEntries(2, ["a", "b"], [1, 2])
+//   { s.concat("!"): 1 }     ->  mapPut(mapWithCapacity(1), s.concat("!"), 1)
+//   {}                       ->  default -> mapNew<K, V>()
+//
+// A key is *plain* when the literal does not own it: a literal, a name, or any
+// key of a type that owns nothing. A literal of plain keys -- nearly all of them
+// -- is one `mapFromEntries` over two frame arrays: a producer, sized once, one
+// call deep however many entries it has. Any other key has to be a call
+// argument, because a frame array frees none of its elements and an owned
+// temporary such as `s.concat("!")` is released only as an argument; so a
+// literal holding one is built on `mapWithCapacity`, each such key by its own
+// `mapPut` and each run of plain keys between them by one `mapPutAll`, in source
+// order. That shape passes the map through, and a pass-through's result in a
+// struct field or a `return` is not released (KNOWN_ISSUES); the backend's call
+// nesting limit of 64 also bounds how many computed keys one literal can hold.
+//
+// **`K` and `V` are decided here, not inferred by the calls.** Under an
+// annotation they are its types, so `let m: Map<String, U8> = { "a": 1 }`
+// re-types the `1`; without one they are the first entry's, as a Vec literal's
+// element type is its first element's. Every entry is checked against them in
+// the literal's own words, and every call is given `<K, V>` explicitly.
+
+import ast.nodes
+import lexer.token
+import ast.types
+import ir.bridge
+import common.diagnostics
+import std.string
+
+// Rewrites `node`, a MAP_LITERAL_EXPR, for a context expecting `expected`
+// (Invalid when there is none). Answers false after reporting; the node is then
+// typed Invalid.
+internal fn semaMapLiteral(module: ASTNode, node: ASTNode, expected: TypeInfo) -> Bool {
+    if (monoHasTemplate(module, "mapPut", NodeKind.FUNCTION) == false) {
+        semaErrorAt(node, "a map literal needs `import std.map`")
+        nodeSetType(node, typeInvalid())
+        return false
+    }
+    let isMap = semaMapIsInstance(module, expected)
+
+    if (nodeIsNull(node.child1)) {
+        if (isMap == false) {
+            semaErrorAt(node, "`{}` is an empty map, and nothing says what it maps")
+            diag_note("write the type: `let m: Map<String, Int> = {}`, or just `let m: Map<String, Int>`")
+            nodeSetType(node, typeInvalid())
+            return false
+        }
+        semaMapReset(node, NodeKind.DEFAULT_EXPR)
+        return true
+    }
+
+    if (semaMapDuplicateKey(node)) {
+        nodeSetType(node, typeInvalid())
+        return false
+    }
+
+    // `K` and `V`: the annotation's, or the first entry's. Every entry is then
+    // checked against them here, in the literal's own words, and a mismatch
+    // stops before the call it becomes is checked -- which would say it again
+    // naming `mapPut$String$Int`, a function nobody wrote.
+    let mut keyT = typeInvalid()
+    let mut valueT = typeInvalid()
+    if (isMap) {
+        keyT = semaListElementType(semaFindStructFieldType(module, node, expected.name, "entryKeys"))
+        valueT = semaListElementType(semaFindStructFieldType(module, node, expected.name, "entryValues"))
+    } else {
+        keyT = semaExpr(module, ptr_to_node(node.child1))
+        valueT = semaExpr(module, ptr_to_node(node.child2))
+    }
+    if (typeIsValid(keyT) == false or typeIsValid(valueT) == false) {
+        nodeSetType(node, typeInvalid())
+        return false
+    }
+    let errorsBefore = diag_error_count()
+    semaMapCheckEntries(module, node.child1, keyT, "map literal key")
+    semaMapCheckEntries(module, node.child2, valueT, "map literal value")
+    if (diag_error_count() != errorsBefore) {
+        nodeSetType(node, typeInvalid())
+        return false
+    }
+
+    // Otherwise `mapWithCapacity<K, V>(n)`, then the entries around it in source order,
+    // first innermost: a run of keys the literal does not own as one
+    // `mapPutAll<K, V>(map, count, [keys], [values])`, and each owned key --
+    // `name.concat("!")` -- as its own `mapPut<K, V>(map, key, value)`, where it
+    // is an argument temporary and released after the call.
+    let keyOwnsNothing = typeOwnsNothing(keyT)
+    let total = semaMapEntryCount(node.child1)
+
+    // Every key plain: one `mapFromEntries<K, V>(n, [keys], [values])`, a
+    // producer, so the literal's map is owned wherever it lands -- a struct
+    // field or a `return` included, where a pass-through's is not.
+    if (keyOwnsNothing or semaMapAllPlain(node.child1)) {
+        let keys = createNode(NodeKind.ARRAY_LITERAL_EXPR)
+        nodeSpanFrom(keys, ptr_to_node(node.child1))
+        keys.child1 = node.child1
+        nodeSetType(keys, typeArraySized(keyT, total))
+        let values = createNode(NodeKind.ARRAY_LITERAL_EXPR)
+        nodeSpanFrom(values, ptr_to_node(node.child2))
+        values.child1 = node.child2
+        nodeSetType(values, typeArraySized(valueT, total))
+        let count = semaMapCount(node, total)
+        count.next = node_to_ptr(keys)
+        keys.next = node_to_ptr(values)
+        let fromEntries = semaMapCall(node, "mapFromEntries", keyT, valueT)
+        fromEntries.child2 = node_to_ptr(count)
+        semaMapReset(node, NodeKind.CALL_EXPR)
+        node.child1 = fromEntries.child1
+        node.child2 = fromEntries.child2
+        node.child3 = fromEntries.child3
+        return true
+    }
+
+    let mut built = semaMapCall(node, "mapWithCapacity", keyT, valueT)
+    built.child2 = node_to_ptr(semaMapCount(node, total))
+    let mut keyPtr = node.child1
+    let mut valuePtr = node.child2
+    while (nodeExists(keyPtr)) {
+        let key = ptr_to_node(keyPtr)
+        let value = ptr_to_node(valuePtr)
+        if (keyOwnsNothing or semaMapKeyIsPlain(key)) {
+            // The longest run of plain keys starting here.
+            let runKeys = keyPtr
+            let runValues = valuePtr
+            let mut lastKey = ptr_to_node(runKeys)
+            let mut lastValue = ptr_to_node(runValues)
+            let mut run = 1
+            while (nodeExists(lastKey.next)
+                    and (keyOwnsNothing or semaMapKeyIsPlain(ptr_to_node(lastKey.next)))) {
+                lastKey = ptr_to_node(lastKey.next)
+                lastValue = ptr_to_node(lastValue.next)
+                run = run + 1
+            }
+            keyPtr = lastKey.next
+            valuePtr = lastValue.next
+            lastKey.next = ptr_null()
+            lastValue.next = ptr_null()
+
+            let keys = createNode(NodeKind.ARRAY_LITERAL_EXPR)
+            nodeSpanFrom(keys, key)
+            keys.child1 = runKeys
+            nodeSetType(keys, typeArraySized(keyT, run))
+            let values = createNode(NodeKind.ARRAY_LITERAL_EXPR)
+            nodeSpanFrom(values, value)
+            values.child1 = runValues
+            nodeSetType(values, typeArraySized(valueT, run))
+
+            let putAll = semaMapCall(key, "mapPutAll", keyT, valueT)
+            let count = semaMapCount(key, run)
+            built.next = node_to_ptr(count)
+            count.next = node_to_ptr(keys)
+            keys.next = node_to_ptr(values)
+            putAll.child2 = node_to_ptr(built)
+            built = putAll
+        } else {
+            keyPtr = key.next
+            valuePtr = value.next
+            let put = semaMapCall(key, "mapPut", keyT, valueT)
+            built.next = node_to_ptr(key)
+            key.next = node_to_ptr(value)
+            value.next = ptr_null()
+            put.child2 = node_to_ptr(built)
+            built = put
+        }
+    }
+
+    // The outermost call becomes the literal's own node, so whatever holds the
+    // node -- a `let`, an argument chain -- holds the map.
+    semaMapReset(node, NodeKind.CALL_EXPR)
+    node.child1 = built.child1
+    node.child2 = built.child2
+    node.child3 = built.child3
+    return true
+}
+
+private fn semaMapCheckEntries(module: ASTNode, chain: Ptr, t: TypeInfo, context: String) {
+    let mut p = chain
+    while (nodeExists(p)) {
+        let entry = ptr_to_node(p)
+        semaCheckValue(module, entry, t, context)
+        p = entry.next
+    }
+}
+
+// A key the map literal does not own: a literal (static, or copied in by the
+// callee) or a name (released by its own binding). Anything else of an owned
+// type may be a temporary, which only a call argument releases.
+private fn semaMapKeyIsPlain(key: ASTNode) -> Bool {
+    return key.kind == NodeKind.LITERAL_EXPR or key.kind == NodeKind.IDENTIFIER_EXPR
+}
+
+private fn semaMapAllPlain(chain: Ptr) -> Bool {
+    let mut p = chain
+    while (nodeExists(p)) {
+        let key = ptr_to_node(p)
+        if (semaMapKeyIsPlain(key) == false) { return false }
+        p = key.next
+    }
+    return true
+}
+
+private fn semaMapCount(at: ASTNode, count: Int) -> ASTNode {
+    let n = createNode(NodeKind.LITERAL_EXPR)
+    nodeSpanFrom(n, at)
+    n.i1 = TokenType.NUMBER_LITERAL
+    n.s1 = count.toString()
+    return n
+}
+
+// `name<K, V>()`, spanned at `at`, with its arguments still to be attached.
+private fn semaMapCall(at: ASTNode, name: String, keyT: TypeInfo, valueT: TypeInfo) -> ASTNode {
+    let call = createNode(NodeKind.CALL_EXPR)
+    nodeSpanFrom(call, at)
+    let callee = createNode(NodeKind.IDENTIFIER_EXPR)
+    callee.s1 = name.clone()
+    nodeSpanFrom(callee, at)
+    call.child1 = node_to_ptr(callee)
+    let written = createNode(NodeKind.TYPE_ANNOTATION)
+    written.s1 = name.clone()
+    written.i2 = 1
+    nodeSpanFrom(written, at)
+    let args = nodeList()
+    nodeListPush(args, monoAnnotationFromType(keyT))
+    nodeListPush(args, monoAnnotationFromType(valueT))
+    written.child1 = args.head
+    call.child3 = node_to_ptr(written)
+    return call
+}
+
+private fn semaMapEntryCount(chain: Ptr) -> Int {
+    let mut count = 0
+    let mut p = chain
+    while (nodeExists(p)) {
+        count = count + 1
+        p = ptr_to_node(p).next
+    }
+    return count
+}
+
+// Whether `t` is an instantiation of std.map's `Map` -- `Map$String$Int`.
+private fn semaMapIsInstance(module: ASTNode, t: TypeInfo) -> Bool {
+    if (typeIsValid(t) == false or t.kind != TypeKind.STRUCT) { return false }
+    return t.name.startsWith("Map".concat(monoSeparator()))
+}
+
+// Two keys written as the same literal. The map would keep the second and drop
+// the first without a word, which is always a mistake in a literal: Python
+// allows it and it is a classic bug there. A key that is not a literal is left
+// to run time, where the later entry wins, as `set` does.
+private fn semaMapDuplicateKey(node: ASTNode) -> Bool {
+    let mut outer = node.child1
+    while (nodeExists(outer)) {
+        let first = ptr_to_node(outer)
+        if (first.kind == NodeKind.LITERAL_EXPR) {
+            let mut inner = first.next
+            while (nodeExists(inner)) {
+                let second = ptr_to_node(inner)
+                if (second.kind == NodeKind.LITERAL_EXPR and second.i1 == first.i1
+                        and second.s1.equals(first.s1)) {
+                    semaErrorAt(second, "this key is already in the map literal")
+                    diag_note("a literal keeps one value per key; remove one of the two entries")
+                    return true
+                }
+                inner = second.next
+            }
+        }
+        outer = first.next
+    }
+    return false
+}
+
+private fn semaMapReset(target: ASTNode, kind: NodeKind) {
+    target.kind = kind
+    target.s1 = ""
+    target.s2 = ""
+    target.i1 = 0
+    target.i2 = 0
+    target.i3 = 0
+    target.child1 = ptr_null()
+    target.child2 = ptr_null()
+    target.child3 = ptr_null()
+}

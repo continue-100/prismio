@@ -1,0 +1,60 @@
+// `cold fn`: a function that rarely runs, never inlined and laid out as the
+// unlikely branch (src/parse/decl.psm). The marker moves code, never behaviour,
+// so this checks that every placement parses and computes the same thing it
+// would unmarked -- run_cold_function_test reads the IR for the attributes.
+//
+// `cold` is contextual: a local, a parameter and a function may all be named
+// `cold`, and none of them is a marker because none is directly before `fn`.
+
+import std.io
+
+cold fn failWith(code: Int) -> Int {
+    println("cold path taken")
+    return code
+}
+
+private cold fn sumSquares(n: Int) -> Int {
+    let mut total = 0
+    for i in 0..<n { total = total + i * i }
+    return total
+}
+
+// A generic cold function: the marker has to survive monomorphisation.
+cold fn lengthOr<T>(values: Vec<T>, fallback: Int) -> Int {
+    if (values.length == 0) { return fallback }
+    return values.length
+}
+
+fn cold(cold: Int) -> Int {
+    return cold + 1
+}
+
+struct Counter { value: Int }
+
+impl Counter {
+    cold fn reset(self) -> Int { return 0 }
+    fn bumped(self) -> Int { return self.value + 1 }
+}
+
+fn clamp(value: Int) -> Int {
+    if (value > 1000) { return failWith(1000) }
+    return value
+}
+
+fn main() -> Int {
+    let cold = 4
+    let counter = Counter { value: cold }
+    let mut total = 0
+    for i in 0..<10 {
+        total = total + clamp(i * 3)
+    }
+    if (total != 135) { return 1 }
+    if (sumSquares(cold) != 14) { return 2 }
+    let empty: Vec<Int> = []
+    if (lengthOr(empty, 7) != 7) { return 3 }
+    if (counter.reset() != 0 or counter.bumped() != 5) { return 4 }
+    if (cold(cold) != 5) { return 5 }
+    if (clamp(5000) != 1000) { return 6 }
+    println("ok")
+    return 0
+}

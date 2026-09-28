@@ -42,6 +42,56 @@ sensitivity remains: a program that stores `concat` results in a container
 field of its own can change what is released elsewhere. The fix is
 context-sensitive sites for library producers (docs/MEMORY_PLAN.md §2.3).
 
+**Two `Map<String, _>` instantiations leak an owned key.** The same cause
+through a different door, found 2026-09-28 while building map literals:
+
+    let a: Map<String, Bool> = mapNew<String, Bool>()
+    a.set("k", true)
+    let name = "dyn".concat("amic-key-long-enough")
+    let b: Map<String, Int> = mapNew<String, Int>()
+    b.set(name, 7)                     // 18 allocated, 17 released, 1 leaked
+
+Every key is copied in through `strClone`, one allocation site, and the two
+instantiations' key columns are two containers. A-CONTAIN counts containers per
+*site*, so the site reads as one value under two owners: Shared, T3, and a T3
+element gets no release (`aif_elem_owner_at_node` answers NONE for both
+columns). `--why=strClone__String#1` says "A rose to Shared <- A-CONTAIN". A key
+of twelve bytes or fewer is inline and allocates nothing, so short keys hide it.
+
+Relaxing A-CONTAIN is not the fix -- it is what stops `store(l1, x); store(l2,
+x)` freeing `x` twice -- and neither is copying through a second helper, which
+moves the shared site rather than splitting it. The fix is the one above:
+per-call-site contexts for a library producer, so each instantiation's copy is
+its own site. **A struct built by two constructors** is the same shape inside one
+instantiation: `mapWithCapacity` first allocated a Map's columns itself, beside
+`mapNew`, and every String key then leaked whenever both were linked. It is
+grown from `mapNew` now (std/map.psm), which keeps one construction site.
+
+**A frame array frees none of its elements.** `let arr = [a.concat("!"),
+a.concat("?")]` leaks both strings (3 allocated, 1 released, on the host at
+`dfb374a`), and `[a.concat("!"), "lit"]` leaks the one. Nothing tears a `[T]`
+literal's owned elements down at scope exit, and releasing all of them would
+be wrong the other way: `[name, "lit"]` holds a binding that is freed on its
+own and a literal that was never allocated. A release has to know, per slot,
+whether the element was an owned temporary. Map literals were first lowered
+through two of these arrays and leaked every computed String key, which is why
+a literal holding one is built by a `mapPut` per such key (src/sema/maps.psm).
+
+**A pass-through result in a struct field is never released, and one returned
+leaks an owned argument temporary.** Both on the host at `dfb374a`, with no new
+syntax:
+
+    fn through(m: Map<String, Int>) -> Map<String, Int> { m.set("...", 4); return m }
+    let inv = Inventory { counts: through(mapNew<String, Int>()) }   // 9 allocated, 1 released
+    fn make(p: String) -> Map<String, Int> {
+        return put(mapNew<String, Int>(), p.concat("-long-suffix"), 1)  // 1 leaked
+    }
+
+Bound to a `let`, the same call is clean. A map literal whose keys are all plain
+(literals, names, a type that owns nothing) is a producer, `mapFromEntries`, and
+is clean in both places; one holding a computed owned key such as `{
+p.concat("!"): 1 }` is built through `mapPut`, and inherits both leaks there.
+
 **Fixed 2026-09-25: three shapes released memory that was not live.** Each was
 a crash (`free(): invalid pointer`) outside `--verify`, and each reproduced on
 `2ae70c4`. See `../aif/evidence/RESULTS-ownership-shapes.md`.
@@ -299,14 +349,22 @@ is 0 either side — but a real regression in allocation hygiene. The recorded f
 moves the ledger by zero; the real shape is about eight lines, and the clause to
 widen can double-free, so it needs the owners enumerated first.
 
-**Replacing a boxed element leaks the box it displaces.** For a struct that owns
-something -- a `String` field -- each slot of a `Vec` holds a pointer, and boxed
-`list_set` stores the new one without releasing the old, as its own comment says
-it will. `v[i] = x`, `v.set(i, x)` and `list_set` are one store:
-`struct Named { label: String }` reads `5 allocated, 4 released, 1 leaked,
-0 violation(s)` for a single `owners.set(0, …)`, on the compiler before the
-index store (2026-09-18) and after it. A counted element displaced from a Vec of
-a recursive enum leaks the same way.
+**Replacing an element in a Vec that owns its elements -- fixed 2026-09-27.**
+`list_set`, `list_set_str` and their slow paths now park the displaced element
+(`list_discard_slot`, as a removal does) and release it with the list, so a view
+such as `let s = v[0]` taken before the store still reads live memory.
+`tests/vec_element_replace_probe.psm` reads 13 allocated, 13 released (5 leaked
+before). A `Vec<String>` that only literals written at a push reach was never
+told it owned them either -- a literal copy is not a site -- and now is
+(`aif_elem_literal_copies_only`). Across the 213 `test_*` programs under
+`--verify` the leak total went 215 -> 210 with 0 violations either side.
+Still leaking, deliberately: a *counted* element displaced under CYCLE (the
+count, not the list, decides), and every list the analysis declines to give an
+owner -- a literal bound to a name before the push (`let s = "…"; v.push(s)`,
+which may still be `.rodata`), or an element read stored back into a list
+(`v[0] = v[0]`, a second holder). Those keep their elements for the reason the
+decline gives; making them owned needs the analysis to prove the copy, not the
+runtime to guess it.
 
 **A Vec holding a counted and an uncounted element of one type leaks the
 uncounted one.** Teardown releases every element one way. `list_push(ys, mk())`
@@ -465,6 +523,22 @@ path inlines without exposing allocator statics. See
 `aif/evidence/bench/scalar_list_*.psm` programs.
 
 ## Codegen
+
+**A new fast/slow split needs `cold` or `PRISMIO_NOINLINE`, or its fast half
+stops inlining.** Since 2026-09-28 a closed executable internalises every
+function but `main`, and LLVM inlines an internal function's only call whatever
+its size -- so a slow half kept apart by size alone is folded back into its fast
+half, which then grows too large to inline into the caller's loop. This cost
+key_value_update 1.28x (`mapInsert`) and quicksort 1.13x (`list_set`) until they
+were marked. Nothing diagnoses a missing marker; the benchmark suite does.
+`aif/evidence/RESULTS-binary-size-and-compile-time.md`.
+
+**Three workloads read slower under internal linkage and are not fixed.**
+indirect_calls 1.08x of the external-linkage build (IPSCCP proves an argument's
+range, LLVM narrows `% 1009` to 16 bits, and AArch64's 16-bit constant division is
+the longer sequence), graph_bfs 1.06x (branch arrangement), and flat_bitset
+1.03-1.10x run to run (its fallback never executes; likely layout). The suite as
+a whole is 0.978x.
 
 **A list literal is not accepted as a call argument.** `[a, b, c]` becomes
 `listOf(a, b, c)` where a `List<T>` is written -- an annotation, a struct field,
@@ -636,6 +710,16 @@ cold build, `--target`); this one needs the outer process not to be the compiler
 at all.
 
 ## Toolchain layout
+
+**The compiler binary is 125 MB, and about 37 MB of it is LLVM backends
+Prismio does not document.** `tools/setup_llvm.py` links `all-targets`: AMDGPU
+alone is ~21 MB by symbol name, then Hexagon, PowerPC, VE, NVPTX, SPIR-V, MIPS,
+SystemZ, XCore, LoongArch, Sparc, AVR, BPF, Lanai and MSP430. The documented
+`--target`s need AArch64, X86 and WebAssembly (RISC-V appears in
+`default_target_cpu`). Limiting the set is a product decision -- it removes
+`--target` triples -- and needs `ensure_all_targets` to initialise only what is
+linked. (Exporting only the native objects' symbols instead of `-rdynamic` took it
+from 135.8 MB on 2026-09-28.)
 
 **LLVM is pinned in the checkout and linked into the compiler; a package needs
 none.** Fixed 2026-09-18. Before, every compiler binary loaded Homebrew's
@@ -875,11 +959,16 @@ function's own `T` may still be an array -- `id<T>(x: T) -> T` hands the view
 back to the frame that owns it -- which test_163 relies on.
 
 **A resolved path dependency is not on the import search.** Vendor source below
-the entry root. Deliberately not part of 0.1.
+the entry root. Deliberately not part of 0.1; a build that declares a dependency
+says so (`P1081`).
 
 **`wrapping_*` / `checked_*` / `saturating_*` intent forms** do not exist.
-`--overflow-checks` is the debug-mode check; the intent forms are a separate
-feature.
+`--overflow-checks` is the debug-mode check, and the debug profile turns it on;
+the intent forms are a separate feature. Until they exist, the check never
+applies inside the standard library (`diag_file_module(...).startsWith("std.")`
+in src/ir/expr.psm), which relies on wrapping -- `keyMixWide` multiplies a U64
+on purpose, and a checked build of any program using `std.map` from a checkout
+trapped there. A user program that wraps on purpose has no way to say so.
 
 **`Char` is a byte, not a Unicode scalar**, and that is a decision rather than a
 gap: it is what makes a scan one comparison per byte. What was a gap was having

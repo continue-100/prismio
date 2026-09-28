@@ -55,13 +55,22 @@ public fn umsBuildPlanCreate(project: UmsProjectModel,
                       input.line, input.col, input.len))
             linkIndex = linkIndex + 1
         }
+        let mut plannedNatives: Vec<UmsNativeInput> = []
+        for nativeIndex in 0..<target.natives.length {
+            let input = target.natives[nativeIndex]
+            plannedNatives.push(umsNativeInput(input.kind, input.value,
+                      input.line, input.col, input.len))
+        }
         let planned = UmsTarget {
             kind: target.kind,
             name: target.name.clone(),
             entry: target.entry.clone(),
             sourcePath: join_path(project.root, target.entry),
             outputPath: umsPlannedOutput(target.kind, profileRoot, target.name),
+            runtime: target.runtime.clone(),
+            exportDynamic: target.exportDynamic,
             links: plannedLinks,
+            natives: plannedNatives,
             line: target.line,
             col: target.col,
             len: target.len

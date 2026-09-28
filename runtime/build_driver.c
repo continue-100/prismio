@@ -2,8 +2,8 @@
 //
 // Everything here exists to *produce* an executable: locating the toolchain
 // sources, naming temporary files, and driving llc and clang. A compiled Prismio
-// program never calls any of it, so this translation unit belongs in
-// backend.lib / backend.a alongside llvm-api-backend.c, and never in runtime bitcode.
+// program never calls any of it, so this translation unit is linked into the
+// compiler alongside llvm-api-backend.c, and never into runtime bitcode.
 //
 // It does depend on the runtime half (prismio_runtime.h) for plain file and path
 // helpers. That direction is deliberate and one-way: backend -> runtime.
@@ -17,8 +17,9 @@
 // line first -- a failed tool's log, or the program `run` hands the terminal to.
 void diag_progress(const char* phase);
 void diag_progress_clear(void);
-#ifndef _WIN32
 #include <errno.h>
+#ifndef _WIN32
+#include <ftw.h>
 #include <sys/wait.h>
 #endif
 
@@ -28,15 +29,16 @@ void diag_progress_clear(void);
 extern int prismio_argc;
 extern char** prismio_argv;
 
-// The C sources used by explicit compiler bootstrap, plus the headers they need.
-// Normal user builds consume installed runtime bitcode and never use this table.
+// The runtime's sources: what an installed runtime's bitcode is built from, and
+// so what `runtime-hash` hashes to tell whether lib/ matches a checkout.
+//
+// Only the runtime. The compiler's backend used to be listed here too, so that a
+// "bootstrap" build mode could compile a compiler from a table every shipped
+// compiler carried. A compiler is now an ordinary UMS target that names its own
+// C sources (the checkout's build.ums, `native { ... }`), and nothing in this
+// binary knows which files make one.
 typedef struct {
     const char* name;
-    int compiled;  // 1 = compile to an object and link it; 0 = header, unpack only
-    const char* role;
-    // 1 = part of the installed runtime bitcode, needed by compiled programs.
-    // 0 = part of backend.lib, needed only when building the compiler itself.
-    int runtime;
 } PrismioToolchainFile;
 
 // From llvm-api-backend.c: the target the frontend selected. Read rather than
@@ -59,21 +61,20 @@ int ir_link_library_modules(const char* dest_ir,
 // backend was built without the LLVM headers and cannot (the caller then asks
 // clang). See the note above it in llvm-api-backend.c.
 int ir_emit_object(const char* ir_path, const char* obj_path, const char* triple,
-                   int opt_level);
+                   int opt_level, int internalize, int* extra_objects);
+// Keep the next merged module in memory for ir_emit_object instead of writing
+// it (0 turns that off), and dispose of one nothing took.
+void ir_hold_merged_module(int on);
+void ir_release_held_module(void);
+// Where ir_emit_object put partition `partition` of a parallel emission.
+void ir_partition_object_path(const char* obj_path, int partition, char* out, size_t size);
 const char* ir_host_macos_version(void);
 
 static const PrismioToolchainFile prismio_toolchain_files[] = {
-    { "prismio_platform.h", 0, NULL,              1 },
-    { "prismio_runtime.h",  0, NULL,              1 },
-    { "aif_containers.h",   0, NULL,              0 },
-    { "lang_runtime.c",     1, "lang_runtime",    1 },
-    { "program_support.c",  1, "program_support", 1 },
-    { "build_driver.c",     1, "build_driver",    0 },
-    { "ir_symbols.c",       1, "ir_symbols",      0 },
-    { "aif_containers.c",   1, "aif_containers",  0 },
-    { "aif_support.c",      1, "aif_support",     0 },
-    { "diagnostics.c",      1, "diagnostics",     0 },
-    { "llvm-api-backend.c", 1, "backend",         0 },
+    { "prismio_platform.h" },
+    { "prismio_runtime.h" },
+    { "lang_runtime.c" },
+    { "program_support.c" },
 };
 
 #define PRISMIO_TOOLCHAIN_FILE_COUNT \
@@ -254,16 +255,34 @@ static int accept_if_exists(char* out, int out_size, const char* candidate) {
     return 1;
 }
 
-// Looks for <subdir>/<filename> in a Prismio checkout, first relative to the
-// compiler executable (so an installed toolchain works from any working
-// directory) and then relative to the current directory (so an in-repo build
-// works). `subdir` is "runtime" for every bootstrap path and "std" for the
-// project-local toolchain build, which needs the standard library sources from
-// the same checkout and by the same search -- a second search order would be a
-// second answer to "which checkout is this".
+// The checkout a project build names, when it has one: the root of the
+// `build.ums` whose target links `component("prismio.backend")`. Set by the UMS
+// driver before it builds that target, so the sources come from the project
+// being built -- not from whatever `runtime/` the working directory, or one or
+// two directories above it, happens to hold.
+static char g_toolchain_root[1024] = "";
+
+void compiler_set_toolchain_root(const char* root) {
+    snprintf(g_toolchain_root, sizeof(g_toolchain_root), "%s", root ? root : "");
+}
+
+// Looks for <subdir>/<filename> in a Prismio checkout: first under the project
+// root a UMS build named, then relative to the compiler executable (so an
+// installed toolchain works from any working directory) and then relative to the
+// current directory (so a single-file in-repo build works). `subdir` is
+// "runtime" for every bootstrap path and "std" for the project-local toolchain
+// build, which needs the standard library sources from the same checkout and by
+// the same search -- a second search order would be a second answer to "which
+// checkout is this".
 static int find_toolchain_entry(char* out, int out_size, const char* subdir,
                                 const char* filename) {
     char candidate[1024];
+
+    if (g_toolchain_root[0]) {
+        snprintf(candidate, sizeof(candidate), "%s%c%s%c%s", g_toolchain_root,
+                 PRISMIO_PATH_SEP, subdir, PRISMIO_PATH_SEP, filename);
+        if (accept_if_exists(out, out_size, candidate)) return 1;
+    }
 
     char* compiler_dir = prismio_executable_directory();
     if (compiler_dir) {
@@ -811,8 +830,6 @@ char* compiler_runtime_source_hash(void) {
     int hashed = 0;
 
     for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-        if (!prismio_toolchain_files[i].runtime) continue;
-
         if (!find_toolchain_source(path, sizeof(path), prismio_toolchain_files[i].name)) {
             char* empty = (char*)malloc(1);
             empty[0] = '\0';
@@ -1059,6 +1076,65 @@ static int target_is_mach_o(void) {
 static char* g_native_link_args = NULL;
 static char* g_native_link_args_msvc = NULL;
 static int g_native_link_has_framework = 0;
+// A response file names arguments in a clang driver's spelling, which link.exe
+// does not read, so a target with one links through the driver on Windows too.
+static int g_native_link_needs_driver = 0;
+// An object, archive or response file the target links. Code in it may call the
+// program's functions by name, which is what keeps them external
+// (program_is_closed).
+static int g_native_link_has_code = 0;
+
+// Native code a target brings: `native { ... }`, `runtime` and `exportDynamic`.
+//
+// A target may compile C sources of its own and link them into the program -- a
+// codec, a binding to a system library, or the case that made this general: the
+// Prismio compiler, which is an ordinary Prismio program whose runtime and
+// backend are written in C. Nothing here knows which program it is building. The
+// manifest names the sources, include directories, defines, flags and response
+// files; the driver compiles each source with the toolchain's clang and links
+// the objects in declaration order. See compile_native_sources.
+static char** g_native_sources = NULL;
+static int g_native_source_count = 0;
+static int g_native_source_cap = 0;
+// Every compile flag the target declared, quoted, in declaration order.
+static char* g_native_flags = NULL;
+// The response files among those flags, so the object cache can key on what
+// they say rather than only on their names.
+static char** g_native_flag_files = NULL;
+static int g_native_flag_file_count = 0;
+static int g_native_flag_file_cap = 0;
+// Whether the installed runtime bitcode is merged into the program. A target
+// that declares `runtime = "none"` provides every runtime symbol itself.
+static int g_installed_runtime = 1;
+// Whether the executable's own symbols are visible to code it loads at run time.
+static int g_export_dynamic = 0;
+// For the one link in progress: the compiled native objects and the export
+// flags, quoted, set by compiler_build_executable around link_program_object.
+static const char* g_link_extra = "";
+
+static void free_string_list(char*** items, int* count, int* cap) {
+    for (int i = 0; i < *count; i++) free((*items)[i]);
+    free(*items);
+    *items = NULL;
+    *count = 0;
+    *cap = 0;
+}
+
+static int push_string(char*** items, int* count, int* cap, const char* value) {
+    if (*count == *cap) {
+        int grown = *cap ? *cap * 2 : 8;
+        char** bigger = (char**)realloc(*items, (size_t)grown * sizeof(char*));
+        if (!bigger) return 1;
+        *items = bigger;
+        *cap = grown;
+    }
+    size_t n = strlen(value ? value : "") + 1;
+    char* copy = (char*)malloc(n);
+    if (!copy) return 1;
+    memcpy(copy, value ? value : "", n);
+    (*items)[(*count)++] = copy;
+    return 0;
+}
 
 void compiler_link_reset(void) {
     free(g_native_link_args);
@@ -1066,6 +1142,14 @@ void compiler_link_reset(void) {
     free(g_native_link_args_msvc);
     g_native_link_args_msvc = NULL;
     g_native_link_has_framework = 0;
+    g_native_link_needs_driver = 0;
+    g_native_link_has_code = 0;
+    free_string_list(&g_native_sources, &g_native_source_count, &g_native_source_cap);
+    free(g_native_flags);
+    g_native_flags = NULL;
+    free_string_list(&g_native_flag_files, &g_native_flag_file_count, &g_native_flag_file_cap);
+    g_installed_runtime = 1;
+    g_export_dynamic = 0;
 }
 
 static int append_quoted_argument(char** args, const char* argument) {
@@ -1126,6 +1210,7 @@ int compiler_link_search(const char* path) {
 }
 
 int compiler_link_file(const char* path) {
+    g_native_link_has_code = 1;
     return compiler_link_append_argument(path);
 }
 
@@ -1134,6 +1219,38 @@ int compiler_link_framework(const char* name) {
     if (compiler_link_append_argument("-framework") != 0) return 1;
     return compiler_link_append_argument(name);
 }
+
+int compiler_link_response_file(const char* path) {
+    g_native_link_needs_driver = 1;
+    g_native_link_has_code = 1;
+    return append_joined_argument(&g_native_link_args, "@", path, "")
+        || append_joined_argument(&g_native_link_args_msvc, "@", path, "");
+}
+
+int compiler_native_source(const char* path) {
+    return push_string(&g_native_sources, &g_native_source_count, &g_native_source_cap, path);
+}
+
+int compiler_native_include(const char* directory) {
+    return append_joined_argument(&g_native_flags, "-I", directory, "");
+}
+
+int compiler_native_define(const char* definition) {
+    return append_joined_argument(&g_native_flags, "-D", definition, "");
+}
+
+int compiler_native_flag(const char* flag) {
+    return append_quoted_argument(&g_native_flags, flag);
+}
+
+int compiler_native_response_file(const char* path) {
+    return push_string(&g_native_flag_files, &g_native_flag_file_count,
+                       &g_native_flag_file_cap, path)
+        || append_joined_argument(&g_native_flags, "@", path, "");
+}
+
+void compiler_set_installed_runtime(int on) { g_installed_runtime = on ? 1 : 0; }
+void compiler_set_export_dynamic(int on) { g_export_dynamic = on ? 1 : 0; }
 
 static int compiler_link_inputs_supported(void) {
     if (g_native_link_has_framework && !target_is_mach_o()) {
@@ -1158,9 +1275,6 @@ static int compiler_link_inputs_supported(void) {
 // *behaviour*, this one only to guarantee its *vintage*. Nothing is defined and
 // the generated code is unaffected.
 //
-// build_from_toolchain_sources falls back to the sources embedded in the
-// compiler binary when the repository is not on disk, so this costs an installed
-// toolchain nothing but compile time.
 static int g_workload_mode = 0;
 
 void compiler_set_workload_mode(int on) { g_workload_mode = on ? 1 : 0; }
@@ -1503,7 +1617,19 @@ static int codegen_uses_clang(void) {
     return v && strcmp(v, "clang") == 0;
 }
 
-static int compile_ir_to_object(const char* ir_file, const char* program_obj) {
+// Whether every caller of the program's functions is in the merged module, so
+// all but `main` can be internal (internalize_executable, llvm-api-backend.c).
+// C the target compiles or links may call a Prismio function by its symbol, and
+// exportDynamic exists so that code loaded at run time can.
+static int program_is_closed(void) {
+    return g_native_source_count == 0 && !g_native_link_has_code && !g_export_dynamic;
+}
+
+// `*extra_objects` is how many objects beyond `program_obj` the in-process
+// emission wrote, one per extra codegen partition (ir_partition_object_path).
+static int compile_ir_to_object(const char* ir_file, const char* program_obj,
+                                int* extra_objects) {
+    *extra_objects = 0;
     // In process first. The clang command below is what this reproduces, flag
     // for flag, and stays as the fallback for a backend built without headers.
     diag_progress(g_debug_info ? "generating code" : "optimizing");
@@ -1511,7 +1637,8 @@ static int compile_ir_to_object(const char* ir_file, const char* program_obj) {
         double t0 = build_trace_ms();
         int emitted = ir_emit_object(ir_file, program_obj,
                                      ir_target_is_explicit() ? ir_target_triple() : NULL,
-                                     g_debug_info ? 0 : 3);
+                                     g_debug_info ? 0 : 3, program_is_closed(),
+                                     extra_objects);
         build_trace_stage("program -O3 (whole program, in process)", t0);
         if (emitted >= 0) return emitted;
     }
@@ -1809,7 +1936,8 @@ static int link_program_msvc(const char* program_obj, const char* exe_file) {
     append_joined_argument(&out_arg, "-out:", exe_file, "");
     const char* native = g_native_link_args_msvc ? g_native_link_args_msvc : "";
     size_t len = strlen(q_link) + strlen(q_obj) + (out_arg ? strlen(out_arg) : 0)
-                 + (libpaths ? strlen(libpaths) : 0) + strlen(native) + 128;
+                 + (libpaths ? strlen(libpaths) : 0) + strlen(g_link_extra)
+                 + strlen(native) + 128;
     char* command = (char*)malloc(len);
     int result = 1;
     if (command && out_arg) {
@@ -1819,8 +1947,8 @@ static int link_program_msvc(const char* program_obj, const char* exe_file) {
         // unchanged `prismio build` rebuilt all of them -- ld64 and lld on the other
         // platforms were already deterministic, which is why only Windows missed.
         snprintf(command, len,
-                 "%s%s -defaultlib:libcmt -defaultlib:oldnames -nologo -Brepro%s %s%s",
-                 q_link, out_arg, libpaths ? libpaths : "", q_obj, native);
+                 "%s%s -defaultlib:libcmt -defaultlib:oldnames -nologo -Brepro%s %s%s%s",
+                 q_link, out_arg, libpaths ? libpaths : "", q_obj, g_link_extra, native);
         result = run_build_command(command);
     }
     free(command);
@@ -1854,8 +1982,12 @@ static int target_needs_libm(void) {
 // explicit UMS inputs; there is no opaque runtime archive at this boundary.
 static int link_program_object(const char* program_obj, const char* exe_file) {
 #ifdef _WIN32
+    // Native objects, a response file and an export table are all spelled for a
+    // clang driver, so a target with any of them links through one.
+    int needs_driver = g_native_source_count > 0 || g_native_link_needs_driver ||
+                       g_export_dynamic;
     const char* chosen = getenv("PRISMIO_CC");
-    if ((!chosen || !*chosen) && !ir_target_is_explicit()) {
+    if ((!chosen || !*chosen) && !ir_target_is_explicit() && !needs_driver) {
         return link_program_msvc(program_obj, exe_file);
     }
 #endif
@@ -1874,12 +2006,17 @@ static int link_program_object(const char* program_obj, const char* exe_file) {
 #endif
     const char* driver = link_driver_command();
     int len = (int)(strlen(driver) + strlen(min_os) + strlen(q_obj) + strlen(q_exe) +
-                    strlen(target) + strlen(native) + 64);
+                    strlen(target) + strlen(native) + strlen(g_link_extra) + 96);
     char* command = (char*)malloc(len);
 
-    snprintf(command, len, "%s %s%s%s%s -o %s%s",
-             driver, target, min_os, q_obj, native, q_exe,
-             target_needs_libm() ? " -lm" : "");
+    // -dead_strip: ld64 keeps every function of every object it is given unless
+    // told otherwise, and neither the runtime's nor a target's native C is
+    // pruned before it gets there. Exported symbols (exportDynamic) are roots,
+    // so nothing a loaded module could resolve is removed.
+    snprintf(command, len, "%s %s%s%s%s%s -o %s%s%s",
+             driver, target, min_os, q_obj, g_link_extra, native, q_exe,
+             target_needs_libm() ? " -lm" : "",
+             target_is_mach_o() ? " -Wl,-dead_strip" : "");
     int result = run_build_command(command);
 
     free(command);
@@ -1956,15 +2093,16 @@ failed:
 static char* merge_libraries_into_program(const char* ir_file,
                                           const char* exe_file) {
     char runtime[PRISMIO_RUNTIME_MODULE_COUNT][1024];
-    if (!find_runtime_bitcode(runtime, g_verify_mode)) return NULL;
+    int runtime_count = g_installed_runtime ? PRISMIO_RUNTIME_MODULE_COUNT : 0;
+    if (runtime_count > 0 && !find_runtime_bitcode(runtime, g_verify_mode)) return NULL;
 
-    int module_count = prismio_plib_count + PRISMIO_RUNTIME_MODULE_COUNT;
+    int module_count = prismio_plib_count + runtime_count;
     const char** modules =
         (const char**)calloc((size_t)module_count, sizeof(const char*));
     int* modes = (int*)calloc((size_t)module_count, sizeof(int));
     char** extracted = prismio_plib_count > 0
         ? (char**)calloc((size_t)prismio_plib_count, sizeof(char*)) : NULL;
-    if (!modules || !modes || (prismio_plib_count > 0 && !extracted)) {
+    if ((module_count > 0 && (!modules || !modes)) || (prismio_plib_count > 0 && !extracted)) {
         free(modules);
         free(modes);
         free(extracted);
@@ -1984,7 +2122,7 @@ static char* merge_libraries_into_program(const char* ir_file,
         modules[i] = extracted[i];
         modes[i] = 1;
     }
-    for (int i = 0; i < PRISMIO_RUNTIME_MODULE_COUNT; i++) {
+    for (int i = 0; i < runtime_count; i++) {
         modules[prismio_plib_count + i] = runtime[i];
         modes[prismio_plib_count + i] = 0;
     }
@@ -2078,37 +2216,52 @@ static char* object_cache_dir(void) {
     return join_path(base, "prismio-objcache");
 }
 
-// The cache entry for one toolchain source, or NULL when the source cannot be
-// read or the cache directory cannot be made. A NULL is always safe: the caller
+// FNV-1a of a file's bytes; `*ok` is 0 when the file cannot be read.
+static unsigned long long file_content_hash(const char* path, int* ok) {
+    FILE* file = fopen(path, "rb");
+    if (!file) { *ok = 0; return 0; }
+    unsigned long long hash = PRISMIO_FNV_OFFSET;
+    unsigned char buffer[16384];
+    size_t got;
+    while ((got = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        for (size_t i = 0; i < got; i++) {
+            hash ^= buffer[i];
+            hash *= PRISMIO_FNV_PRIME;
+        }
+    }
+    *ok = ferror(file) == 0;
+    fclose(file);
+    return hash;
+}
+
+// The cache entry for one native source, or NULL when the source cannot be read
+// or the cache directory cannot be made. A NULL is always safe: the caller
 // compiles as it did before.
-static char* object_cache_path(const char* role, const char* source_path,
-                               const char* command_flags,
-                               const char source_paths[][1024]) {
-    char* text = read_file(source_path);
-    if (!text) return NULL;
+//
+// The key is the source's bytes, the exact flags, and the contents of every
+// response file those flags name -- a response file is flags too, and editing
+// one changes what every source compiles to without changing any name in the
+// command. The headers a source includes are not in the key, because nothing
+// can know them before the compile runs: clang reports them afterwards (-MD),
+// and the entry records each with its hash in `<entry>.deps`, which
+// native_deps_current checks on every hit.
+static char* native_object_entry(const char* role, const char* source_path,
+                                 const char* flags) {
+    int ok = 1;
+    unsigned long long source_hash = file_content_hash(source_path, &ok);
+    if (!ok) return NULL;
 
     unsigned long long hash = PRISMIO_FNV_OFFSET;
     hash = fnv1a_bytes(hash, (const unsigned char*)role);
-    hash = fnv1a_bytes(hash, (const unsigned char*)command_flags);
-    hash = fnv1a_bytes(hash, (const unsigned char*)text);
-    free(text);
-
-    // Every header in the table, into every entry. A header changes what a .c
-    // compiles to without changing a byte of it, so keying on the .c alone can
-    // serve an object built against a previous runtime API. Over-invalidating
-    // all entries for a header edit is the safe side to be wrong on.
-    for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-        if (prismio_toolchain_files[i].compiled) continue;
-        if (!source_paths[i][0]) continue;
-        char* header = read_file(source_paths[i]);
-        if (!header) {
-            // A header that cannot be read makes the key incomplete, and an
-            // incomplete key is worse than no cache.
-            return NULL;
-        }
-        hash = fnv1a_bytes(hash, (const unsigned char*)prismio_toolchain_files[i].name);
-        hash = fnv1a_bytes(hash, (const unsigned char*)header);
-        free(header);
+    hash = fnv1a_bytes(hash, (const unsigned char*)flags);
+    char source_key[32];
+    snprintf(source_key, sizeof(source_key), "%016llx", source_hash);
+    hash = fnv1a_bytes(hash, (const unsigned char*)source_key);
+    for (int i = 0; i < g_native_flag_file_count; i++) {
+        unsigned long long file_hash = file_content_hash(g_native_flag_files[i], &ok);
+        if (!ok) return NULL;
+        snprintf(source_key, sizeof(source_key), "%016llx", file_hash);
+        hash = fnv1a_bytes(hash, (const unsigned char*)source_key);
     }
 
     char* dir = object_cache_dir();
@@ -2117,11 +2270,107 @@ static char* object_cache_path(const char* role, const char* source_path,
         return NULL;
     }
 
-    char name[128];
+    char name[160];
     snprintf(name, sizeof(name), "%s-%016llx.obj", role, hash);
     char* path = join_path(dir, name);
     free(dir);
     return path;
+}
+
+static char* native_deps_path(const char* entry) {
+    size_t n = strlen(entry) + sizeof(".deps");
+    char* path = (char*)malloc(n);
+    if (path) snprintf(path, n, "%s.deps", entry);
+    return path;
+}
+
+// Whether every file an entry was compiled from still has the bytes it had.
+// One line per file: sixteen hex digits, a space, and the path.
+static int native_deps_current(const char* entry) {
+    char* deps = native_deps_path(entry);
+    if (!deps) return 0;
+    FILE* file = fopen(deps, "rb");
+    free(deps);
+    if (!file) return 0;
+
+    char line[4200];
+    int current = 1;
+    int lines = 0;
+    while (current && fgets(line, sizeof(line), file)) {
+        size_t n = strlen(line);
+        while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[--n] = '\0';
+        if (n < 18 || line[16] != ' ') { current = 0; break; }
+        unsigned long long recorded = strtoull(line, NULL, 16);
+        int ok = 1;
+        unsigned long long now = file_content_hash(line + 17, &ok);
+        if (!ok || now != recorded) current = 0;
+        lines++;
+    }
+    fclose(file);
+    return current && lines > 0;
+}
+
+// Turns the make-style dependency list clang wrote (-MD -MF) into `<entry>.deps`.
+// The format escapes a space in a path as `\ ` and a dollar as `$$`, and wraps
+// long lists with a backslash before the newline; a path containing anything
+// else is taken byte for byte. Everything after the first ": " is a prerequisite
+// -- the target before it may itself contain a drive letter's colon.
+static int native_deps_record(const char* entry, const char* depfile) {
+    char* text = read_file(depfile);
+    if (!text) return 1;
+    const char* p = strstr(text, ": ");
+    if (!p) { free(text); return 1; }
+    p += 2;
+
+    char* deps = native_deps_path(entry);
+    if (!deps) { free(text); return 1; }
+    size_t tmp_len = strlen(deps) + 32;
+    char* tmp = (char*)malloc(tmp_len);
+    if (!tmp) { free(deps); free(text); return 1; }
+    snprintf(tmp, tmp_len, "%s.tmp-%d", deps, PRISMIO_GETPID());
+    FILE* out = fopen(tmp, "wb");
+    int failed = out == NULL;
+
+    char path[4096];
+    int n = 0;
+    for (; !failed; p++) {
+        char c = *p;
+        if (c == '\\' && (p[1] == '\n' || (p[1] == '\r' && p[2] == '\n'))) {
+            p += p[1] == '\r' ? 2 : 1;
+            c = ' ';
+        } else if (c == '\\' && p[1] == ' ') {
+            if (n < (int)sizeof(path) - 1) path[n++] = ' ';
+            p++;
+            continue;
+        } else if (c == '$' && p[1] == '$') {
+            if (n < (int)sizeof(path) - 1) path[n++] = '$';
+            p++;
+            continue;
+        }
+        if (c == '\0' || c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            if (n > 0) {
+                path[n] = '\0';
+                int ok = 1;
+                unsigned long long hash = file_content_hash(path, &ok);
+                if (!ok || fprintf(out, "%016llx %s\n", hash, path) < 0) failed = 1;
+                n = 0;
+            }
+            if (c == '\0') break;
+            continue;
+        }
+        if (n < (int)sizeof(path) - 1) path[n++] = c;
+    }
+    if (out && fclose(out) != 0) failed = 1;
+    if (!failed && rename(tmp, deps) != 0) {
+        // Another build recorded the same entry first; its list is as good.
+        delete_file(tmp);
+    } else if (failed) {
+        delete_file(tmp);
+    }
+    free(tmp);
+    free(deps);
+    free(text);
+    return failed;
 }
 
 // A sibling of `entry` in the cache directory, which is where the compiler is
@@ -2145,64 +2394,142 @@ static char* object_cache_temp_path(const char* entry) {
     return tmp;
 }
 
-// Compile the toolchain from source and link it with the program.
+// Compiling a target's native sources
 //
-// `include_backend` selects the build mode:
-//   0 -- legacy internal use: compile only the runtime half from repository
-//        sources. Normal user builds do not call this path.
-//   1 -- bootstrap. The program being built *is* the compiler, so it needs the
-//        backend's ir_* functions and the build orchestration in this file.
+// Each source becomes one object, compiled by the toolchain's clang with the
+// target's own flags after `-O2` -- the level the runtime has always been built
+// at, because this is where a program's hottest C lives -- and `-g` when the
+// profile asks for debug info. Objects are cached across builds and across
+// projects on content (native_object_entry), so an unchanged source costs a
+// lookup rather than a compile.
 //
-// `force_filesystem` is retained in the internal ABI for the bootstrap caller;
-// all source builds now require runtime/ on disk.
-#ifdef _WIN32
-// The Windows half of `-rdynamic`, for a compiler this driver links itself.
-//
-// `run --jit` resolves a jitted module's externals by searching this process,
-// and a COFF executable exports nothing unless it was linked with an export
-// table -- so without one, a compiler built here finds none of the runtime it
-// carries and reports `Symbols not found: [ cli_arg_count, list_new, ... ]`.
-// There is no flag: `-rdynamic` is not something clang-cl understands, which is
-// why the ELF branch below has one and this does not.
-//
-// **Read out of the objects rather than written down here.** A list of runtime
-// symbols kept in this file would be a second copy of the runtime's surface and
-// would drift from it silently. The objects about to be linked *are* that
-// surface. Only the two that go into every compiled program are asked -- the
-// split C_CODE_STYLE.md draws -- because a jitted user program cannot call the
-// backend.
+// `objects[i]` receives each object's path and `cached[i]` whether it belongs to
+// the cache (and so must outlive the build). Answers 0, or 1 once a compile
+// failed.
+static int compile_native_sources(const char* exe_file, char** objects, int* cached) {
+    if (g_native_source_count == 0) return 0;
+
+    char* target = target_clang_flags();
+    const char* declared = g_native_flags ? g_native_flags : "";
+    size_t flags_len = strlen(target) + strlen(declared) + 16;
+    char* flags = (char*)malloc(flags_len);
+    if (!flags) { free(target); return 1; }
+    snprintf(flags, flags_len, "%s-O2%s%s", target, g_debug_info ? " -g" : "", declared);
+    free(target);
+
+    int result = 0;
+    for (int i = 0; i < g_native_source_count && result == 0; i++) {
+        const char* source = g_native_sources[i];
+        char* role = path_without_extension(path_file_name(source));
+        char* entry = NULL;
+        if (object_cache_disabled()) {
+            if (object_cache_trace()) fprintf(stderr, "[objcache off] %s\n", role);
+        } else {
+            entry = native_object_entry(role, source, flags);
+            if (entry && file_exists(entry) && native_deps_current(entry)) {
+                if (object_cache_trace()) fprintf(stderr, "[objcache hit] %s\n", role);
+                objects[i] = entry;
+                cached[i] = 1;
+                free(role);
+                continue;
+            }
+            if (object_cache_trace()) fprintf(stderr, "[objcache miss] %s\n", role);
+        }
+
+        // Compiled to a pid-qualified temporary beside the cache entry and moved
+        // into place, never written at the entry directly: two builds racing on
+        // one entry would otherwise link a half-written object.
+        char unique[160];
+        snprintf(unique, sizeof(unique), "native%d-%s", i, role);
+        char* out = entry ? object_cache_temp_path(entry) : compiler_temp_obj_path(exe_file, unique);
+        size_t dep_len = strlen(out) + 3;
+        char* dep = (char*)malloc(dep_len);
+        char* q_src = command_quote_arg(source);
+        char* q_out = command_quote_arg(out);
+        char* q_dep = dep ? (snprintf(dep, dep_len, "%s.d", out), command_quote_arg(dep)) : NULL;
+        size_t command_len = strlen(native_clang_command()) + strlen(flags) + strlen(q_src)
+                             + strlen(q_out) + (q_dep ? strlen(q_dep) : 0) + 64;
+        char* command = (char*)malloc(command_len);
+        if (!dep || !q_dep || !command) {
+            result = 1;
+        } else {
+            snprintf(command, command_len, "%s %s -MD -MF %s -c %s -o %s",
+                     native_clang_command(), flags, q_dep, q_src, q_out);
+            double t0 = build_trace_ms();
+            diag_progress("compiling native sources");
+            if (run_build_command(command) != 0) result = 1;
+            build_trace_stage(role, t0);
+        }
+
+        if (result == 0 && entry && native_deps_record(entry, dep) == 0 &&
+                rename(out, entry) == 0) {
+            // A failed install is not a failed build: the temporary is linked
+            // and the compile is paid for again next time.
+            free(out);
+            out = entry;
+            entry = NULL;
+            cached[i] = 1;
+        }
+        objects[i] = out;
+        if (dep) { delete_file(dep); free(dep); }
+        free(q_dep);
+        free(q_src);
+        free(q_out);
+        free(command);
+        free(entry);
+        free(role);
+    }
+    free(flags);
+    return result;
+}
+
+// The native objects as link arguments, quoted, each after a space.
+static char* native_object_arguments(char** objects) {
+    char* args = NULL;
+    for (int i = 0; i < g_native_source_count; i++) {
+        if (objects[i] && append_quoted_argument(&args, objects[i]) != 0) {
+            free(args);
+            return NULL;
+        }
+    }
+    if (!args) {
+        args = (char*)malloc(1);
+        if (args) args[0] = '\0';
+    }
+    return args;
+}
+
+// The defined, external text and data symbols of the target's native objects,
+// as `<nm> --defined-only --extern-only --format=posix` prints them: the raw
+// text, or NULL when nm did not run. Mach-O names keep their leading `_`.
 //
 // Two parsing details, both of which cost a CI round in tools/bootstrap.ps1
 // before they were understood. nm interleaves a `<file>:` header line per
 // object, so a whitespace split would produce `/EXPORT:lang_runtime.obj:` and
 // fail the link; the line is matched as `<name> <type>` instead, and a header
-// line has no type field so it falls out. And only the defined text and data
-// types are taken, so a weak or comdat symbol is skipped rather than exported.
-//
-// Best-effort: everything except `run --jit` works without an export table, so a
-// missing llvm-nm says so and the link proceeds. Returns a malloc'd string of
-// flags to append, or NULL.
-static char* g_export_rsp = NULL;
-
-static char* windows_runtime_export_flags(char** objs, const char* exe_file) {
+// line has no type field so it falls out (native_export_name). And only the
+// defined text and data types are taken, so a weak or comdat symbol is skipped
+// rather than exported.
+static char* native_export_symbols(const char* nm, char** objs, int count,
+                                   const char* exe_file) {
     char* list_path = compiler_temp_path(exe_file, "exports.txt");
     if (!list_path) return NULL;
 
-    size_t command_size = strlen(list_path) + 128;
+    char* q_nm = command_quote_arg(nm);
+    size_t command_size = strlen(list_path) + strlen(q_nm) + 128;
     int any = 0;
-    for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-        if (!prismio_toolchain_files[i].runtime || !objs[i]) continue;
+    for (int i = 0; i < count; i++) {
+        if (!objs[i]) continue;
         command_size += strlen(objs[i]) + 8;
         any = 1;
     }
-    if (!any) { free(list_path); return NULL; }
-
-    char* command = (char*)malloc(command_size);
-    if (!command) { free(list_path); return NULL; }
+    char* command = any ? (char*)malloc(command_size) : NULL;
+    if (!command) { free(q_nm); free(list_path); return NULL; }
     int written = snprintf(command, command_size,
-                           "llvm-nm --defined-only --extern-only --format=posix");
-    for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-        if (!prismio_toolchain_files[i].runtime || !objs[i]) continue;
+                           "%s --defined-only --extern-only --format=posix", q_nm);
+    free(q_nm);
+    for (int i = 0; i < count; i++) {
+        if (!objs[i]) continue;
         char* quoted = command_quote_arg(objs[i]);
         written += snprintf(command + written, command_size - written, " %s", quoted);
         free(quoted);
@@ -2217,11 +2544,129 @@ static char* windows_runtime_export_flags(char** objs, const char* exe_file) {
     char* text = failed ? NULL : read_file(list_path);
     delete_file(list_path);
     free(list_path);
+    return text;
+}
+
+// The length of the exportable name `line` (of `len` bytes) begins with, or 0
+// when the line is a file header or its symbol type is not one of `types`.
+// COFF's text and data are `TDBR`; Mach-O also puts constant data in `S`.
+static size_t native_export_name(const char* line, size_t len, const char* types) {
+    size_t name_len = 0;
+    while (name_len < len && line[name_len] != ' ' && line[name_len] != '\t') name_len++;
+    size_t type_at = name_len;
+    while (type_at < len && (line[type_at] == ' ' || line[type_at] == '\t')) type_at++;
+
+    int typed = type_at < len && strchr(types, line[type_at]) != NULL
+                && (type_at + 1 >= len
+                    || line[type_at + 1] == ' ' || line[type_at + 1] == '\t');
+    if (name_len == 0 || !typed || line[0] == '.' || line[0] == '$') return 0;
+    return name_len;
+}
+
+// The export list or response file of the link in progress, removed after it.
+static char* g_export_rsp = NULL;
+
+#ifndef _WIN32
+// The macOS and Linux half of `exportDynamic`: the native objects' symbols and
+// nothing else, as the Windows half below has always done.
+//
+// **Not `-rdynamic`, which is what this was.** That exports every global symbol
+// the executable has, and for the compiler that is the ~44,000 C++ symbols of
+// the LLVM it links statically: 22 MB of export trie and string table in a
+// 135 MB binary, and every one of those functions a root `-dead_strip` must keep
+// whether anything calls it or not. `run --jit` resolves a jitted module's
+// runtime calls in this process, and the runtime is the native objects.
+//
+// Returns the flag to append, or NULL to fall back to `-rdynamic` -- nm missing
+// costs size, never correctness.
+static char* unix_export_flags(char** objs, int count, const char* exe_file) {
+    // The toolchain's own llvm-nm when there is one, beside the clang that
+    // compiled the objects; the system's `nm` takes the same flags otherwise.
+    char nm[1200] = "nm";
+    native_clang_command();
+    if (g_clang_binary[0]) {
+        char* dir = get_directory(g_clang_binary);
+        char candidate[1200];
+        snprintf(candidate, sizeof(candidate), "%s%cllvm-nm", dir ? dir : ".", PRISMIO_PATH_SEP);
+        free(dir);
+        if (file_exists(candidate)) snprintf(nm, sizeof(nm), "%s", candidate);
+    }
+    char* text = native_export_symbols(nm, objs, count, exe_file);
+    if (!text) return NULL;
+
+    int mach_o = target_is_mach_o();
+    char* list_path = compiler_temp_path(exe_file, "exports.list");
+    FILE* list = list_path ? fopen(list_path, "wb") : NULL;
+    if (!list) {
+        free(list_path);
+        free(text);
+        return NULL;
+    }
+    // ld64 reads one (underscored) name per line; GNU ld and lld a version-
+    // script-shaped `{ name; ... };`.
+    if (!mach_o) fputs("{\n", list);
+    int written = 0;
+    char* line = text;
+    while (*line) {
+        char* end = strchr(line, '\n');
+        size_t len = end ? (size_t)(end - line) : strlen(line);
+        size_t name_len = native_export_name(line, len, "TDBRS");
+        if (name_len > 0) {
+            fprintf(list, mach_o ? "%.*s\n" : "  %.*s;\n", (int)name_len, line);
+            written++;
+        }
+        if (!end) break;
+        line = end + 1;
+    }
+    if (!mach_o) fputs("};\n", list);
+    fclose(list);
+    free(text);
+    if (written == 0) {
+        delete_file(list_path);
+        free(list_path);
+        return NULL;
+    }
+
+    free(g_export_rsp);
+    g_export_rsp = list_path;
+    size_t n = strlen(list_path) + 64;
+    char* flag = (char*)malloc(n);
+    if (!flag) return NULL;
+    snprintf(flag, n, mach_o ? "-Wl,-exported_symbols_list,%s" : "-Wl,--dynamic-list=%s", list_path);
+    char* quoted = command_quote_arg(flag);
+    free(flag);
+    size_t q = quoted ? strlen(quoted) + 2 : 0;
+    char* arg = quoted ? (char*)malloc(q) : NULL;
+    if (arg) snprintf(arg, q, " %s", quoted);
+    free(quoted);
+    return arg;
+}
+#endif
+
+#ifdef _WIN32
+// The Windows half of `exportDynamic`.
+//
+// A COFF executable exports nothing unless it was linked with an export table,
+// so without one a program that loads code at run time -- the compiler's
+// `run --jit`, resolving a jitted module's externals in its own process -- finds
+// none of the symbols it carries and reports `Symbols not found: [ ... ]`. There
+// is no flag: `-rdynamic` is not something clang-cl understands.
+//
+// **Read out of the objects rather than written down.** The target's native
+// objects are the surface it means to export; a list kept anywhere else would be
+// a second copy of it and would drift silently. native_export_symbols reads
+// them.
+//
+// Best-effort: everything except `run --jit` works without an export table, so a
+// missing llvm-nm says so and the link proceeds. Returns a malloc'd string of
+// flags to append, or NULL.
+
+static char* windows_export_flags(char** objs, int count, const char* exe_file) {
+    char* text = native_export_symbols("llvm-nm", objs, count, exe_file);
     if (!text) {
         fprintf(stderr,
-                "NOTE: llvm-nm did not run, so this compiler is linked without an\n"
-                "      export table and its `run --jit` will not resolve the runtime.\n"
-                "      Every other command works without one.\n");
+                "NOTE: llvm-nm did not run, so this program is linked without an\n"
+                "      export table; code it loads at run time will not find its symbols.\n");
         return NULL;
     }
 
@@ -2239,15 +2684,8 @@ static char* windows_runtime_export_flags(char** objs, const char* exe_file) {
         char* end = strchr(line, '\n');
         size_t len = end ? (size_t)(end - line) : strlen(line);
 
-        size_t name_len = 0;
-        while (name_len < len && line[name_len] != ' ' && line[name_len] != '\t') name_len++;
-        size_t type_at = name_len;
-        while (type_at < len && (line[type_at] == ' ' || line[type_at] == '\t')) type_at++;
-
-        int typed = type_at < len && strchr("TDBR", line[type_at]) != NULL
-                    && (type_at + 1 >= len
-                        || line[type_at + 1] == ' ' || line[type_at + 1] == '\t');
-        if (name_len > 0 && typed && line[0] != '.' && line[0] != '$') {
+        size_t name_len = native_export_name(line, len, "TDBR");
+        if (name_len > 0) {
             used += (size_t)snprintf(flags + used, flags_size - used,
                                      " -Wl,/EXPORT:%.*s", (int)name_len, line);
             count++;
@@ -2287,306 +2725,6 @@ static char* windows_runtime_export_flags(char** objs, const char* exe_file) {
 }
 #endif
 
-static int build_from_toolchain_sources(const char* program_obj, const char* exe_file,
-                                        int include_backend, int force_filesystem) {
-    char source_paths[PRISMIO_TOOLCHAIN_FILE_COUNT][1024];
-    for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-        source_paths[i][0] = '\0';
-    }
-
-    (void)force_filesystem;
-    for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-        if (!prismio_toolchain_files[i].runtime && !include_backend) continue;
-
-        if (!find_toolchain_source(source_paths[i], sizeof(source_paths[i]),
-                                   prismio_toolchain_files[i].name)) {
-            fprintf(stderr, "ERROR: could not find runtime/%s\n",
-                    prismio_toolchain_files[i].name);
-            return 1;
-        }
-    }
-
-    // The IR is already an object by this point; compile each toolchain source and
-    // link the lot together with it.
-    char* q_program_obj = command_quote_arg(program_obj);
-    char* q_exe = command_quote_arg(exe_file);
-
-    char* objs[PRISMIO_TOOLCHAIN_FILE_COUNT];
-    char* q_objs[PRISMIO_TOOLCHAIN_FILE_COUNT];
-    // A cached object outlives this build and must not be deleted with the
-    // temporaries below.
-    int cached[PRISMIO_TOOLCHAIN_FILE_COUNT];
-    for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-        objs[i] = NULL;
-        q_objs[i] = NULL;
-        cached[i] = 0;
-    }
-
-    // The backend half needs LLVM's headers to compile and its C API library to
-    // link. Resolved once, and a failure here is fatal rather than a fallback:
-    // compiling the backend against the stub declarations in prismio_llvm.h and
-    // then linking without -lLLVM-C is exactly what used to happen, and it ends
-    // in several hundred undefined _LLVM* symbols after a full compile.
-    char llvm_include[1024] = "";
-    char llvm_lib[1024] = "";
-    char llvm_link[256] = "LLVM-C";
-    char llvm_rsp[1024] = "";
-    if (include_backend && !find_llvm_paths_ex(llvm_include, sizeof(llvm_include),
-                                               llvm_lib, sizeof(llvm_lib),
-                                               llvm_link, sizeof(llvm_link),
-                                               llvm_rsp, sizeof(llvm_rsp))) {
-        fprintf(stderr,
-                "ERROR: no LLVM toolchain configured, and the compiler backend needs one.\n"
-                "       Run: python3 tools/setup_llvm.py\n"
-                "       (or set PRISMIO_LLVM_DIR to an LLVM install with include/llvm-c/Core.h)\n");
-        return 1;
-    }
-
-    int command_len = 4096;
-    for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-        command_len += (int)strlen(source_paths[i]) * 2 + 64;
-    }
-    command_len += (int)(strlen(q_exe) + strlen(q_program_obj));
-    command_len += (int)(strlen(llvm_include) + strlen(llvm_lib) + strlen(llvm_rsp)) * 2 + 256;
-    command_len += g_native_link_args ? (int)strlen(g_native_link_args) : 0;
-    char* command = (char*)malloc(command_len);
-    int result = 0;
-
-    // One flag string for every source in this build, so the cache key and the
-    // command cannot disagree about what an object was compiled with.
-    char* compile_flags = (char*)malloc(command_len);
-    {
-        char* q_include = command_quote_arg(llvm_include);
-        // The unpacked or in-tree sources include each other by bare name, so
-        // the directory holding them is on the include path too. `-I` on a
-        // quoted path: clang takes `-I <path>` as two arguments.
-        char* source_dir = get_directory(source_paths[include_backend ? 4 : 2]);
-        char* q_source_dir = command_quote_arg(source_dir);
-        // The target flags go in *first*, and into `compile_flags` rather than
-        // into the command, so that they reach the object cache key: two
-        // targets share one source and one set of -D flags, and an object built
-        // for one linked into the other is a silent, genuinely nasty failure.
-        char* target = target_clang_flags();
-        // -g reaches the toolchain's C sources as well, so a backtrace that
-        // leaves generated code does not stop at `str_concat` with no file or
-        // line. Deliberately *not* paired with -O0 the way the program object is
-        // (compile_ir_to_object): there, -O0 exists because a Prismio local
-        // folded into a register is a local the debugger cannot print, and that
-        // is the whole feature. Here what is wanted is a named frame with a
-        // source line in a trace, which -O2 -g gives; building the runtime at
-        // -O0 would slow every `-g` build's execution to improve inspection of
-        // code nobody is stepping through. It costs compile time, not run time.
-        //
-        // In `compile_flags` rather than in the command, so the object cache
-        // keys on it: a -g and a non-g object must not share an entry.
-        snprintf(compile_flags, command_len, "%s%s-O2 -Wno-deprecated-declarations %s%s%s%s%s%s",
-                 target,
-                 g_debug_info ? "-g " : "",
-                 g_verify_mode ? "-DPRISMIO_AIF_VERIFY " : "",
-                 include_backend
-                     ? "-DPRISMIO_LLVM_REAL_HEADERS -DPRISMIO_BOOTSTRAP_COMPAT -I "
-                     : "",
-                 include_backend ? q_include : "",
-                 include_backend ? " -I " : "",
-                 include_backend ? q_source_dir : "",
-                 include_backend ? " " : "");
-        free(target);
-        free(q_include);
-        free(q_source_dir);
-        free(source_dir);
-    }
-
-    for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT && result == 0; i++) {
-        if (!prismio_toolchain_files[i].compiled) continue;
-        if (!prismio_toolchain_files[i].runtime && !include_backend) continue;
-
-        const char* role = prismio_toolchain_files[i].role;
-        char* entry = NULL;
-        if (object_cache_disabled()) {
-            // Said separately from a miss: "the cache was not consulted" and
-            // "the cache was consulted and had nothing" are different facts, and
-            // a bypass that reported a miss would be indistinguishable from a
-            // bypass that did not bypass.
-            if (object_cache_trace()) fprintf(stderr, "[objcache off] %s\n", role);
-        } else {
-            entry = object_cache_path(role, source_paths[i], compile_flags, source_paths);
-
-            if (entry && file_exists(entry)) {
-                if (object_cache_trace()) fprintf(stderr, "[objcache hit] %s\n", role);
-                objs[i] = entry;
-                q_objs[i] = command_quote_arg(entry);
-                cached[i] = 1;
-                continue;
-            }
-            if (object_cache_trace()) fprintf(stderr, "[objcache miss] %s\n", role);
-        }
-
-        // Compiled to a pid-qualified temporary *in the cache directory* and
-        // moved into place, never written at the cache path directly: two builds
-        // racing on one entry would otherwise link a half-written object. (The
-        // profile race in runWorkloadProfile is the same mistake made the other
-        // way round.) See object_cache_temp_path for why the temporary has to be
-        // a sibling rather than a file beside the output.
-        objs[i] = entry ? object_cache_temp_path(entry)
-                        : compiler_temp_obj_path(exe_file, role);
-        q_objs[i] = command_quote_arg(objs[i]);
-        int reuse_curated_ir = strcmp(role, "lang_runtime") == 0
-                               && g_curated_raw_ir != NULL;
-        char* q_src = command_quote_arg(reuse_curated_ir
-                                        ? g_curated_raw_ir : source_paths[i]);
-        // -O2 here matters more than it does on the program's own IR: this is
-        // where list_get, list_push and the allocator live, and a user program
-        // calls them millions of times. Compiling them at -O0 was worth more of
-        // the corpus gap than the missing IR pipeline was (RESULTS-xlang 3.1).
-        int built_from_ir = reuse_curated_ir;
-        if (reuse_curated_ir) {
-            // The C frontend and the -O2 middle end already ran when the curated
-            // module was made, and this is that exact module. Run the target
-            // backend over it and nothing else: re-running the middle end on
-            // already-optimised IR cost 30 ms of the 19-28% cold regression and
-            // changed no instruction. Target flags are repeated so clang selects
-            // the same object format and assembler.
-            char* raw_target = target_clang_flags();
-            snprintf(command, command_len,
-                     "%s %s-O2 -Wno-override-module -Xclang -disable-llvm-passes "
-                     "-x ir -c %s -o %s",
-                     native_clang_command(), raw_target, q_src, q_objs[i]);
-            free(raw_target);
-        } else {
-            snprintf(command, command_len, "%s %s-c %s -o %s",
-                     native_clang_command(), compile_flags, q_src, q_objs[i]);
-        }
-        double t0 = build_trace_ms();
-        int cmd_failed = run_build_command(command) != 0;
-        if (cmd_failed && reuse_curated_ir) {
-            // Fails open, like the rest of this optimisation. A clang that does
-            // not take -disable-llvm-passes must not turn into a failed build
-            // when the C source it was derived from is still on disk.
-            free(q_src);
-            q_src = command_quote_arg(source_paths[i]);
-            snprintf(command, command_len, "%s %s-c %s -o %s",
-                     native_clang_command(), compile_flags, q_src, q_objs[i]);
-            cmd_failed = run_build_command(command) != 0;
-            built_from_ir = 0;
-        }
-        if (cmd_failed) result = 1;
-        build_trace_stage(built_from_ir ? "lang_runtime (from IR)" : role, t0);
-        free(q_src);
-        if (reuse_curated_ir) discard_curated_raw_ir();
-
-        if (result == 0 && entry) {
-            // A failed install is not a failed build: link the temporary and
-            // pay for the compile again next time.
-            if (rename(objs[i], entry) == 0) {
-                free(objs[i]);
-                free(q_objs[i]);
-                objs[i] = entry;
-                q_objs[i] = command_quote_arg(entry);
-                cached[i] = 1;
-                entry = NULL;
-            }
-        }
-        if (entry) free(entry);
-    }
-
-    if (result == 0) {
-        char* link_target = target_clang_flags();
-        int written = snprintf(command, command_len, "%s %s%s",
-                               native_clang_command(), link_target, q_program_obj);
-        free(link_target);
-        for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-            if (!q_objs[i]) continue;
-            written += snprintf(command + written, command_len - written, " %s", q_objs[i]);
-        }
-        if (g_native_link_args) {
-            written += snprintf(command + written, command_len - written,
-                                "%s", g_native_link_args);
-        }
-        written += snprintf(command + written, command_len - written, " -o %s", q_exe);
-        if (include_backend) {
-            // The half that was missing. Without it the backend's several
-            // hundred LLVM calls are undefined symbols, after every object has
-            // already been compiled.
-            // The pinned toolchain is linked statically, from the archives its
-            // response file names: the compiler then loads no LLVM at run time,
-            // so no later change to any LLVM on this machine can break it. An
-            // adopted install has no response file and is linked as a library.
-            char* q_lib = command_quote_arg(llvm_lib);
-            char* q_rsp = llvm_rsp[0] ? command_quote_arg(llvm_rsp) : NULL;
-            char llvm_args[1400];
-            if (q_rsp) {
-                snprintf(llvm_args, sizeof(llvm_args), "@%s", q_rsp);
-            } else {
-                snprintf(llvm_args, sizeof(llvm_args), "-L %s -l%s", q_lib, llvm_link);
-            }
-            // -rdynamic for the same reason tools/bootstrap.sh passes it: the
-            // artifact being produced here is a *compiler*, and `--jit` resolves
-            // the jitted module's externals with a `dlsym` on the running
-            // process. On Mach-O an executable's symbols are visible there by
-            // default; on ELF they are not without this, and `run --jit` fails
-            // with the runtime symbols it could not find. Not passed on Windows,
-            // where it is not a flag clang-cl understands and the JIT's symbol
-            // story is different anyway.
-#ifdef _WIN32
-            // See windows_runtime_export_flags: this is the -rdynamic below,
-            // spelled the only way COFF allows. `command` is grown to fit --
-            // 191 exports is several kilobytes and command_len was sized for a
-            // link line without them.
-            char* exports = windows_runtime_export_flags(objs, exe_file);
-            if (exports) {
-                int needed = written + (int)strlen(exports) + (int)strlen(llvm_args) + 64;
-                if (needed > command_len) {
-                    char* grown = (char*)realloc(command, (size_t)needed);
-                    if (grown) {
-                        command = grown;
-                        command_len = needed;
-                    } else {
-                        free(exports);
-                        exports = NULL;
-                    }
-                }
-            }
-            // /Brepro for the reason link_program_msvc passes it: this is the
-            // project host, and the local toolchain keys its stdlib on the host's
-            // bytes. A wall-clock PE timestamp made every self-rebuild a miss.
-            snprintf(command + written, command_len - written, "%s -Wl,/Brepro %s",
-                     exports ? exports : "", llvm_args);
-            free(exports);
-#else
-            snprintf(command + written, command_len - written, " -rdynamic %s", llvm_args);
-#endif
-            free(q_lib);
-            free(q_rsp);
-        }
-        double t0 = build_trace_ms();
-        diag_progress("linking");
-        if (run_build_command(command) != 0) result = 1;
-        build_trace_stage("link", t0);
-#ifdef _WIN32
-        if (g_export_rsp) {
-            delete_file(g_export_rsp);
-            free(g_export_rsp);
-            g_export_rsp = NULL;
-        }
-#endif
-    }
-
-    for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-        if (objs[i] && !cached[i]) delete_file(objs[i]);
-    }
-
-    free(compile_flags);
-    free(command);
-    free(q_exe);
-    free(q_program_obj);
-    for (int i = 0; i < PRISMIO_TOOLCHAIN_FILE_COUNT; i++) {
-        if (q_objs[i]) free(q_objs[i]);
-        if (objs[i]) free(objs[i]);
-    }
-
-    return result;
-}
-
 // Mach-O only, and a warning rather than a failure if it does not work.
 //
 // A .dSYM is a copy of debug info that already exists somewhere else, so a
@@ -2611,9 +2749,76 @@ static void write_dsym(const char* exe_file) {
 #endif
 }
 
-// Normal user mode. Imported PLIB modules and every runtime bitcode module are
-// merged into the program before final optimisation. Compiler backend functions
-// deliberately are not part of that graph.
+int ir_jit_run_file(const char* ir_path, const char* program_name);
+
+// What the committed seed still calls. bootstrap/prismio-seed.ll is IR for an
+// earlier compiler, linked against *these* C sources, so a function it names can
+// leave only after the seed is refreshed (tools/refresh_seed.sh). Kept, like
+// `list_set_elem_inline`, only in a compiler built from repository sources:
+// both build.ums and the bootstrap scripts define PRISMIO_BOOTSTRAP_COMPAT, and
+// nothing a user program links does. A seed-built generation uses them only to
+// build the next generation, which calls none of them. Delete all four with the
+// next seed refresh.
+#ifdef PRISMIO_BOOTSTRAP_COMPAT
+int compiler_spawn_wait(const char* program, const char* directory);
+
+int compiler_run_executable(const char* exe_file) {
+    return compiler_spawn_wait(exe_file, "") == 0 ? 0 : 1;
+}
+
+// The seed's step runner handed this a tail already quoted for a shell.
+int compiler_run_executable_with(const char* exe_file, const char* arguments) {
+    char* q_exe = command_quote_arg(exe_file);
+    size_t n = strlen(q_exe) + (arguments ? strlen(arguments) : 0) + 2;
+    char* line = (char*)malloc(n);
+    int result = 1;
+    if (line) {
+        snprintf(line, n, "%s %s", q_exe, arguments ? arguments : "");
+        result = run_build_command(line);
+        free(line);
+    }
+    free(q_exe);
+    return result;
+}
+
+int compiler_bootstrap_executable(const char* ir_file, const char* exe_file) {
+    (void)ir_file;
+    (void)exe_file;
+    fprintf(stderr, "ERROR: this compiler predates native targets; build the compiler with "
+                    "tools/bootstrap.sh, or with `prismio build` in its checkout.\n");
+    return 1;
+}
+
+int ir_jit_run_main(const char* program_name) {
+    (void)program_name;
+    fprintf(stderr, "ERROR: --jit needs a compiler built from this tree.\n");
+    return 1;
+}
+#endif
+
+
+// `run --jit`: the program's IR merged with its imported standard-library
+// bitcode, exactly as a build merges it, then run in this process. Not with the
+// runtime modules -- this process carries the runtime and exports it, which is
+// how the jitted module's runtime calls resolve -- so the merge is the build's
+// with `runtime = "none"`.
+int compiler_jit_run(const char* ir_file, const char* program_name) {
+    int saved = g_installed_runtime;
+    g_installed_runtime = 0;
+    char* merged = merge_libraries_into_program(ir_file, ir_file);
+    g_installed_runtime = saved;
+    if (!merged) return 1;
+    diag_progress_clear();
+    int status = ir_jit_run_file(merged, program_name);
+    delete_file(merged);
+    free(merged);
+    return status;
+}
+
+// Imported PLIB modules and, unless the target declared `runtime = "none"`, every
+// runtime bitcode module are merged into the program before final
+// optimisation; the target's native sources are compiled beside it and linked
+// with the program object.
 int compiler_build_executable(const char* ir_file, const char* exe_file) {
     if (compiler_prepare_output_path(exe_file) != 0) {
         fprintf(stderr, "ERROR: could not create output directory\n");
@@ -2621,23 +2826,77 @@ int compiler_build_executable(const char* ir_file, const char* exe_file) {
     }
     if (!compiler_link_inputs_supported()) return 1;
 
+    // In memory unless clang is the one reading it (PRISMIO_CODEGEN=clang). The
+    // path is still made: it is how ir_emit_object recognises the module.
+    ir_hold_merged_module(!codegen_uses_clang());
     char* merged_ir = merge_libraries_into_program(ir_file, exe_file);
+    ir_hold_merged_module(0);
     if (!merged_ir) return 1;
 
     char* program_obj = compiler_temp_obj_path(exe_file, "program");
-    int result = compile_ir_to_object(merged_ir, program_obj);
+    int partition_objects = 0;
+    int result = compile_ir_to_object(merged_ir, program_obj, &partition_objects);
+
+    int native_count = g_native_source_count;
+    char** objects = native_count > 0 ? (char**)calloc((size_t)native_count, sizeof(char*)) : NULL;
+    int* cached = native_count > 0 ? (int*)calloc((size_t)native_count, sizeof(int)) : NULL;
+    if (native_count > 0 && (!objects || !cached)) result = 1;
+    if (result == 0) result = compile_native_sources(exe_file, objects, cached);
+
+    char* extra = NULL;
+    if (result == 0) {
+        extra = objects ? native_object_arguments(objects) : NULL;
+        if (objects && !extra) result = 1;
+    }
+    // The program's other codegen partitions link beside its first object,
+    // ahead of the native ones, as the one object used to.
+    for (int p = 1; p <= partition_objects && result == 0; p++) {
+        char path[1200];
+        ir_partition_object_path(program_obj, p, path, sizeof(path));
+        char* quoted = command_quote_arg(path);
+        size_t n = strlen(quoted) + (extra ? strlen(extra) : 0) + 2;
+        char* joined = quoted ? (char*)malloc(n) : NULL;
+        if (!joined) {
+            result = 1;
+        } else {
+            snprintf(joined, n, " %s%s", quoted, extra ? extra : "");
+            free(extra);
+            extra = joined;
+        }
+        free(quoted);
+    }
+    if (result == 0 && g_export_dynamic) {
+#ifdef _WIN32
+        char* exports = windows_export_flags(objects, native_count, exe_file);
+        // /Brepro for the reason link_program_msvc passes it, on the driver path
+        // it replaces here: a toolchain host's standard library is keyed on the
+        // host's bytes, and a wall-clock PE timestamp made every rebuild a miss.
+        const char* tail = " -Wl,/Brepro";
+#else
+        char* exports = unix_export_flags(objects, native_count, exe_file);
+        const char* tail = exports ? "" : " -rdynamic";
+#endif
+        size_t n = (extra ? strlen(extra) : 0) + (exports ? strlen(exports) : 0) + strlen(tail) + 1;
+        char* joined = (char*)malloc(n);
+        if (joined) {
+            snprintf(joined, n, "%s%s%s", extra ? extra : "", exports ? exports : "", tail);
+            free(extra);
+            extra = joined;
+        } else {
+            result = 1;
+        }
+        free(exports);
+    }
 
     if (result == 0) {
+        g_link_extra = extra ? extra : "";
         result = link_program_object(program_obj, exe_file);
-
-        if (result != 0) {
-            fprintf(stderr,
-                    "\nNOTE: a normal build links the installed Prismio bitcode runtime.\n"
-                    "      If you are building the Prismio compiler itself, use:\n"
-                    "          prismio bootstrap %s\n"
-                    "      which also links the compiler backend and LLVM C API.\n",
-                    "src/main.psm");
-        }
+        g_link_extra = "";
+    }
+    if (g_export_rsp) {
+        delete_file(g_export_rsp);
+        free(g_export_rsp);
+        g_export_rsp = NULL;
     }
 
     // Before the object goes away, and only while it is still there to walk. See
@@ -2645,70 +2904,24 @@ int compiler_build_executable(const char* ir_file, const char* exe_file) {
     // the DWARF it points at is in the object file the next line deletes.
     if (result == 0 && g_debug_info && target_is_mach_o()) write_dsym(exe_file);
 
+    for (int i = 0; i < native_count && objects; i++) {
+        if (objects[i] && !cached[i]) delete_file(objects[i]);
+        free(objects[i]);
+    }
+    free(objects);
+    free(cached);
+    free(extra);
     delete_file(program_obj);
+    for (int p = 1; p <= partition_objects; p++) {
+        char path[1200];
+        ir_partition_object_path(program_obj, p, path, sizeof(path));
+        delete_file(path);
+    }
     delete_file(merged_ir);
+    ir_release_held_module();
     discard_curated_raw_ir();
     free(program_obj);
     free(merged_ir);
-    return result;
-}
-
-// Bootstrap / compiler-development mode.
-//
-// Always builds against the repository sources and never against an installed
-// toolchain, so an edit to runtime/*.c shows up in the very next compiler
-// generation. That guarantee is what the mode exists for, and it is why this is a
-// separate entry point selected by the `bootstrap` command rather than a flag or an
-// environment variable read somewhere inside the build.
-//
-// **This could not link a compiler between the move to the LLVM C API and
-// 2026-08-17**, and nothing noticed because nothing in the tree runs it: CI and
-// every session use tools/bootstrap.sh. The link line was `clang <objects> -o
-// <exe>` with no `-L` and no `-lLLVM-C`, so a full compile ended in several
-// hundred undefined `_LLVM*` symbols — and `compiler_build_executable` printed a
-// NOTE recommending this command, which made it a signpost pointing at a trap.
-//
-// It resolves LLVM the same way and from the same two places the scripts do
-// (find_llvm_paths), so there is one answer to "where is LLVM" rather than two
-// that can drift. `run_bootstrap_command_test` builds a compiler through this
-// path and requires its IR to match the one that built it, which is what stops
-// the drift being silent next time.
-int compiler_bootstrap_executable(const char* ir_file, const char* exe_file) {
-    if (compiler_prepare_output_path(exe_file) != 0) {
-        fprintf(stderr, "ERROR: could not create output directory\n");
-        return 1;
-    }
-    if (!compiler_link_inputs_supported()) return 1;
-
-    char probe[1024];
-    if (!find_toolchain_source(probe, sizeof(probe), "lang_runtime.c")) {
-        fprintf(stderr,
-                "ERROR: bootstrap needs the Prismio repository sources.\n"
-                "       Could not find runtime/lang_runtime.c relative to the compiler\n"
-                "       or the current directory. Run this from a Prismio checkout.\n");
-        return 1;
-    }
-
-    char* program_obj = compiler_temp_obj_path(exe_file, "program");
-    int result = compile_ir_to_object(ir_file, program_obj);
-
-    if (result == 0) {
-        // include_backend = 1: the artifact being produced is a compiler.
-        result = build_from_toolchain_sources(program_obj, exe_file, 1, 1);
-    }
-
-    // The same reason as in compiler_build_executable, and it was missing here:
-    // on Mach-O the executable carries a debug map rather than DWARF, and the
-    // DWARF it points at lives in the object file the next line deletes. Without
-    // this, `prismio bootstrap -g` emitted every byte of the metadata and then
-    // threw away the half describing the compiler's own code -- the runtime's C
-    // frames would still resolve, because their objects are in the object cache
-    // and outlive the build, and a Prismio frame would not.
-    if (result == 0 && g_debug_info && target_is_mach_o()) write_dsym(exe_file);
-
-    delete_file(program_obj);
-    discard_curated_raw_ir();
-    free(program_obj);
     return result;
 }
 
@@ -2777,9 +2990,23 @@ static void compiler_hosted_env_end(char* saved, int was_set) {
     free(saved);
 }
 
+// Read once and then removed from the environment. The marker is an instruction
+// to *this* process -- do not route, a launcher is waiting on you -- and every
+// program a hosted compiler starts inherited it: a `prismio` that a project
+// command or a user's program ran in turn believed it was hosted too, and never
+// routed to the project's compiler. The children that do need it (a probe, a
+// forward) have it set around their spawn by compiler_hosted_env_begin.
 int compiler_is_hosted(void) {
+    static int hosted = -1;
+    if (hosted >= 0) return hosted;
     const char* value = getenv("PRISMIO_INTERNAL_HOSTED");
-    return value && value[0] == '1' && value[1] == '\0';
+    hosted = value && value[0] == '1' && value[1] == '\0';
+#ifdef _WIN32
+    _putenv_s("PRISMIO_INTERNAL_HOSTED", "");
+#else
+    unsetenv("PRISMIO_INTERNAL_HOSTED");
+#endif
+    return hosted;
 }
 
 int compiler_is_current_executable(const char* path) {
@@ -2822,48 +3049,163 @@ int compiler_is_current_executable(const char* path) {
 #endif
 }
 
-// The global compiler is a launcher once a project host exists. exec/spawn is
-// used instead of a shell command so spaces, quotes, dollar signs and every
-// other legal argument reach the host byte-for-byte unchanged.
+// Starting another program: an argument vector, a working directory, and its own
+// exit status back.
+//
+// **Everything the driver runs on a user's behalf goes through here** -- the
+// program `run` just built, each `run`/`shell` step of a project command, the
+// project host a launcher forwards to, and the probes that ask a host whether it
+// starts. They used to be shell lines built with command_quote_arg and handed
+// to system(), and that failed three ways at once: an argument the user typed
+// was shell syntax (`prismio sh '$(whoami)'` ran the substitution), every exit
+// status came back as 0 or 1, and Windows' _spawnv joins arguments with spaces
+// without quoting them, so a forwarded path with a space in it arrived as two.
+// proc_spawn_* already had the answer -- posix_spawnp on one side and
+// CreateProcess with CommandLineToArgvW's quoting on the other -- because
+// std.process needed it first.
+//
+// `directory` is changed around the spawn rather than passed to it: posix_spawn's
+// chdir action is a non-portable extension, and the driver starts one child at
+// a time from the main thread, which is the condition that makes a process-wide
+// chdir safe. It is restored before waiting, so nothing the parent does while
+// the child runs sees it.
+//
+// Answers the child's status (128 + the signal, on POSIX, for one that was
+// killed), or -1 when the program could not be started at all, having said why
+// unless `quiet`.
+static int spawn_and_wait(const char* program, char** arguments, int count,
+                          const char* directory, int quiet) {
+    char* saved = NULL;
+    if (directory && directory[0]) {
+#ifdef _WIN32
+        saved = _getcwd(NULL, 0);
+        int moved = saved && _chdir(directory) == 0;
+#else
+        saved = getcwd(NULL, 0);
+        int moved = saved && chdir(directory) == 0;
+#endif
+        if (!moved) {
+            if (!quiet) fprintf(stderr, "error: cannot enter %s: %s\n", directory, strerror(errno));
+            free(saved);
+            return -1;
+        }
+    }
+
+    proc_spawn_begin(program);
+    for (int i = 0; i < count; i++) proc_spawn_arg(arguments[i]);
+    int output = quiet ? PRISMIO_STDIO_DISCARD : PRISMIO_STDIO_INHERIT;
+    if (!quiet) diag_progress_clear();
+    PrismioSpawnOut out;
+    int started = proc_spawn_run(PRISMIO_STDIO_INHERIT, output, output, &out);
+
+    if (saved) {
+#ifdef _WIN32
+        (void)_chdir(saved);
+#else
+        (void)chdir(saved);
+#endif
+        free(saved);
+    }
+
+    if (started != 0) {
+        if (!quiet) {
+#ifdef _WIN32
+            fprintf(stderr, "error: could not start %s (Windows error %d)\n",
+                    program, (int)out.error);
+#else
+            fprintf(stderr, "error: could not start %s: %s\n", program, strerror((int)out.error));
+#endif
+        }
+        return -1;
+    }
+    return proc_wait(out.handle);
+}
+
+// The argument vector for the next compiler_spawn_wait, built one argument per
+// call because a List does not cross the FFI boundary -- the shape proc_spawn_arg
+// has for the same reason. Plain malloc: this runtime frees all of it.
+static char** g_pending_args = NULL;
+static int g_pending_count = 0;
+static int g_pending_cap = 0;
+
+static void pending_args_clear(void) {
+    for (int i = 0; i < g_pending_count; i++) free(g_pending_args[i]);
+    g_pending_count = 0;
+}
+
+void compiler_spawn_arg(const char* argument) {
+    if (!argument) return;
+    if (g_pending_count == g_pending_cap) {
+        int grown = g_pending_cap ? g_pending_cap * 2 : 8;
+        char** bigger = (char**)realloc(g_pending_args, (size_t)grown * sizeof(char*));
+        if (!bigger) return;
+        g_pending_args = bigger;
+        g_pending_cap = grown;
+    }
+    size_t n = strlen(argument) + 1;
+    char* copy = (char*)malloc(n);
+    if (!copy) return;
+    memcpy(copy, argument, n);
+    g_pending_args[g_pending_count++] = copy;
+}
+
+// The pending vector itself, for the one runner that is not a process: `--jit`
+// calls the program's `main` in this process and hands it the same arguments.
+char** compiler_pending_arguments(int* count) {
+    *count = g_pending_count;
+    return g_pending_args;
+}
+
+// Runs `program` with the arguments added since the last call, in `directory`
+// ("" keeps this process's). A program named without a separator is looked up
+// on PATH, so a caller that means a file it built passes a path with one.
+int compiler_spawn_wait(const char* program, const char* directory) {
+    int status = spawn_and_wait(program, g_pending_args, g_pending_count, directory, 0);
+    pending_args_clear();
+    return status;
+}
+
+// Whether `name` would be found on PATH -- what picks `py -3` over the `python`
+// that Windows may only have as a Microsoft Store stub.
+int compiler_program_on_path(const char* name) {
+#ifdef _WIN32
+    char found[MAX_PATH];
+    return SearchPathA(NULL, name, ".exe", MAX_PATH, found, NULL) > 0 ? 1 : 0;
+#else
+    const char* path = getenv("PATH");
+    if (!path || !name || !name[0]) return 0;
+    size_t name_len = strlen(name);
+    while (*path) {
+        const char* end = strchr(path, ':');
+        size_t dir_len = end ? (size_t)(end - path) : strlen(path);
+        char* candidate = (char*)malloc(dir_len + name_len + 2);
+        if (!candidate) return 0;
+        snprintf(candidate, dir_len + name_len + 2, "%.*s/%s", (int)dir_len, path, name);
+        int runnable = access(candidate, X_OK) == 0;
+        free(candidate);
+        if (runnable) return 1;
+        if (!end) break;
+        path = end + 1;
+    }
+    return 0;
+#endif
+}
+
+// The global compiler is a launcher once a project host exists. The command is
+// forwarded as an argument vector, so every byte of every argument reaches the
+// host unchanged, and the host's exit status is the command's.
 int compiler_forward_cli(const char* host) {
     if (!host || !host[0] || prismio_argc < 1 || !prismio_argv) return 1;
 
-    char** arguments = (char**)calloc((size_t)prismio_argc + 1, sizeof(char*));
-    if (!arguments) return 1;
-    arguments[0] = (char*)host;
-    for (int i = 1; i < prismio_argc; i++) arguments[i] = prismio_argv[i];
-
-    int result = 1;
-#ifdef _WIN32
     char* saved = NULL;
     int was_set = 0;
     if (compiler_hosted_env_begin(&saved, &was_set) != 0) {
         free(saved);
-        free(arguments);
         return 1;
     }
-    intptr_t status = _spawnv(_P_WAIT, host, (const char* const*)arguments);
+    int status = spawn_and_wait(host, prismio_argv + 1, prismio_argc - 1, "", 0);
     compiler_hosted_env_end(saved, was_set);
-    result = status == 0 ? 0 : 1;
-#else
-    pid_t child = fork();
-    if (child == 0) {
-        setenv("PRISMIO_INTERNAL_HOSTED", "1", 1);
-        execv(host, arguments);
-        _exit(127);
-    }
-    if (child > 0) {
-        int status = 0;
-        pid_t waited = 0;
-        do {
-            waited = waitpid(child, &status, 0);
-        } while (waited < 0 && errno == EINTR);
-        result = waited == child && WIFEXITED(status) &&
-                 WEXITSTATUS(status) == 0 ? 0 : 1;
-    }
-#endif
-    free(arguments);
-    return result;
+    return status < 0 ? 1 : status;
 }
 
 // Ask another compiler one silent question and report only whether it answered.
@@ -2873,40 +3215,21 @@ int compiler_forward_cli(const char* host) {
 // launcher would forward the question to a third one and report on that
 // instead. Output is discarded because a project build should report the
 // selected host, not print a version banner or a diagnostic in its middle.
-static int compiler_probe_executable(const char* exe_file, const char* arguments) {
+static int compiler_probe_executable(const char* exe_file, char** arguments, int count) {
     char* normalized = run_command_path(exe_file);
     if (!normalized) return 1;
 
-    char* quoted = command_quote_arg(normalized);
-    size_t command_len = strlen(quoted) + strlen(arguments) + 24;
-    char* command = (char*)malloc(command_len);
-    if (!command) {
-        free(quoted);
-        free(normalized);
-        return 1;
-    }
-
-#ifdef _WIN32
-    snprintf(command, command_len, "%s %s >NUL 2>&1", quoted, arguments);
-#else
-    snprintf(command, command_len, "%s %s >/dev/null 2>&1", quoted, arguments);
-#endif
     char* saved = NULL;
     int was_set = 0;
     if (compiler_hosted_env_begin(&saved, &was_set) != 0) {
         free(saved);
-        free(command);
-        free(quoted);
         free(normalized);
         return 1;
     }
-    int result = run_build_command(command);
+    int status = spawn_and_wait(normalized, arguments, count, "", 1);
     compiler_hosted_env_end(saved, was_set);
-
-    free(command);
-    free(quoted);
     free(normalized);
-    return result;
+    return status == 0 ? 0 : 1;
 }
 
 // A compiler candidate is not allowed to displace the last known-good local
@@ -2914,7 +3237,8 @@ static int compiler_probe_executable(const char* exe_file, const char* arguments
 // side-effect-free command catches a bad image, a missing dynamic dependency,
 // and an architecture mismatch before promotion.
 int compiler_check_executable(const char* exe_file) {
-    return compiler_probe_executable(exe_file, "--version");
+    char* arguments[] = { "--version" };
+    return compiler_probe_executable(exe_file, arguments, 1);
 }
 
 // The token this compiler emits code against. See PRISMIO_HOST_ABI in
@@ -2933,10 +3257,9 @@ const char* compiler_host_abi(void) {
 // exactly the "older than the question" case, reported without the old compiler
 // having had to know it would one day be asked.
 //
-// The token is a literal, so the argument is too; it needs no quoting as long
-// as a bump keeps it a bare word.
 int compiler_check_host_abi(const char* exe_file) {
-    return compiler_probe_executable(exe_file, "--internal-host-abi " PRISMIO_HOST_ABI);
+    char* arguments[] = { "--internal-host-abi", PRISMIO_HOST_ABI };
+    return compiler_probe_executable(exe_file, arguments, 2);
 }
 
 // A project-local toolchain
@@ -3607,6 +3930,162 @@ int compiler_promote_executable(const char* candidate_file, const char* active_f
 #endif
 }
 
+// Trusting a project host
+//
+// `toolchain.host` names a file the launcher will execute on every command,
+// `--version` and `check` included -- and the IntelliJ plugin runs `check` when a
+// file is opened. A repository that committed an executable at that path had it
+// run by opening the project. The generation handshake is no defence: any
+// program that exits 0 passes it.
+//
+// So a host is only run if this machine promoted it. Promotion writes
+// `<host>.trusted` beside it with the file's identity: device, inode (the file
+// index on Windows), size and modification time to the nanosecond. A clone
+// cannot bring a matching stamp, because the inode and the mtime are assigned
+// when the checkout writes the file, and a host that is replaced or edited
+// after promotion stops matching. Hashing the binary would say the same thing
+// about content and cost a second per command on a 130 MB compiler; identity is
+// a stat.
+static int host_identity(const char* path, char* out, size_t size) {
+#ifdef _WIN32
+    HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE |
+                              FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
+    if (file == INVALID_HANDLE_VALUE) return 0;
+    BY_HANDLE_FILE_INFORMATION info;
+    int ok = GetFileInformationByHandle(file, &info) != 0;
+    CloseHandle(file);
+    if (!ok) return 0;
+    snprintf(out, size, "%lu %lu %lu %lu %lu %lu %lu",
+             (unsigned long)info.dwVolumeSerialNumber,
+             (unsigned long)info.nFileIndexHigh, (unsigned long)info.nFileIndexLow,
+             (unsigned long)info.nFileSizeHigh, (unsigned long)info.nFileSizeLow,
+             (unsigned long)info.ftLastWriteTime.dwHighDateTime,
+             (unsigned long)info.ftLastWriteTime.dwLowDateTime);
+    return 1;
+#else
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+#ifdef __APPLE__
+    long long nanoseconds = (long long)st.st_mtimespec.tv_nsec;
+#else
+    long long nanoseconds = (long long)st.st_mtim.tv_nsec;
+#endif
+    snprintf(out, size, "%llu %llu %lld %lld %lld",
+             (unsigned long long)st.st_dev, (unsigned long long)st.st_ino,
+             (long long)st.st_size, (long long)st.st_mtime, nanoseconds);
+    return 1;
+#endif
+}
+
+static char* host_stamp_path(const char* host) {
+    size_t n = strlen(host) + sizeof(".trusted");
+    char* path = (char*)malloc(n);
+    if (path) snprintf(path, n, "%s.trusted", host);
+    return path;
+}
+
+#define HOST_STAMP_HEADER "prismio-host-stamp 1\n"
+
+int compiler_host_stamp_write(const char* host) {
+    char identity[256];
+    if (!host_identity(host, identity, sizeof(identity))) return 1;
+    char* path = host_stamp_path(host);
+    if (!path) return 1;
+    FILE* file = fopen(path, "wb");
+    free(path);
+    if (!file) return 1;
+    int ok = fprintf(file, "%s%s\n", HOST_STAMP_HEADER, identity) > 0;
+    return (fclose(file) == 0 && ok) ? 0 : 1;
+}
+
+int compiler_host_stamp_matches(const char* host) {
+    char identity[256];
+    if (!host_identity(host, identity, sizeof(identity))) return 0;
+    char expected[320];
+    snprintf(expected, sizeof(expected), "%s%s\n", HOST_STAMP_HEADER, identity);
+
+    char* path = host_stamp_path(host);
+    if (!path) return 0;
+    FILE* file = fopen(path, "rb");
+    free(path);
+    if (!file) return 0;
+    char recorded[320];
+    size_t n = fread(recorded, 1, sizeof(recorded) - 1, file);
+    fclose(file);
+    recorded[n] = '\0';
+    return strcmp(recorded, expected) == 0;
+}
+
+// Removing a directory tree, for `clean`
+//
+// Everything under `path` except the executable running this process: a hosted
+// `clean` is that executable, Windows refuses to delete it, and the launcher
+// removes it once this process has exited. The directory holding it is then left
+// with that one file in it, which is not a failure. Symbolic links are removed,
+// never followed. Answers 0 when everything else went.
+static int remove_tree_failed = 0;
+
+#ifdef _WIN32
+static void remove_tree_at(const char* path) {
+    size_t n = strlen(path);
+    char* pattern = (char*)malloc(n + 3);
+    if (!pattern) { remove_tree_failed = 1; return; }
+    snprintf(pattern, n + 3, "%s\\*", path);
+    WIN32_FIND_DATAA entry;
+    HANDLE find = FindFirstFileA(pattern, &entry);
+    free(pattern);
+    if (find != INVALID_HANDLE_VALUE) {
+        do {
+            if (strcmp(entry.cFileName, ".") == 0 || strcmp(entry.cFileName, "..") == 0) continue;
+            size_t child_len = n + strlen(entry.cFileName) + 2;
+            char* child = (char*)malloc(child_len);
+            if (!child) { remove_tree_failed = 1; continue; }
+            snprintf(child, child_len, "%s\\%s", path, entry.cFileName);
+            int directory = (entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+                            !(entry.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT);
+            if (directory) {
+                remove_tree_at(child);
+                _rmdir(child);
+            } else if (!compiler_is_current_executable(child) && !DeleteFileA(child)) {
+                remove_tree_failed = 1;
+            }
+            free(child);
+        } while (FindNextFileA(find, &entry));
+        FindClose(find);
+    }
+}
+#else
+static int remove_tree_entry(const char* path, const struct stat* st, int type,
+                             struct FTW* ftw) {
+    (void)st;
+    (void)ftw;
+    if (type == FTW_DP) {
+        // A directory still holding the running executable is expected to stay.
+        if (rmdir(path) != 0 && errno != ENOTEMPTY && errno != EEXIST) remove_tree_failed = 1;
+        return 0;
+    }
+    if (compiler_is_current_executable(path)) return 0;
+    if (unlink(path) != 0) remove_tree_failed = 1;
+    return 0;
+}
+#endif
+
+int compiler_remove_tree(const char* path) {
+    if (!path || !path[0]) return 1;
+    remove_tree_failed = 0;
+#ifdef _WIN32
+    DWORD attributes = GetFileAttributesA(path);
+    if (attributes == INVALID_FILE_ATTRIBUTES) return 0;
+    remove_tree_at(path);
+    _rmdir(path);
+#else
+    struct stat st;
+    if (lstat(path, &st) != 0) return 0;
+    if (nftw(path, remove_tree_entry, 16, FTW_DEPTH | FTW_PHYS) != 0) return 1;
+#endif
+    return remove_tree_failed;
+}
+
 // LAYOUT 3.2 -- running a workload at build time
 // The whole of the sandbox, and it is smaller than the clause makes it sound
 // because this language's surface is small. W3 names three effects to stub:
@@ -3670,36 +4149,4 @@ int compiler_run_workload(const char* exe_file, int timeout_seconds) {
     free(q_exe);
     free(normalized);
     return result;
-}
-
-// `arguments` is an already-quoted tail, or NULL/"" for none. It is appended
-// rather than quoted here because only the *command* position needs
-// run_command_path's separator fix -- an argument is passed through by cmd.exe
-// untouched, and re-quoting a tail the caller already quoted would nest the
-// quotes one level deeper every time.
-int compiler_run_executable_with(const char* exe_file, const char* arguments) {
-    char* normalized = run_command_path(exe_file);
-    if (!normalized) return 1;
-
-    char* q_exe = command_quote_arg(normalized);
-    int tail_len = arguments ? (int)strlen(arguments) : 0;
-    int command_len = (int)strlen(q_exe) + tail_len + 8;
-    char* command = (char*)malloc(command_len);
-
-    if (tail_len > 0) {
-        snprintf(command, command_len, "%s %s", q_exe, arguments);
-    } else {
-        snprintf(command, command_len, "%s", q_exe);
-    }
-    diag_progress_clear();
-    int result = run_build_command(command);
-
-    free(command);
-    free(q_exe);
-    free(normalized);
-    return result;
-}
-
-int compiler_run_executable(const char* exe_file) {
-    return compiler_run_executable_with(exe_file, "");
 }

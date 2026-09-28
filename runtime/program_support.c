@@ -488,17 +488,40 @@ char* executable_directory(void) {
     return fallback;
 }
 
+// One argument for the shell `system()` hands a line to, as one word.
+//
+// **It used to escape `"` and nothing else, which is quoting for neither
+// shell.** Inside POSIX double quotes `$`, a backtick and `\` stay live, so
+// `$(whoami)` ran and a trailing backslash swallowed the closing quote. cmd.exe
+// passes the line to the program's CRT, whose rule is that backslashes are
+// literal except in the run immediately before a quote, where each is doubled.
+// Each branch below is that shell's rule and no more. A shell line is still the
+// wrong tool for an argument a user typed: the driver starts those through the
+// argument vector below, and this is left for paths the toolchain chose itself.
 char* command_quote_arg(const char* arg) {
-    int len = strlen(arg);
+    int len = (int)strlen(arg);
     char* result = (char*)rt_base_alloc((len * 2) + 3);
     int out = 0;
     result[out++] = '"';
-    for (int i = 0; i < len; i++) {
-        if (arg[i] == '"') {
-            result[out++] = '\\';
+#ifdef _WIN32
+    for (int i = 0; i < len; ) {
+        int slashes = 0;
+        while (i < len && arg[i] == '\\') { slashes++; i++; }
+        if (i == len) {
+            for (int s = 0; s < slashes * 2; s++) result[out++] = '\\';
+            break;
         }
-        result[out++] = arg[i];
+        int doubled = arg[i] == '"' ? slashes * 2 + 1 : slashes;
+        for (int s = 0; s < doubled; s++) result[out++] = '\\';
+        result[out++] = arg[i++];
     }
+#else
+    for (int i = 0; i < len; i++) {
+        char c = arg[i];
+        if (c == '"' || c == '\\' || c == '$' || c == '`') result[out++] = '\\';
+        result[out++] = c;
+    }
+#endif
     result[out++] = '"';
     result[out] = '\0';
     return result;
@@ -564,27 +587,10 @@ int execute_command(const char* command) {
 extern char** environ;
 #endif
 
-// One spelling in three places -- here, `std/process.psm`, and the fixture.
-// C_CODE_STYLE's rule about a constant that crosses a seam: the int is never
-// re-derived, so a mode added to one list and not the others still builds.
-#define PRISMIO_STDIO_INHERIT 0
-#define PRISMIO_STDIO_PIPE    1
-#define PRISMIO_STDIO_DISCARD 2
-
-// What a spawn answers, written through a pointer the caller owns -- the shape
-// `clock_gettime(clk, stamp)` uses.
-//
-// **Every field is 64-bit and that is deliberate.** It removes any question of
-// padding between this declaration and `std/process.psm`'s, and the handle needs
-// the width regardless: a Prismio `Int` is `i32` and a Windows `HANDLE` is a
-// pointer.
-typedef struct {
-    int64_t handle;
-    int64_t stdin_fd;
-    int64_t stdout_fd;
-    int64_t stderr_fd;
-    int64_t error;
-} PrismioSpawnOut;
+// The stream modes and PrismioSpawnOut are declared in prismio_runtime.h, which
+// is one of the three places the modes are spelled -- with `std/process.psm` and
+// the fixture. The driver starts programs through this same builder, so the
+// declarations are shared rather than copied.
 
 static char*  g_spawn_program = NULL;
 static char** g_spawn_argv = NULL;

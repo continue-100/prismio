@@ -221,7 +221,11 @@ private fn listSiftDown<T, F>(inout items: Vec<T>, base: Int, start: Int, count:
 
 // The fallback that bounds the worst case at O(n log n): taken once a range has
 // produced more badly unbalanced partitions than its size's log2 allows.
-private fn listHeapSort<T, F>(inout items: Vec<T>, begin: Int, end: Int, order: F) {
+//
+// `cold`, because it runs only on adversarial input and every sort carried it:
+// with one call site it was inlined into listSortRange, which is what made each
+// instantiation the slowest function in a program to optimise.
+private cold fn listHeapSort<T, F>(inout items: Vec<T>, begin: Int, end: Int, order: F) {
     let count = end - begin
     let mut start = count / 2 - 1
     while (start >= 0) {
@@ -608,6 +612,22 @@ public fn clone<T: Copy>(items: Vec<T>) -> Vec<T> {
     let mut i = 0
     while (i < n) {
         list_push(out, copyOf(list_get(items, i)))
+        i = i + 1
+    }
+    return out
+}
+
+// `Vec<T>.filled(count, value)` for a `T` that is not a scalar: `count` copies
+// of `value`. A scalar never gets here -- the compiler lowers it onto the
+// runtime's one-pass fill -- so this is the `String` and struct case, where each
+// element has to be its own copy. `count` below zero is refused as the runtime's
+// is.
+public fn vecFilled<T: Copy>(count: Int, value: T) -> Vec<T> {
+    if (count < 0) { panic("Vec.filled count must not be negative") }
+    let mut out: Vec<T> = list_new_with_capacity(count)
+    let mut i = 0
+    while (i < count) {
+        list_push(out, copyOf(value))
         i = i + 1
     }
     return out

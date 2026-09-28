@@ -145,10 +145,13 @@ public fn umsProjectHost(startDirectory: String) -> String {
             let mut childIndex = 0
             while (childIndex < block.children.length) {
                 let property = document.statements[block.children[childIndex]]
+                // The same rule lowering applies (UMS2405), because this is the
+                // reader that decides what the launcher executes, and it runs
+                // before -- and instead of -- a full parse.
                 if (property.kind == UmsAstStatementKind.ASSIGNMENT and
                     property.name.equals("host") and
                     property.value.kind == UmsAstValueKind.STRING and
-                    __builtin_string_len(property.value.text) > 0) {
+                    umsHostPathValid(property.value.text)) {
                     return umsExecutablePath(join_path(root, property.value.text))
                 }
                 childIndex = childIndex + 1

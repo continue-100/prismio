@@ -1,0 +1,10 @@
+// expect-error: map literal value: expected Int, found String
+// With no annotation, the first entry decides the types, and the error names the
+// literal rather than the call it becomes.
+import std.io
+import std.map
+
+fn main() -> Int {
+    let m = { "a": 1, "b": "two" }
+    return m.length
+}

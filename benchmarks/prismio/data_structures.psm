@@ -1,22 +1,19 @@
 import common
 import std.map
+import std.math
 
 public fn benchHashMap(scale: Int) -> Int {
     let n = 50000 * scale
     let map: Map<Int, Int> = mapNew<Int, Int>()
-    let mut i = 0
-    while (i < n) {
+    for i in 0..<n {
         mapSet(map, i, (i * 31) % 1000003)
-        i = i + 1
     }
     let mut checksum = 0
     let mut seed = 23
-    let mut q = 0
-    while (q < n * 4) {
+    for _ in 0..<n * 4 {
         seed = benchRandom(seed)
         let key = seed % n
         checksum = (checksum + mapGetOr(map, key, 0)) % 1000000007
-        q = q + 1
     }
     return checksum + mapLen(map)
 }
@@ -25,12 +22,10 @@ public fn benchVectorGrowth(scale: Int) -> Int {
     let n = 1000000 * scale
     let mut values: Vec<Int> = []
     let mut checksum = 0
-    let mut i = 0
-    while (i < n) {
+    for i in 0..<n {
         let value = i % 997
         values.push(value)
         checksum = (checksum + value) % 1000000007
-        i = i + 1
     }
     return checksum + values.length
 }
@@ -38,20 +33,14 @@ public fn benchVectorGrowth(scale: Int) -> Int {
 public fn benchVectorIteration(scale: Int) -> Int {
     let n = 1000000 * scale
     let mut values: Vec<Int> = Vec<Int>.withCapacity(n)
-    let mut i = 0
-    while (i < n) {
+    for i in 0..<n {
         values.push(i % 1009)
-        i = i + 1
     }
     let mut checksum = 0
-    let mut round = 0
-    while (round < 8) {
-        let mut k = 0
-        while (k < n) {
-            checksum = (checksum + values[k]) % 1000000007
-            k = k + 1
+    for _ in 0..<8 {
+        for value in values {
+            checksum = (checksum + value) % 1000000007
         }
-        round = round + 1
     }
     return checksum
 }
@@ -59,25 +48,17 @@ public fn benchVectorIteration(scale: Int) -> Int {
 public fn benchKeyValueUpdate(scale: Int) -> Int {
     let n = 20000 * scale
     let map: Map<Int, Int> = mapNew<Int, Int>()
-    let mut i = 0
-    while (i < n) {
+    for i in 0..<n {
         mapSet(map, i, i % 101)
-        i = i + 1
     }
-    let mut round = 0
-    while (round < 20) {
-        let mut k = 0
-        while (k < n) {
-            mapSet(map, k, mapGetOr(map, k, 0) + 1)
-            k = k + 1
+    for _ in 0..<20 {
+        for i in 0..<n {
+            mapSet(map, i, mapGetOr(map, i, 0) + 1)
         }
-        round = round + 1
     }
     let mut checksum = 0
-    let mut q = 0
-    while (q < n) {
-        checksum = (checksum + mapGetOr(map, q, 0)) % 1000000007
-        q = q + 1
+    for i in 0..<n {
+        checksum = (checksum + mapGetOr(map, i, 0)) % 1000000007
     }
     return checksum
 }
@@ -87,70 +68,43 @@ public fn benchKeyValueUpdate(scale: Int) -> Int {
 public fn benchMixedMapRemoval(scale: Int) -> Int {
     let n = 20000 * scale
     let map: Map<Int, Int> = mapNew<Int, Int>()
-    let mut i = 0
-    while (i < n) {
+    for i in 0..<n {
         mapSet(map, i, i % 101)
-        i = i + 1
     }
     let mut checksum = 0
-    let mut round = 0
-    while (round < 10) {
-        let mut k = 0
-        while (k < n) {
-            if ((k + round) % 3 == 0 and mapRemove(map, k)) { checksum = (checksum + 1) % 1000000007 }
-            k = k + 1
+    for round in 0..<10 {
+        for i in 0..<n {
+            if ((i + round) % 3 == 0 and mapRemove(map, i)) { checksum = (checksum + 1) % 1000000007 }
         }
-        k = 0
-        while (k < n) {
-            if ((k + round) % 3 == 0) { mapSet(map, k, (k + round) % 101) }
-            k = k + 1
+        for i in 0..<n {
+            if ((i + round) % 3 == 0) { mapSet(map, i, (i + round) % 101) }
         }
-        round = round + 1
     }
-    let mut q = 0
-    while (q < n) {
-        checksum = (checksum + mapGetOr(map, q, 0)) % 1000000007
-        q = q + 1
+    for i in 0..<n {
+        checksum = (checksum + mapGetOr(map, i, 0)) % 1000000007
     }
     return checksum
 }
 
-public fn popcount64(val: I64) -> Int {
-    let mut x = val
-    let m1: I64 = 6148914691236517205
-    let m2: I64 = 3689348814741910323
-    let m4: I64 = 1085102592571150095
-    let h01: I64 = 72340172838076673
-
-    x = x - ((x >> (1 as I64)) & m1)
-    x = (x & m2) + ((x >> (2 as I64)) & m2)
-    x = (x + (x >> (4 as I64))) & m4
-    return (((x * h01) >> (56 as I64)) & (255 as I64)) as Int
-}
-
+// `uint64_t` words and a hardware population count, as C++'s
+// `__builtin_popcountll` and Rust's `count_ones`. This arm used signed `I64`
+// words, masked the arithmetic shift to rotate, and counted with a hand-written
+// SWAR popcount, because Prismio had neither the unsigned shift in the right
+// type nor `countOnes`.
 public fn benchFlatBitset(scale: Int) -> Int {
     let n = 50000 * scale
     let words = (n + 63) / 64
 
-    let mut a: Vec<I64> = Vec<I64>.withCapacity(words)
-    let mut b: Vec<I64> = Vec<I64>.withCapacity(words)
-    let mut c: Vec<I64> = Vec<I64>.withCapacity(words)
+    let mut a = Vec<U64>.filled(words, 0)
+    let mut b = Vec<U64>.filled(words, 0)
+    let mut c = Vec<U64>.filled(words, 0)
 
-    let mut initW = 0
-    while (initW < words) {
-        a.push(0 as I64)
-        b.push(0 as I64)
-        c.push(0 as I64)
-        initW = initW + 1
-    }
-
+    let one: U64 = 1
     let mut seed = 77
-    let mut i = 0
-    let one: I64 = 1
-    while (i < n) {
+    for i in 0..<n {
         seed = benchRandom(seed)
         let wIdx = i / 64
-        let bIdx = (i % 64) as I64
+        let bIdx = (i % 64) as U64
         if (seed % 3 == 0) {
             a[wIdx] = a[wIdx] | (one << bIdx)
         }
@@ -158,35 +112,27 @@ public fn benchFlatBitset(scale: Int) -> Int {
         if (seed % 5 == 0) {
             b[wIdx] = b[wIdx] | (one << bIdx)
         }
-        i = i + 1
     }
 
-    let magic: I64 = 87802765997552500
-    let mut round = 0
-    while (round < 10) {
-        let mut w = 0
-        while (w < words) {
+    let magic: U64 = 0x0137_F026_8594_B374
+    for _ in 0..<10 {
+        for w in 0..<words {
             let aw = a[w]
             let bw = b[w]
             let cw = (aw & bw) | ((~aw) & (bw ^ magic))
             c[w] = cw
             a[w] = aw ^ cw
-            let shifted = (bw << (1 as I64)) | ((bw >> (63 as I64)) & (1 as I64))
-            b[w] = shifted
-            w = w + 1
+            b[w] = (bw << (1 as U64)) | (bw >> (63 as U64))
         }
-        round = round + 1
     }
 
     let mut countA: I64 = 0
     let mut countB: I64 = 0
     let mut countC: I64 = 0
-    let mut w2 = 0
-    while (w2 < words) {
-        countA = countA + (popcount64(a[w2]) as I64)
-        countB = countB + (popcount64(b[w2]) as I64)
-        countC = countC + (popcount64(c[w2]) as I64)
-        w2 = w2 + 1
+    for w in 0..<words {
+        countA = countA + (a[w].countOnes() as I64)
+        countB = countB + (b[w].countOnes() as I64)
+        countC = countC + (c[w].countOnes() as I64)
     }
 
     let checksum = (countA * 10007 + countB * 31 + countC) % 1000000007
@@ -210,13 +156,11 @@ public fn benchTrieSearch(scale: Int) -> Int {
     counts.push(0)
 
     let mut seed = 53
-    let mut k = 0
-    while (k < numKeys) {
+    for _ in 0..<numKeys {
         seed = benchRandom(seed)
         let len = 6 + (seed % 10)
         let mut curr = 0
-        let mut i = 0
-        while (i < len) {
+        for _ in 0..<len {
             seed = benchRandom(seed)
             let branch = seed % 4
             let mut nextNode = -1
@@ -266,22 +210,18 @@ public fn benchTrieSearch(scale: Int) -> Int {
                 nextNode = c3[curr]
             }
             curr = nextNode
-            i = i + 1
         }
         counts[curr] = counts[curr] + 1
-        k = k + 1
     }
 
     let mut checksum = 0
     let mut qSeed = 101
-    let mut q = 0
-    while (q < numQueries) {
+    for _ in 0..<numQueries {
         qSeed = benchRandom(qSeed)
         let qLen = 3 + (qSeed % 8)
         let mut curr = 0
         let mut found = true
-        let mut qi = 0
-        while (qi < qLen) {
+        for _ in 0..<qLen {
             qSeed = benchRandom(qSeed)
             let branch = qSeed % 4
             let mut nextNode = -1
@@ -295,12 +235,10 @@ public fn benchTrieSearch(scale: Int) -> Int {
                 break
             }
             curr = nextNode
-            qi = qi + 1
         }
         if (found) {
             checksum = (checksum + curr * 31 + counts[curr] + 1) % 1000000007
         }
-        q = q + 1
     }
 
     return checksum

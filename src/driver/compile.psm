@@ -22,10 +22,13 @@ import std.option
 import driver.imports
 import driver.workload
 
-public extern fn compiler_bootstrap_executable(irFile: String, exeFile: String) -> Int
 public extern fn compiler_build_executable(irFile: String, exeFile: String) -> Int
 public extern fn compiler_installed_runtime_hash() -> String produce(free)
-public extern fn compiler_run_executable(exeFile: String) -> Int
+// Starts a program with the arguments queued by compiler_spawn_arg, as an
+// argument vector -- never a shell line -- in `directory` ("" keeps this
+// process's), and answers its exit status, or -1 when it could not be started.
+public extern fn compiler_spawn_arg(argument: String borrow)
+public extern fn compiler_spawn_wait(program: String borrow, directory: String borrow) -> Int
 public extern fn compiler_library_emission_module() -> String produce(free)
 // Every path through both mallocs, including the failure paths, which allocate a
 // one-byte empty string rather than returning a literal. That is the same
@@ -45,8 +48,53 @@ public extern fn compiler_temp_ir_path(sourcePath: String) -> String produce(fre
 public extern fn delete_file(path: String) -> Int
 public extern fn file_exists(path: String) -> Int
 public extern fn get_directory(path: String) -> String
-public extern fn ir_jit_run_main(programName: String) -> Int
+// `run --jit`: merges the imported standard-library bitcode into `irFile`, as a
+// build does, and runs `main` in this process.
+public extern fn compiler_jit_run(irFile: String borrow, programName: String borrow) -> Int
 public extern fn read_file(path: String) -> String
+
+// How one build is done. Every command that compiles -- a single file, a UMS
+// target, a project command's `.psm` tool -- fills one of these, and
+// compileSource reads nothing about the invocation from anywhere else.
+//
+// `debug` is SPEC 7.1's zero-analysis level and `debugInfo` is `-g`; the names
+// are old and unfortunate, and both are released flags. `runDirectory` is where
+// `run` starts the program ("" keeps this process's working directory), and its
+// arguments are queued separately with compiler_spawn_arg, because a list does
+// not cross the FFI boundary.
+struct CompileOptions {
+    runAfterBuild: Bool,
+    verify: Bool,
+    debug: Bool,
+    debugInfo: Bool,
+    optimized: Bool,
+    jit: Bool,
+    overflowChecks: Bool,
+    installedRuntime: Bool,
+    runDirectory: String
+}
+
+public fn compileOptions() -> CompileOptions {
+    return CompileOptions {
+        runAfterBuild: false,
+        verify: false,
+        debug: false,
+        debugInfo: false,
+        optimized: false,
+        jit: false,
+        overflowChecks: false,
+        installedRuntime: true,
+        runDirectory: "".clone()
+    }
+}
+
+// A program started by the name `run` built. A bare name would be looked up on
+// PATH, which can run a different program of the same name than the one just
+// built.
+private fn runnablePath(outputFile: String) -> String {
+    if (outputFile.contains("/") or outputFile.contains("\\")) { return outputFile.clone() }
+    return "./".concat(outputFile)
+}
 
 private fn reportForcedLayouts() {
     let mut i = 0
@@ -86,7 +134,7 @@ private fn checkRuntimeFreshness() {
     println(installed)
     print("  the runtime sources on disk now hash ")
     println(current)
-    println("  Re-package the toolchain (tools/package.sh, or tools/package.ps1 on Windows)")
+    println("  Re-package the toolchain (tools/package.py)")
     println("  so lib/ matches runtime/, or move away from the source tree to use the")
     println("  installed runtime as-is.")
     exit(1)
@@ -264,15 +312,17 @@ public fn aifCommand(path: String, summary: Bool, ownedCollections: Bool, thetaF
 // produces -- so the baseline is the absence of an input rather than a second
 // code path that has to be kept in step with the first.
 
-public fn compileSource(path: String, outputFile: String, runAfterBuild: Bool, bootstrapMode: Bool,
-                  verifyMode: Bool, debugMode: Bool, debugInfo: Bool, optimized: Bool,
-                  jitMode: Bool) -> Int {
+//
+// With `runAfterBuild`, the answer is the program's own exit status -- a program
+// that returns 3 makes `prismio run` exit 3, with nothing added -- and a
+// diagnostic is reserved for the toolchain failing.
+public fn compileSource(path: String, outputFile: String, options: CompileOptions) -> Int {
     let mut outFile = ""
     let mut emitIrOnly = false
 
-    // Bootstrap deliberately skips this: it never consults the installed libraries
-    // at all, so their freshness cannot affect the result.
-    if (bootstrapMode == false) {
+    // A target that brings its own runtime never consults the installed one, so
+    // that library's freshness cannot affect the result.
+    if (options.installedRuntime) {
         checkRuntimeFreshness()
     }
     diag_progress_begin(path)
@@ -287,11 +337,6 @@ public fn compileSource(path: String, outputFile: String, runAfterBuild: Bool, b
     let content = read_file(path)
     if (content.equals("") and file_exists(path) == 0) {
         diag_error_code("P1008", "cannot read ".concat(path))
-        if (bootstrapMode) {
-            println("  bootstrap compiles the Prismio compiler from a source checkout.")
-            println("  Run it from the repository root, or give the source path explicitly:")
-            println("      prismio bootstrap path/to/src/main.psm")
-        }
         return 1
     }
 
@@ -348,7 +393,7 @@ public fn compileSource(path: String, outputFile: String, runAfterBuild: Bool, b
     // 7.2's "a level SHALL NOT change which programs compile" true: a refuted
     // `pin` is still diagnosed.
     let mut aif_rounds = AIF_DEFAULT_ROUNDS
-    if (debugMode) { aif_rounds = 0 }
+    if (options.debug) { aif_rounds = 0 }
 
     // LAYOUT 3. If the program declares a workload, measure it before the real
     // analysis runs, and hand the measured profile to the layout search in place
@@ -371,14 +416,12 @@ public fn compileSource(path: String, outputFile: String, runAfterBuild: Bool, b
     // Nothing below reads the profile for any other purpose, and irProfileMode is
     // false for the whole of the real build.
     //
-    // Deliberately skipped in bootstrap mode. The compiler declares no workload,
-    // so this would be dead code there -- but it would also mean the bootstrap
-    // path could run a program at build time, and bootstrap's whole contract is
-    // that it builds from the checkout and does nothing else.
+    // Skipped for a target that brings its own runtime: the workload driver is
+    // linked against the installed one, which such a program does not use.
     diag_progress("analysing ownership")
     let mut profilePath = ""
-    if (bootstrapMode == false and debugMode == false) {
-        profilePath = runWorkloadProfile(mergedAst, path, verifyMode)
+    if (options.installedRuntime and options.debug == false) {
+        profilePath = runWorkloadProfile(mergedAst, path, options.verify)
     }
 
     let aifConverged = aifRunProfiled(mergedAst, true, false, aif_rounds, profilePath)
@@ -412,7 +455,7 @@ public fn compileSource(path: String, outputFile: String, runAfterBuild: Bool, b
     // runtime/lang_runtime.c and check that every object is released exactly
     // once, poisoning it on the way out so a read that should not have happened
     // returns a pattern instead of plausible data.
-    if (verifyMode) {
+    if (options.verify) {
         ir_set_alloc_function("aif_verify_alloc")
         ir_set_free_function("aif_verify_release")
         // The other half of the swap. Strings and lists are affine as of Level 4
@@ -430,35 +473,44 @@ public fn compileSource(path: String, outputFile: String, runAfterBuild: Bool, b
     // the IR pipeline, and a debugger uses that bit to warn the reader that a
     // variable may have been folded away. Claiming otherwise is exactly the kind
     // of small lie ir/debug.psm exists to prevent.
-    if (debugInfo) {
-        irSetDebugInfo(true, "prismio ".concat(PRISMIO_VERSION), path, optimized)
+    //
+    // Both settings are written for every build, on and off, rather than only
+    // turned on: one process builds every target of a project, and the second
+    // must not inherit the first's.
+    irSetDebugInfo(options.debugInfo, "prismio ".concat(PRISMIO_VERSION), path, options.optimized)
+    if (options.debugInfo) {
         compiler_set_debug_info(1)
+    } else {
+        compiler_set_debug_info(0)
+    }
+    if (options.overflowChecks) {
+        ir_set_overflow_checks(1)
+    } else {
+        ir_set_overflow_checks(0)
     }
 
     diag_progress("generating IR")
     generateModule(mergedAst)
 
-    // Before `ir_write_file`, and that is the whole point: `--jit` writes no IR,
-    // spawns no clang and links nothing. The module generated above is the one
-    // that runs, so what executes is what a `build` of the same source would
-    // have produced.
-    if (jitMode) {
-        // Reported exactly as the non-JIT `run` reports it, and deliberately:
-        // `--jit` is a way of running the same program, so a caller must not be
-        // able to tell which path ran from the exit status or the diagnostic.
-        // That is also what makes the two comparable in run_jit_test.
-        diag_status("Running", path.concat(" (JIT)"))
-        let status = ir_jit_run_main(path)
-        if (status != 0) {
-            diag_error_code("P1009", path.concat(" exited with a failure status"))
-            return 1
-        }
-        return 0
-    }
-
     if (ir_write_file(outFile) != 0) {
         diag_error_code("P1010", "cannot write LLVM IR to ".concat(outFile))
         return 1
+    }
+
+    // After the IR is written and before anything native: `--jit` spawns no
+    // clang and links nothing. It does merge the standard library's compiled
+    // bitcode, which is what a build does with the same file -- without that, a
+    // program using `std.map` found none of the functions `.plib`s ship. What
+    // runs is what a `build` of the same source would have optimised.
+    if (options.jit) {
+        // Reported exactly as the non-JIT `run` reports it, and deliberately:
+        // `--jit` is a way of running the same program, so a caller must not be
+        // able to tell which path ran from the exit status. That is also what
+        // makes the two comparable in run_jit_test.
+        diag_status("Running", path.concat(" (JIT)"))
+        let status = compiler_jit_run(outFile, path)
+        if (emitIrOnly == false) { delete_file(outFile) }
+        return status
     }
 
     if (emitIrOnly) {
@@ -466,37 +518,39 @@ public fn compileSource(path: String, outputFile: String, runAfterBuild: Bool, b
         return 0
     }
 
-    let mut buildFailed = 0
-    if (bootstrapMode) {
-        buildFailed = compiler_bootstrap_executable(outFile, outputFile)
-    } else {
-        buildFailed = compiler_build_executable(outFile, outputFile)
-    }
-
-    if (buildFailed != 0) {
+    if (compiler_build_executable(outFile, outputFile) != 0) {
         delete_file(outFile)
         diag_error_code("P1011", "the native build step failed (llc/clang); see the output above")
+        // A compiler is the one Prismio program that needs more than its own
+        // manifest-free build, and a link failure is how building it the wrong way
+        // shows up. Only then is the way to build it worth mentioning: printed
+        // after every link failure, a user missing a native library was told to
+        // bootstrap the compiler.
+        if (path.endsWith("src/main.psm") and file_exists("runtime/llvm-api-backend.c") == 1) {
+            diag_note("the Prismio compiler is built from its checkout with `prismio build`, which reads its build.ums")
+        }
         return 1
     }
 
     delete_file(outFile)
 
-    diag_result("Built ", "Built", outputFile, buildDetail(bootstrapMode, debugInfo, verifyMode))
+    diag_result("Built ", "Built", outputFile, buildDetail(options.debugInfo, options.verify))
 
-    if (runAfterBuild) {
+    if (options.runAfterBuild) {
         diag_status("Running", outputFile)
-        if (compiler_run_executable(outputFile) != 0) {
-            diag_error_code("P1012", outputFile.concat(" exited with a failure status"))
+        let status = compiler_spawn_wait(runnablePath(outputFile), options.runDirectory)
+        if (status < 0) {
+            diag_error_code("P1012", "could not start ".concat(outputFile))
             return 1
         }
+        return status
     }
 
     return 0
 }
 
 // What kind of binary the result line names, on a terminal.
-private fn buildDetail(bootstrapMode: Bool, debugInfo: Bool, verifyMode: Bool) -> String {
-    if (bootstrapMode) { return "compiler" }
+private fn buildDetail(debugInfo: Bool, verifyMode: Bool) -> String {
     if (verifyMode) { return "verify" }
     if (debugInfo) { return "debug" }
     return "optimized"

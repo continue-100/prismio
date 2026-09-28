@@ -6,6 +6,7 @@ import common.text
 import common.diagnostics
 import common.target
 import common.float_builtins
+import common.int_builtins
 import std.string
 import aif.model
 
@@ -2111,9 +2112,22 @@ private fn flatPushStride(expr: ASTNode, funcName: String) -> Int {
 // An upper bound on the executions per iteration, which is what the guard needs
 // -- a `continue` or a `break` can only make it fewer. That stops being true
 // under a nested loop, which is why irPushGuardOk declines one outright.
+//
+// **An `if` counts its larger arm, not both.** Exactly one arm runs, so the sum
+// was an upper bound twice as loose as it had to be for a push in each arm --
+// loose enough to fail against a list sized for one push per iteration.
+// `lz4_compress` fills its input that way, and its guard failed on every run,
+// so each push paid the out-of-line `list_push_inline_scalar_slow`.
 private fn irCountPushes(nodePtr: Ptr, name: String) -> Int {
     if (nodeIsNull(nodePtr)) { return 0 }
     let n = ptr_to_node(nodePtr)
+    if (n.kind == NodeKind.IF_STATEMENT) {
+        let thenPushes = irCountPushes(n.child2, name)
+        let elsePushes = irCountPushes(n.child3, name)
+        let mut larger = thenPushes
+        if (elsePushes > larger) { larger = elsePushes }
+        return irCountPushes(n.child1, name) + larger
+    }
     let mut found = 0
     if (n.kind == NodeKind.CALL_EXPR and nodeExists(n.child1)) {
         if (flatPushStride(n, ptr_to_node(n.child1).s1) > 0) {
@@ -2274,11 +2288,62 @@ internal fn generateLoopPushGuard(cond: ASTNode, body: ASTNode) -> String {
         preparedTrip = ir_get_temp_name(ir_mul("i64", trip, valid))
     }
 
+    return generateTripPushGuard(bodyPtr, trip, finite, preparedTrip, irLoneCall(body, iv))
+}
+
+// The range `for` half of E1. A range knows its trip count without reading it
+// out of a condition and an induction update: `end - start`, one more when the
+// end is included, taken the other way round when the loop counts down. The
+// loop variable cannot be assigned and the loop stops at the ends of Int, so the
+// count is always finite. A stepped range is declined -- its count is a
+// division, and no push loop in the suite or the corpus steps.
+//
+// Without this a `for` fill paid a `list_push_inline_scalar` call per element
+// that the `while` it replaced did not: `large_buffer_copy`'s fill loop, written
+// as `for i in 0..<n`, took the benchmark from 1.20x of C++ to 1.80x.
+internal fn generateForPushGuard(stmt: ASTNode, endVal: String, down: Bool) -> String {
+    let bodyPtr = stmt.child3
+    if (irPushGuardOk(bodyPtr, bodyPtr) == false) { return "" }
+    if (nodeExists(ptr_to_node(stmt.child2).next)) { return "" }
+
+    let first = ir_get_temp_name(ir_load("i32", ir_get_var_slot(stmt.s1)))
+    let start = ir_get_temp_name(ir_sext("i32", first, "i64"))
+    let end = ir_get_temp_name(ir_sext("i32", endVal, "i64"))
+    let mut span = ""
+    if (down) {
+        span = ir_get_temp_name(ir_sub("i64", start, end))
+    } else {
+        span = ir_get_temp_name(ir_sub("i64", end, start))
+    }
+    let mut trip = span.clone()
+    if (stmt.i1 == 1) {
+        trip = ir_get_temp_name(ir_add("i64", span, "1"))
+    }
+    return generateTripPushGuard(bodyPtr, trip, "true", trip,
+                                 irOnlyCall(ptr_to_node(bodyPtr)))
+}
+
+// A loop body that is one call statement and nothing else: a `for` body's lone
+// append, whose induction update is the loop's own rather than a statement.
+private fn irOnlyCall(body: ASTNode) -> Ptr {
+    let first = body.child1
+    if (nodeExists(first) == false) { return ptr_null() }
+    let stmt = ptr_to_node(first)
+    if (stmt.kind != NodeKind.EXPRESSION_STATEMENT) { return ptr_null() }
+    if (nodeIsNull(stmt.child1) or nodeExists(stmt.next)) { return ptr_null() }
+    let call = ptr_to_node(stmt.child1)
+    if (call.kind != NodeKind.CALL_EXPR) { return ptr_null() }
+    return node_to_ptr(call)
+}
+
+// The guard itself, once a loop's trip count is known: the lone scalar fill's
+// capacity preparation, then one conjunct per push site into a fresh slot.
+private fn generateTripPushGuard(bodyPtr: Ptr, trip: String, finite: String,
+                                 preparedTrip: String, fillPtr: Ptr) -> String {
     // Exactly one unconditional append, followed by the induction update.
     // No call in its value, early exit, aliasing receiver, or extra statement
     // can observe the earlier growth. Populated and tiny lists are declined
     // at runtime, and retain the ordinary checked push path.
-    let fillPtr = irLoneCall(body, iv)
     if (nodeExists(fillPtr)) {
         let fill = ptr_to_node(fillPtr)
         if (nodeExists(fill.child1)) {
@@ -2567,6 +2632,43 @@ private fn inlineOpName(funcName: String) -> String {
 // call returns before touching it. That is an inherited invariant rather than a
 // new one -- the boxed path already passes the scalar *punned into* a pointer to
 // the same function, and has always relied on the same answer.
+// Integer bit operations at the operand's own width, each one LLVM intrinsic:
+// `ctpop`, `ctlz` and `cttz` for the counts -- with zero defined, so a zero's
+// leading zeros are its width -- and a funnel shift of the value with itself for
+// a rotation, which is one `ror` on AArch64 and x86. The distance is taken
+// modulo the width, as the funnel shift defines it; a count is widened or
+// narrowed to Int.
+private fn generateBitBuiltin(expr: ASTNode, funcName: String) -> String {
+    let operand = ptr_to_node(expr.child2)
+    let key = typeIrKey(nodeGetType(operand))
+    let value = generateExpression(operand)
+    if (intRotateBuiltin(funcName)) {
+        let mut distance = generateExpression(ptr_to_node(operand.next))
+        if (key.equals("i64")) {
+            distance = ir_get_temp_name(ir_sext("i32", distance, "i64"))
+        } else if (key.equals("i32") == false) {
+            distance = ir_get_temp_name(ir_trunc("i32", distance, key))
+        }
+        let mut shift = "llvm.fshl."
+        if (funcName.equals("__builtin_rotate_right")) { shift = "llvm.fshr." }
+        ir_call_begin()
+        ir_call_arg(key, value.clone())
+        ir_call_arg(key, value)
+        ir_call_arg(key, distance)
+        return ir_get_temp_name(ir_call_end(key.clone(), shift.concat(key)))
+    }
+    let mut intrinsic = "llvm.ctpop."
+    if (funcName.equals("__builtin_leading_zeros")) { intrinsic = "llvm.ctlz." }
+    if (funcName.equals("__builtin_trailing_zeros")) { intrinsic = "llvm.cttz." }
+    ir_call_begin()
+    ir_call_arg(key, value)
+    if (funcName.equals("__builtin_count_ones") == false) { ir_call_arg("i1", "false") }
+    let counted = ir_get_temp_name(ir_call_end(key.clone(), intrinsic.concat(key)))
+    if (key.equals("i32")) { return counted }
+    if (key.equals("i64")) { return ir_get_temp_name(ir_trunc("i64", counted, "i32")) }
+    return ir_get_temp_name(ir_zext(key, counted, "i32"))
+}
+
 // A scalar widened to the i64 the by-value inline entry points take.
 //
 // A `double` goes through a bitcast rather than a conversion: the callee stores
@@ -3417,7 +3519,16 @@ private fn generateBinary(expr: ASTNode) -> String {
         // mode and not a property of an operand. A checked op is 5.4x-6.0x
         // the plain one -- it defeats vectorization -- so the default is off
         // and the flag is what turns it on.
+        //
+        // **Never inside the standard library**, which is written against
+        // wrapping arithmetic -- `keyMixWide` multiplies a U64 by a constant on
+        // purpose -- and has no `wrapping_*` spelling to say so. An installed
+        // toolchain compiled std's `.plib`s without checks, so only a program
+        // built from a checkout reached them, and there `--overflow-checks`
+        // trapped at std/key.psm on the first map insert. Asked of the declaring
+        // module, so an instantiated std generic is exempt at every argument.
         let checked = ir_overflow_checks() == 1 and isIntegerStorageKey(opType)
+                      and diag_file_module(expr.file).startsWith("std.") == false
         if (checked) {
             let file = diag_file_path(expr.file)
             if (isUnsigned) {
@@ -3809,6 +3920,10 @@ private fn generateCall(expr: ASTNode) -> String {
         ir_call_arg("i32", absVal)
         ir_call_arg("i1", "false")
         return ir_get_temp_name(ir_call_end("i32", "llvm.abs.i32"))
+    }
+
+    if (intBitCountBuiltin(funcName) or intRotateBuiltin(funcName)) {
+        return generateBitBuiltin(expr, funcName)
     }
 
     // The failure builtins. Each failing path is a call the runtime does not
@@ -4294,7 +4409,11 @@ private fn generateCall(expr: ASTNode) -> String {
     }
 
     // Regular function call
-    let inlineSize = inlineElemSizeOfCall(expr)
+    let mut inlineSize = inlineElemSizeOfCall(expr)
+    // `Vec<T>.filled` builds the list rather than receiving one, so its element
+    // width is its own result's, and its element is the value, argument 1.
+    let filled = funcName.equals("list_new_filled")
+    if (filled) { inlineSize = inlineElemSizeOfList(expr) }
     // Foreign iff Prismio does not define a function of this name.
     //
     // One test for both directions, and it has to be this one. Asking "is
@@ -4308,7 +4427,8 @@ private fn generateCall(expr: ASTNode) -> String {
     // REQUIREMENTS 20. `list_push` and `list_set` take the element as `ptr`,
     // so a scalar has to reach the slot as one -- without this the call
     // disagrees with its own declaration and the module fails verification.
-    let elemArg = listElementArgIndex(funcName)
+    let mut elemArg = listElementArgIndex(funcName)
+    if (filled) { elemArg = 1 }
     // `list_push`/`list_set` into a `List<String>` take the pair's two halves
     // rather than a slot word; see list_push_str.
     let mut stringListOp = false
@@ -4485,6 +4605,10 @@ private fn generateCall(expr: ASTNode) -> String {
                 ir_call_arg("i32", inlineSize.toString())
             }
         }
+    }
+    if (filled) {
+        callName = "list_new_filled_inline"
+        ir_call_arg("i32", inlineSize.toString())
     }
     if (stringListOp) {
         if (funcName.equals("list_push")) { callName = "list_push_str" }
@@ -4674,7 +4798,13 @@ private fn generateCall(expr: ASTNode) -> String {
     // front of one would be reading memory this compilation did not allocate.
     // Stamped on the allocating call, which is the only place the site -- and
     // therefore the disposition -- is named.
-    let elemOwn = aif_elem_owner_at_node(node_to_ptr(expr))
+    let mut elemOwn = aif_elem_owner_at_node(node_to_ptr(expr))
+    // A `Vec<String>` that only literal copies reach has no site to agree on,
+    // and owns every one of them: codegen made each copy for this container.
+    if (elemOwn == AIF_ELEM_NONE and listHoldsStrings(expr)
+            and aif_elem_literal_copies_only(node_to_ptr(expr)) == 1) {
+        elemOwn = AIF_ELEM_OBJECT
+    }
     if (elemOwn != AIF_ELEM_NONE) {
         // A `List<String>` owns pairs rather than pointers: AIF_ELEM_STRING.
         let mut stampedOwn = elemOwn

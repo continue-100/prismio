@@ -106,6 +106,9 @@ FFI_CONTRACTS = {
     # made the oracle call five fresh containers `opaque-ret` and sink eight sites
     # to T3. See FFI_RETURNS_PRODUCE below; these two tables have to move together.
     'list_new_with_capacity': {},
+    # Vec<T>.filled for a scalar T: both arguments are values, and the return
+    # is a fresh container exactly as with_capacity's is.
+    'list_new_filled': {},
     'soa':            {0: 'consume'},
     'aos':            {0: 'consume'},
     'data_len':       {0: 'borrow'},
@@ -172,6 +175,12 @@ FFI_CONTRACTS = {
     '__builtin_max': {0: 'borrow', 1: 'borrow'},
     '__builtin_min': {0: 'borrow', 1: 'borrow'},
     '__builtin_abs': {0: 'borrow'},
+    # Integer bit operations: a scalar in (and a distance), a scalar out.
+    '__builtin_count_ones': {0: 'borrow'},
+    '__builtin_leading_zeros': {0: 'borrow'},
+    '__builtin_trailing_zeros': {0: 'borrow'},
+    '__builtin_rotate_left': {0: 'borrow', 1: 'borrow'},
+    '__builtin_rotate_right': {0: 'borrow', 1: 'borrow'},
     # The failure builtins: they read a message and end the process. Sema
     # rewrites `panic` to `__builtin_panic` where the program declares no
     # `panic` of its own, and the dump this reads is taken after sema.
@@ -217,7 +226,7 @@ for _op, _arity in F64_BUILTIN_ARITY.items():
 FFI_ALLOCATES_THROUGH_ARENA_HINT = {
     'str_concat', 'str_substring', 'str_slice', 'str_with_capacity', 'str_clone',
     'str_clone_n', 'str_own', 'str_from_double', 'str_from_double_fixed',
-    'int_to_str', 'list_new', 'list_new_with_capacity', 'soa', 'aos',
+    'int_to_str', 'list_new', 'list_new_with_capacity', 'list_new_filled', 'soa', 'aos',
 }
 
 
@@ -314,7 +323,7 @@ def elem_key(container_type):
 # release; anything undeclared has UNKNOWN provenance and must be treated
 # conservatively -- it may already be shared and may already outlive us.
 FFI_RETURNS_PRODUCE = {
-    'list_new', 'list_new_with_capacity',
+    'list_new', 'list_new_with_capacity', 'list_new_filled',
     'soa', 'aos',
     'str_concat', 'str_substring', 'str_slice',
     '__builtin_string_inline',

@@ -2407,12 +2407,28 @@ internal fn strFromU64Radix(value: U64, radix: Int) -> String {
 }
 
 internal fn strFromIntRadix(value: Int, radix: Int) -> String {
+    return strFromI64Radix(value as I64, radix)
+}
+
+internal fn strFromI64Radix(value: I64, radix: Int) -> String {
     if (value >= 0) { return strFromU64Radix(value as U64, radix) }
 
-    // The magnitude through U64, so that the most negative Int -- whose positive
-    // is not an Int -- formats like any other rather than overflowing on the way.
-    let magnitude = (0 as U64) - (value as I64 as U64)
-    let digitsText = strFromU64Radix(magnitude, radix)
+    // The magnitude through U64, so that the most negative value -- whose
+    // positive does not fit -- formats like any other rather than overflowing.
+    let digitsText = strFromU64Radix((0 as U64) - (value as U64), radix)
+    return strNegated(digitsText)
+}
+
+// Decimal text for an I64. It went through `strFromInt(self as Int)` and so was
+// cut to 32 bits: `I64.MAX.toString()` was "-1" and 4294967296 was "0", while
+// `println` of the same value -- which formats its own way -- was right.
+internal fn strFromI64(value: I64) -> String {
+    if (value >= 0) { return strFromUnsigned(value as U64) }
+    return strNegated(strFromUnsigned((0 as U64) - (value as U64)))
+}
+
+// `-` in front of a magnitude's digits.
+private fn strNegated(digitsText: String) -> String {
     let width = __builtin_string_len(digitsText)
     let out = str_with_capacity(width + 1)
     __builtin_string_put_byte(out, 0, '-')
@@ -2856,7 +2872,8 @@ impl Int {
 }
 
 impl I64 {
-    public fn toString(self) -> String { return strFromInt(self as Int) }
+    public fn toString(self) -> String { return strFromI64(self) }
+    public fn toString(self, radix: Int) -> String { return strFromI64Radix(self, radix) }
 }
 
 impl U64 {

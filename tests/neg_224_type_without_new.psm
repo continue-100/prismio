@@ -1,0 +1,10 @@
+// expect-error: `Bare` has no `new`, so it cannot be called
+// Calling a type calls its `new`; a struct without one is built with a literal.
+import std.io
+
+struct Bare { a: Int }
+
+fn main() -> Int {
+    let b = Bare()
+    return b.a
+}

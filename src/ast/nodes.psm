@@ -183,7 +183,14 @@ enum NodeKind {
     // of its own, so sema rewrites it in place into the expression that builds
     // that value (src/sema/defaults.psm) and no pass after sema sees one.
     // Appended so the committed seed's NodeKind ordinals do not move.
-    DEFAULT_EXPR
+    DEFAULT_EXPR,
+
+    // `{ "a": 1, "b": 2 }`: child1 is the key chain and child2 the value chain,
+    // in the same order. Like DEFAULT_EXPR it lives only between the parser and
+    // sema, which rewrites it in place into a chain of `mapPut` calls or,
+    // for `{}`, the annotation's `default` (src/sema/maps.psm). Appended for the
+    // same reason as the rest.
+    MAP_LITERAL_EXPR
 }
 
 // Flat AST Node using String for pointers (type punning)
@@ -326,6 +333,16 @@ public fn nodeIsCallableBound(ref: ASTNode) -> Bool {
 
 public fn nodeIsProperty(fnNode: ASTNode) -> Bool {
     return fnNode.kind == NodeKind.FUNCTION and fnNode.i1 == 4
+}
+
+// A `cold fn` (src/parse/decl.psm): a function that rarely runs. Kept in
+// FUNCTION.i1 as 16, a value none of codegen's inline states (0-3) takes, and
+// one markSingleLoopCallsiteFunctions keeps rather than clears -- a cold
+// function is never inlined, so the state it would otherwise carry is moot.
+public fn nodeMarkCold(fnNode: ASTNode) { fnNode.i1 = 16 }
+
+public fn nodeIsCold(fnNode: ASTNode) -> Bool {
+    return fnNode.kind == NodeKind.FUNCTION and fnNode.i1 == 16
 }
 
 // Copies a span from one node to another. Used where a node is built from

@@ -25,8 +25,8 @@ trait Display {
 impl Display for Int    { fn show(self) -> String { return strFromInt(self) } }
 impl Display for I8     { fn show(self) -> String { return strFromInt(self as Int) } }
 impl Display for I16    { fn show(self) -> String { return strFromInt(self as Int) } }
-impl Display for I64    { fn show(self) -> String { return strFromInt(self as Int) } }
-impl Display for Isize  { fn show(self) -> String { return strFromInt(self as Int) } }
+impl Display for I64    { fn show(self) -> String { return strFromI64(self) } }
+impl Display for Isize  { fn show(self) -> String { return strFromI64(self as I64) } }
 impl Display for U8     { fn show(self) -> String { return strFromUnsigned(self as U64) } }
 impl Display for U16    { fn show(self) -> String { return strFromUnsigned(self as U64) } }
 impl Display for U32    { fn show(self) -> String { return strFromUnsigned(self as U64) } }

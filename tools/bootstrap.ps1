@@ -45,7 +45,8 @@ if ([string]::IsNullOrEmpty($Out) -and [string]::IsNullOrEmpty($PrintCacheKey)) 
     exit 2
 }
 
-# Must match prismio_toolchain_files[] in runtime\build_driver.c.
+# Must match the native sources of the prismio target in build.ums; checked by
+# tools/check_source_lists.py.
 $runtimeSources = @('lang_runtime.c', 'program_support.c', 'build_driver.c', 'ir_symbols.c', 'aif_containers.c', 'aif_support.c', 'diagnostics.c', 'llvm-api-backend.c')
 
 # The backend is built on the LLVM C API, so building the compiler needs LLVM's

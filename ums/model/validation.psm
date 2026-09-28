@@ -5,6 +5,7 @@ import ums.parser.lexer
 import ums.model.diagnostic
 import ums.targets.target
 import std.string
+import std.fs
 
 extern fn file_exists(path: String borrow) -> Int
 extern fn join_path(directory: String borrow, child: String borrow) -> String produce(free)
@@ -13,8 +14,14 @@ extern fn join_path(directory: String borrow, child: String borrow) -> String pr
 // reject it by the *same* rule this validates it by. A second copy of the rule in
 // the writer is a second thing to keep in step -- the mistake src/ir/stmt.psm
 // names about `enumPayloadField`.
+//
+// The first character is a letter or a digit. A name becomes a file under
+// `.prismio/build/<profile>/`, so `.` and `..` named directories -- `executable("..")`
+// validated and then failed at link time with "Is a directory" -- and a leading
+// `-` made a command that parses as a flag.
 public fn umsValidName(value: String) -> Bool {
     if (__builtin_string_len(value) == 0) { return false }
+    if (umsIsAlnum(value.charAt(0)) == false) { return false }
     let mut i = 0
     while (i < __builtin_string_len(value)) {
         let current = value.charAt(i)
@@ -26,23 +33,80 @@ public fn umsValidName(value: String) -> Bool {
     return true
 }
 
-private fn umsValidVersion(value: String, minimumComponents: Int) -> Bool {
-    let mut components = 1
-    let mut componentDigits = 0
-    let mut i = 0
-    while (i < __builtin_string_len(value)) {
-        let current = value.charAt(i)
-        if (umsIsDigit(current)) {
-            componentDigits = componentDigits + 1
-        } else if (current == '.' and componentDigits > 0) {
-            components = components + 1
-            componentDigits = 0
-        } else {
-            return false
+// One dot-separated run of `[0-9A-Za-z-]`, as SemVer's pre-release and build
+// identifiers are. `numeric` identifiers -- all digits -- may not have a leading
+// zero in a pre-release, which is the caller's to ask for.
+private fn umsSemverIdentifiers(value: String, start: Int, end: Int, rejectLeadingZero: Bool) -> Bool {
+    if (start >= end) { return false }
+    let mut from = start
+    for i in start..<(end + 1) {
+        if (i == end or value.charAt(i) == '.') {
+            if (i == from) { return false }
+            let mut numeric = true
+            for j in from..<i {
+                let c = value.charAt(j)
+                if (umsIsAlnum(c) == false and c != '-') { return false }
+                if (umsIsDigit(c) == false) { numeric = false }
+            }
+            if (rejectLeadingZero and numeric and i - from > 1 and value.charAt(from) == '0') {
+                return false
+            }
+            from = i + 1
         }
-        i = i + 1
     }
-    return componentDigits > 0 and components >= minimumComponents
+    return true
+}
+
+// `MAJOR.MINOR.PATCH`, then an optional `-pre.release` and `+build`: the SemVer
+// 2.0.0 grammar. The previous check counted digit groups, so it refused
+// `1.0.0-beta.1` -- a valid version -- as "not semantic version form" and took
+// `01.02.0003.4`. A numeric component has no leading zero.
+private fn umsValidSemver(value: String) -> Bool {
+    let length = __builtin_string_len(value)
+    let mut coreEnd = length
+    let mut preStart = -1
+    let mut buildStart = -1
+    for i in 0..<length {
+        let c = value.charAt(i)
+        if (c == '+' and buildStart < 0) {
+            buildStart = i + 1
+            if (coreEnd == length) { coreEnd = i }
+        } else if (c == '-' and preStart < 0 and buildStart < 0) {
+            preStart = i + 1
+            coreEnd = i
+        }
+    }
+    if (umsValidNumericVersion(value, 0, coreEnd, 3, 3) == false) { return false }
+    if (preStart >= 0) {
+        let mut preEnd = length
+        if (buildStart >= 0) { preEnd = buildStart - 1 }
+        if (umsSemverIdentifiers(value, preStart, preEnd, true) == false) { return false }
+    }
+    if (buildStart >= 0 and umsSemverIdentifiers(value, buildStart, length, false) == false) {
+        return false
+    }
+    return true
+}
+
+// Dot-separated decimal components between `start` and `end`, at least
+// `minimum` and at most `maximum` of them, none with a leading zero.
+private fn umsValidNumericVersion(value: String, start: Int, end: Int,
+                                  minimum: Int, maximum: Int) -> Bool {
+    if (start >= end) { return false }
+    let mut components = 0
+    let mut from = start
+    for i in start..<(end + 1) {
+        if (i == end or value.charAt(i) == '.') {
+            if (i == from) { return false }
+            if (i - from > 1 and value.charAt(from) == '0') { return false }
+            for j in from..<i {
+                if (umsIsDigit(value.charAt(j)) == false) { return false }
+            }
+            components = components + 1
+            from = i + 1
+        }
+    }
+    return components >= minimum and components <= maximum
 }
 
 // UMS does not embed the SPDX license catalogue. It does reject strings that
@@ -86,81 +150,96 @@ private fn umsAbsolutePath(value: String) -> Bool {
 // first.
 impl UmsProjectModel {
 
-    private fn validationError(self, inout diagnostics: Vec<UmsDiagnostic>,
+    private fn validationError(self, inout diagnostics: Vec<UmsDiagnostic>, span: UmsSpan,
                           code: String, message: String) {
-        umsDiagnosticAdd(diagnostics, code, self.manifestPath, 0, 0, 0, message)
+        umsDiagnosticAdd(diagnostics, code, self.manifestPath,
+                         span.line, span.col, span.len, message)
+    }
+
+    // A project-relative file a declaration names, which has to exist before a
+    // build is worth starting. An absolute path is taken as written: a response
+    // file or a system header directory can legitimately live outside the project.
+    private fn requireFile(self, inout diagnostics: Vec<UmsDiagnostic>, value: String,
+                           line: Int, col: Int, len: Int, code: String, what: String) {
+        let mut path = value.clone()
+        if (umsAbsolutePath(value) == false) { path = join_path(self.root, value) }
+        if (file_exists(path) == 0) {
+            umsDiagnosticAdd(diagnostics, code, self.manifestPath, line, col, len,
+                             what.concat(" does not exist: ", value))
+        }
     }
 
     internal fn validate(self, inout diagnostics: Vec<UmsDiagnostic>) {
         if (__builtin_string_len(self.metadata.name) == 0) {
-            self.validationError(diagnostics, "UMS2301", "project.name is required")
+            self.validationError(diagnostics, self.metadata.blockSpan, "UMS2301", "project.name is required")
         } else if (umsValidName(self.metadata.name) == false) {
-            self.validationError(diagnostics, "UMS2302",
+            self.validationError(diagnostics, self.metadata.nameSpan, "UMS2302",
                                "project.name may contain only letters, digits, '.', '_' and '-'")
         }
 
         if (__builtin_string_len(self.metadata.version) == 0) {
-            self.validationError(diagnostics, "UMS2303", "project.version is required")
-        } else if (umsValidVersion(self.metadata.version, 3) == false) {
-            self.validationError(diagnostics, "UMS2304",
-                               "project.version must use semantic version form")
+            self.validationError(diagnostics, self.metadata.blockSpan, "UMS2303", "project.version is required")
+        } else if (umsValidSemver(self.metadata.version) == false) {
+            self.validationError(diagnostics, self.metadata.versionSpan, "UMS2304",
+                               "project.version must be a semantic version, such as 1.2.0 or 1.0.0-beta.1")
         }
 
         if (__builtin_string_len(self.metadata.prismioVersion) == 0) {
-            self.validationError(diagnostics, "UMS2305", "project.prismio is required")
-        } else if (umsValidVersion(self.metadata.prismioVersion, 2) == false) {
-            self.validationError(diagnostics, "UMS2306",
-                               "project.prismio must contain at least major and minor versions")
+            self.validationError(diagnostics, self.metadata.blockSpan, "UMS2305", "project.prismio is required")
+        } else if (umsValidNumericVersion(self.metadata.prismioVersion, 0,
+                       __builtin_string_len(self.metadata.prismioVersion), 2, 3) == false) {
+            self.validationError(diagnostics, self.metadata.prismioSpan, "UMS2306",
+                               "project.prismio must be MAJOR.MINOR or MAJOR.MINOR.PATCH, such as 0.1")
         }
 
 
         if (self.metadata.descriptionDeclared) {
             let description = self.metadata.description.trim()
             if (__builtin_string_len(description) == 0) {
-                self.validationError(diagnostics, "UMS2316",
+                self.validationError(diagnostics, self.metadata.descriptionSpan, "UMS2316",
                                    "project.description cannot be empty")
             }
         }
 
         if (self.metadata.licenseDeclared and
             umsValidLicenseExpression(self.metadata.license) == false) {
-            self.validationError(diagnostics, "UMS2317",
+            self.validationError(diagnostics, self.metadata.licenseSpan, "UMS2317",
                                "project.license must be a non-empty SPDX expression")
         }
         if (self.metadata.licenseFileDeclared) {
             if (__builtin_string_len(self.metadata.licenseFile) == 0 or
                 umsAbsolutePath(self.metadata.licenseFile)) {
-                self.validationError(diagnostics, "UMS2318",
+                self.validationError(diagnostics, self.metadata.licenseFileSpan, "UMS2318",
                                    "project.licenseFile must be a non-empty project-relative path")
             } else {
                 let licensePath = join_path(self.root, self.metadata.licenseFile)
                 if (file_exists(licensePath) == 0) {
-                    self.validationError(diagnostics, "UMS2319",
+                    self.validationError(diagnostics, self.metadata.licenseFileSpan, "UMS2319",
                         "project.licenseFile does not exist: ".concat(self.metadata.licenseFile))
                 }
             }
         }
         if (self.metadata.licenseDeclared and self.metadata.licenseFileDeclared) {
-            self.validationError(diagnostics, "UMS2320",
+            self.validationError(diagnostics, self.metadata.licenseFileSpan, "UMS2320",
                                "project.license and project.licenseFile are mutually exclusive")
         }
 
         if (self.metadata.authorsDeclared and self.metadata.authors.length == 0) {
-            self.validationError(diagnostics, "UMS2321",
+            self.validationError(diagnostics, self.metadata.authorsSpan, "UMS2321",
                                "project.authors must contain at least one author")
         }
         let mut authorIndex = 0
         while (authorIndex < self.metadata.authors.length) {
             let author = self.metadata.authors[authorIndex].trim()
             if (__builtin_string_len(author) == 0) {
-                self.validationError(diagnostics, "UMS2322",
+                self.validationError(diagnostics, self.metadata.authorsSpan, "UMS2322",
                                    "project.authors cannot contain an empty author")
             }
             authorIndex = authorIndex + 1
         }
 
         if (self.targets.length == 0) {
-            self.validationError(diagnostics, "UMS2307",
+            self.validationError(diagnostics, self.metadata.blockSpan, "UMS2307",
                                "at least one build target is required")
         }
 
@@ -196,14 +275,40 @@ impl UmsProjectModel {
                     umsDiagnosticAdd(diagnostics, "UMS2314", self.manifestPath,
                         input.line, input.col, input.len,
                         "link inputs cannot be empty")
-                } else if (input.kind == UmsLinkKind.COMPONENT and
-                           input.value.equals("prismio.backend") == false) {
-                    umsDiagnosticAdd(diagnostics, "UMS2315", self.manifestPath,
-                        input.line, input.col, input.len,
-                        "unknown toolchain component '".concat(input.value,
-                                                               "'; available component: prismio.backend"))
+                } else if (input.kind == UmsLinkKind.RESPONSE_FILE) {
+                    self.requireFile(diagnostics, input.value, input.line, input.col, input.len,
+                                     "UMS2326", "link responseFile")
                 }
                 linkIndex = linkIndex + 1
+            }
+            for nativeIndex in 0..<target.natives.length {
+                let input = target.natives[nativeIndex]
+                if (__builtin_string_len(input.value) == 0) {
+                    umsDiagnosticAdd(diagnostics, "UMS2314", self.manifestPath,
+                        input.line, input.col, input.len,
+                        "native inputs cannot be empty")
+                } else if (input.kind == UmsNativeKind.SOURCE) {
+                    // C only: the driver compiles each source with clang as C and
+                    // links no C++ runtime, so a `.cpp` would compile and then fail
+                    // at link time naming symbols from a library nobody asked for.
+                    if (input.value.endsWith(".c") == false) {
+                        umsDiagnosticAdd(diagnostics, "UMS2324", self.manifestPath,
+                            input.line, input.col, input.len,
+                            "native source '".concat(input.value, "' is not a C file (.c)"))
+                    } else {
+                        self.requireFile(diagnostics, input.value, input.line, input.col,
+                                         input.len, "UMS2324", "native source")
+                    }
+                } else if (input.kind == UmsNativeKind.INCLUDE) {
+                    if (directoryExists(join_path(self.root, input.value)) == false) {
+                        umsDiagnosticAdd(diagnostics, "UMS2325", self.manifestPath,
+                            input.line, input.col, input.len,
+                            "native include directory does not exist: ".concat(input.value))
+                    }
+                } else if (input.kind == UmsNativeKind.RESPONSE_FILE) {
+                    self.requireFile(diagnostics, input.value, input.line, input.col, input.len,
+                                     "UMS2326", "native responseFile")
+                }
             }
             targetIndex = targetIndex + 1
         }

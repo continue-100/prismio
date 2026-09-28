@@ -40,6 +40,13 @@
 #define PRISMIO_NOINLINE __attribute__((noinline))
 #endif
 
+// On every cold half of a split fast path, and not only the small ones. An
+// executable internalises every function but `main` (internalize_executable,
+// llvm-api-backend.c), and LLVM inlines an internal function's *only* call
+// whatever its size. Size alone kept `list_push_grow` out of line while it was
+// external; internal, a program with one push site folded the growth path back
+// into the fast path, which then stopped inlining into the caller's loop.
+
 // AIF Level 4, second half: `region` absorbs collections too.
 //
 // COMPILER-AUDIT scheduled Level 4 after Level 3 so that regions would already
@@ -2243,6 +2250,44 @@ __attribute__((malloc)) void* list_new_with_capacity_inline(int n, int elem_size
     return list_new_cap(n > 0 ? n : 4, elem_size);
 }
 
+// `Vec<T>.filled(n, value)` for a scalar `T`: one allocation of exactly `n`
+// elements and one pass over it, which is C++'s `std::vector<T>(n, value)` and
+// Rust's `vec![value; n]`. Written as `withCapacity` and a push loop it was a
+// length store per element and, before the range `for` had a push guard, a call.
+//
+// A zero or single-byte pattern is `memset`. The wider widths are one typed loop
+// each, so the store has a constant width and LLVM vectorises it; a loop over
+// `scalar_store` would test the width per element. `bits` carries the element
+// the way the other inline scalar entry points take it -- widened, and for a
+// Float the bit pattern rather than the value.
+//
+// A negative count is an error rather than an empty Vec. Unlike a capacity it is
+// not a hint: `filled(-1, x)` asks for a length no Vec can have, and the program
+// that computed it has a bug worth hearing about.
+__attribute__((malloc)) void* list_new_filled_inline(int n, unsigned long long bits,
+                                                     int elem_size) {
+    if (n < 0) {
+        fprintf(stderr, "runtime error: Vec.filled count must not be negative, found %d\n", n);
+        exit(1);
+    }
+    RtList* l = (RtList*)list_new_cap(n > 0 ? n : 4, elem_size);
+    size_t count = (size_t)n;
+    if (bits == 0 || elem_size == 1) {
+        memset(l->data, (int)(unsigned char)bits, count * (size_t)elem_size);
+    } else if (elem_size == 2) {
+        unsigned short* data = (unsigned short*)l->data;
+        for (size_t i = 0; i < count; i++) data[i] = (unsigned short)bits;
+    } else if (elem_size == 4) {
+        unsigned int* data = (unsigned int*)l->data;
+        for (size_t i = 0; i < count; i++) data[i] = (unsigned int)bits;
+    } else {
+        unsigned long long* data = (unsigned long long*)l->data;
+        for (size_t i = 0; i < count; i++) data[i] = bits;
+    }
+    l->len = n;
+    return l;
+}
+
 void list_set_elem_owner(void* lp, int mode) {
     if (lp) ((RtList*)lp)->elem_own = mode;
 }
@@ -2378,7 +2423,7 @@ void list_set_elem_inline(void* lp, int elem_size) {
 // program module, so anything it still calls must have external linkage in the
 // separately linked runtime object. Keeping arena allocation and block copying
 // here also keeps that uncommon work out of the inliner's hot-path budget.
-void list_inline_grow(void* lp) {
+PRISMIO_NOINLINE void list_inline_grow(void* lp) {
     RtList* l = (RtList*)lp;
     int nc = l->cap ? l->cap * 2 : 4;
     size_t bytes = (size_t)nc * (size_t)l->elem_size;
@@ -2512,6 +2557,16 @@ static void scalar_store(void* dst, unsigned long long v, int size) {
     else                { *(unsigned long long*)dst = v; }
 }
 
+// list_set_inline_scalar's fallback, out of line so the boxed setter is not
+// inlined into it: `list_set`'s only caller in a program with no boxed lists is
+// this one, and inlined there it made the store too large for a sort's swap to
+// inline -- quicksort measured 1.13x. Exported, not `static`, for
+// list_push_grow's reason: list_set_inline_scalar is curated into programs, and
+// run_curated_closure_test fails a curated body that reaches a local symbol.
+PRISMIO_NOINLINE void list_set_unstamped(void* lp, int index, unsigned long long bits) {
+    list_set(lp, index, (void*)(uintptr_t)bits);
+}
+
 void list_set_inline_scalar(void* lp, int index, unsigned long long bits, int elem_size) {
     RtList* l = (RtList*)lp;
     // Unstamped, or stamped to a width this call site does not agree with: the
@@ -2519,7 +2574,7 @@ void list_set_inline_scalar(void* lp, int index, unsigned long long bits, int el
     // rather than guess, fall back to the boxed setter with the value punned the
     // way that path expects. Reached only by a list codegen could not stamp.
     if (l->elem_size != elem_size) {
-        list_set(lp, index, (void*)(uintptr_t)bits);
+        list_set_unstamped(lp, index, bits);
         return;
     }
     if (index < 0 || index >= l->len) return;
@@ -2559,7 +2614,7 @@ unsigned long long list_get_inline_scalar(void* lp, int index, int elem_size) {
 // into an established list. Keep them behind one exported boundary so the
 // curated fast path is small enough to inline and references no runtime-local
 // symbols. This is the scalar analogue of `list_push_grow`.
-void list_push_inline_scalar_slow(void* lp, unsigned long long bits, int elem_size) {
+PRISMIO_NOINLINE void list_push_inline_scalar_slow(void* lp, unsigned long long bits, int elem_size) {
     RtList* l = (RtList*)lp;
     if (!l->elem_size) {
         list_push(lp, (void*)(uintptr_t)bits);
@@ -2772,6 +2827,10 @@ void list_push_str(void* lp, void* raw, long long word) {
     l->len = l->len + 1;
 }
 
+static void list_discard_slot(RtList* l, int index, int now);
+
+// A view is copied in; an element the list owns is parked on its way out. The
+// pointer compare keeps `v[i] = v[i]` from parking what it is about to store.
 PRISMIO_NOINLINE void list_set_str_slow(void* lp, int index, void* raw, long long word) {
     RtList* l = (RtList*)lp;
     if (index < 0 || index >= l->len) return;
@@ -2779,14 +2838,24 @@ PRISMIO_NOINLINE void list_set_str_slow(void* lp, int index, void* raw, long lon
         list_set(lp, index, str_own_pair(raw, word));
         return;
     }
-    int length = (int)(word & STR_WORD_LENGTH);
     StrPair* slot = (StrPair*)l->data + index;
-    slot->data = str_clone_n((const char*)raw, length);
-    slot->word = length;
+    if (slot->data != (const char*)raw) list_discard_slot(l, index, 0);
+    if (STR_WORD_IS_VIEW(word)) {
+        int length = (int)(word & STR_WORD_LENGTH);
+        slot->data = str_clone_n((const char*)raw, length);
+        slot->word = length;
+        return;
+    }
+    slot->data = (const char*)raw;
+    slot->word = word;
 }
 
-// The displaced element is not released, for `list_set`'s reason: under OBJECT
-// the binding the value came from may own it too.
+// **The displaced element is parked, as a removal's is**, and released with the
+// list: `let s = v[0]` may still be reading it, so freeing it here could be a
+// use-after-free, and parking frees exactly what teardown would have freed had
+// it stayed. It used to be kept nowhere -- `words[0] = "x"` leaked the string it
+// replaced. The fast path is curated and may not name list_discard_slot, so a
+// slot with something to park goes through the exported slow path.
 void list_set_str(void* lp, int index, void* raw, long long word) {
     RtList* l = (RtList*)lp;
     if (l->elem_size != (int)sizeof(StrPair) || STR_WORD_IS_VIEW(word)) {
@@ -2795,6 +2864,11 @@ void list_set_str(void* lp, int index, void* raw, long long word) {
     }
     if (index < 0 || index >= l->len) return;
     StrPair* slot = (StrPair*)l->data + index;
+    if (l->elem_own != AIF_ELEM_NONE && !l->arena && slot->data != (const char*)raw
+            && !(slot->word & (STR_WORD_INLINE | STR_WORD_VIEW))) {
+        list_set_str_slow(lp, index, raw, word);
+        return;
+    }
     slot->data = (const char*)raw;
     slot->word = word;
 }
@@ -3061,7 +3135,7 @@ void* prismio_expect(void* p) {
 // `static`s this function still touches -- rt_arena_hint, arena_depth,
 // arena_alloc_slot, all reached through rt_alloc -- stay on this side of the
 // split and out of the inlined half.
-void list_push_grow(void* lp) {
+PRISMIO_NOINLINE void list_push_grow(void* lp) {
     RtList* l = (RtList*)lp;
     int nc = l->cap ? l->cap * 2 : 4;
     // Back into the arena that owns this list, not into whatever the hint
@@ -3168,10 +3242,20 @@ void* list_get(void* lp, int index) {
     return l->data[index];
 }
 
-// The overwritten element is released only under RC, where the container's own
-// count says whether anything else still holds it. Under OBJECT it leaks: the
-// container owns it, but so might the binding the value came from, and a free
-// here would be the double free the whole ownership rule exists to prevent.
+// An owned element displaced under a mode without a count is parked, and
+// released with the list -- list_set_str's reason: a view of it may still be
+// live, and parking frees exactly what teardown would have. Exported, because
+// list_set is curated and may not name the static list_discard_slot.
+PRISMIO_NOINLINE void list_set_park_slow(void* lp, int index, void* value) {
+    RtList* l = (RtList*)lp;
+    list_discard_slot(l, index, 0);
+    l->data[index] = value;
+}
+
+// Under RC the container's own count says whether anything else still holds the
+// overwritten element, so it is released at once. Under the uncounted modes it
+// is parked rather than freed -- see list_set_park_slow -- and it used to leak.
+// CYCLE is counted and left as it was.
 void list_set(void* lp, int index, void* value) {
     RtList* l = (RtList*)lp;
     if (index < 0 || index >= l->len) return;
@@ -3185,6 +3269,11 @@ void list_set(void* lp, int index, void* value) {
         // free what is about to be stored.
         rc_retain_atomic(value);
         rc_release_atomic(l->data[index]);
+    } else if ((l->elem_own == AIF_ELEM_OBJECT || l->elem_own == AIF_ELEM_LIST
+                || l->elem_own == AIF_ELEM_TYPED || l->elem_own == AIF_ELEM_STRING)
+               && !l->elem_size && !l->arena && l->data[index] && l->data[index] != value) {
+        list_set_park_slow(lp, index, value);
+        return;
     }
     l->data[index] = value;
 }

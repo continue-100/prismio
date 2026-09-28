@@ -31,6 +31,7 @@ public extern fn ir_function_param(paramType: String, paramName: String)
 public extern fn ir_function_param_unique(paramType: String, paramName: String)
 public extern fn ir_function_body_start()
 public extern fn ir_function_always_inline()
+public extern fn ir_function_cold()
 public extern fn ir_function_end()
 
 // Call Builder

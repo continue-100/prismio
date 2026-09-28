@@ -32,13 +32,32 @@ import ums.model.diagnostic
 // `ok` is separate from `resolved` being non-empty because a registry dependency
 // that failed to fetch still records what it *would* have been, and the lockfile
 // prints that. A field that meant both would lose the difference.
+//
+// `locked` is what the lockfile records: the declared path with `/` separators,
+// relative to the manifest. `resolved` is absolute and belongs to this machine,
+// which is exactly what a file meant to be committed must not contain.
 struct UmsResolution {
     name: String,
     scope: String,
     constraint: String,
     source: String,
     resolved: String,
+    locked: String,
     ok: Bool
+}
+
+// A declared path as the lockfile spells it on every platform.
+private fn umsLockedPath(path: String) -> String {
+    let mut out = ""
+    for i in 0..<__builtin_string_len(path) {
+        let c = path.charAt(i)
+        if (c == '\\') {
+            out = out.concat("/")
+        } else {
+            out = out.concat(c.toString())
+        }
+    }
+    return out
 }
 
 // The lockfile's own version, bumped when its shape changes rather than when a
@@ -53,9 +72,12 @@ private fn umsLockfileVersion() -> String {
 // `project.resolveDependencies(diags)` and `project.writeLockfile(resolutions)`.
 impl UmsProjectModel {
 
+    // Beside `build.ums`, not under `.prismio/`. It records what was resolved
+    // so a reviewer can see a dependency change, and `.prismio/` is build output
+    // that `prismio init` tells git to ignore -- the file used to live there, so
+    // it could never be committed, while the docs said to commit it.
     private fn lockfilePath(self) -> String {
-        let stateDir = joinPath(self.root, self.build.stateDirectory)
-        return joinPath(stateDir, "prismio.lock")
+        return joinPath(self.root, "prismio.lock")
     }
 
     // A path dependency resolves against the directory holding `build.ums`, not
@@ -80,6 +102,7 @@ impl UmsProjectModel {
                 constraint: dependency.constraint.clone(),
                 source: "path".clone(),
                 resolved: candidate.clone(),
+                locked: umsLockedPath(dependency.path),
                 ok: false
             }
         }
@@ -90,6 +113,7 @@ impl UmsProjectModel {
             constraint: dependency.constraint.clone(),
             source: "path".clone(),
             resolved: candidate.clone(),
+            locked: umsLockedPath(dependency.path),
             ok: true
         }
     }
@@ -113,6 +137,7 @@ impl UmsProjectModel {
             constraint: dependency.constraint.clone(),
             source: "registry".clone(),
             resolved: "".clone(),
+            locked: "".clone(),
             ok: false
         }
     }
@@ -120,7 +145,7 @@ impl UmsProjectModel {
     // Resolves every declared dependency, in manifest order, and answers the list.
     // Order is the manifest's rather than sorted, so the lockfile reads against the
     // file that produced it.
-         public fn resolveDependencies(self, inout diagnostics: Vec<UmsDiagnostic>) -> Vec<UmsResolution> {
+    public fn resolveDependencies(self, inout diagnostics: Vec<UmsDiagnostic>) -> Vec<UmsResolution> {
         let mut resolutions: Vec<UmsResolution> = []
         let mut i = 0
         while (i < self.dependencies.length) {
@@ -139,10 +164,10 @@ impl UmsProjectModel {
     // it resolved to. Tab-separated with a header, because the file exists to be
     // diffed in review -- a format that reorders or reflows on write produces a diff
     // nobody can read, which is how a lockfile stops being checked.
-         public fn lockfileContents(self, resolutions: Vec<UmsResolution>) -> String {
-        let mut out = "# prismio lockfile v".concat(umsLockfileVersion(), "\n# generated from ")
-        out = out.concat(self.manifestPath)
-        out = out.concat("\n# scope\tname\tconstraint\tsource\tresolved\n")
+    public fn lockfileContents(self, resolutions: Vec<UmsResolution>) -> String {
+        let mut out = "# prismio lockfile v".concat(umsLockfileVersion(),
+                                                     "\n# generated from build.ums; paths are relative to it\n")
+        out = out.concat("# scope\tname\tconstraint\tsource\tresolved\n")
 
         let mut i = 0
         while (i < resolutions.length) {
@@ -155,7 +180,7 @@ impl UmsProjectModel {
             // row count matches the manifest and a failed fetch is visible in the
             // diff instead of absent from it.
             if (r.ok) {
-                row = row.concat(r.resolved)
+                row = row.concat(r.locked)
             } else {
                 row = row.concat("-")
             }
@@ -165,12 +190,17 @@ impl UmsProjectModel {
         return out
     }
 
-    // Writes the lockfile beside the build state, creating `.prismio/` if needed.
-    // Answers false only when the write itself failed; an unresolved dependency is
-    // recorded rather than suppressed, because the file has to describe the attempt.
-         public fn writeLockfile(self, resolutions: Vec<UmsResolution>) -> Bool {
-        let stateDir = joinPath(self.root, self.build.stateDirectory)
-        if (makeDirectory(stateDir) == false) { return false }
-        return writeFile(self.lockfilePath(), self.lockfileContents(resolutions))
+    // Writes the lockfile beside `build.ums`. Answers false only when the write
+    // itself failed; an unresolved dependency is recorded rather than suppressed,
+    // because the file has to describe the attempt.
+    //
+    // A project that declares no dependency gets no lockfile -- three comment
+    // lines in every project root would be a file to commit that says nothing.
+    // One that already has a lockfile keeps it current, so removing the last
+    // dependency empties the file rather than leaving a stale row behind.
+    public fn writeLockfile(self, resolutions: Vec<UmsResolution>) -> Bool {
+        let path = self.lockfilePath()
+        if (resolutions.length == 0 and fileExists(path) == false) { return true }
+        return writeFile(path, self.lockfileContents(resolutions))
     }
 }

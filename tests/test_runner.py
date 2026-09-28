@@ -619,10 +619,21 @@ def run_cli_usage_test():
         print(f"{RED}[FAIL] `prismio` with no args did not exit 1 or print usage{RESET}")
         return False
 
-    # 4. Command with missing required source prints diagnostic to stderr and usage to stdout
+    # 4. An argument error says what is wrong and points at the usage, rather
+    #    than burying the one line that matters under the whole page.
     res_missing = run_command([str(PRISMIO_EXE), "check"])
-    if res_missing.returncode != 1 or "P1025" not in res_missing.stderr or res_missing.stdout != res_help.stdout:
-        print(f"{RED}[FAIL] `prismio check` without source did not print diagnostic and usage{RESET}")
+    if (res_missing.returncode != 1 or "P1025" not in res_missing.stderr
+            or "prismio --help" not in res_missing.stderr or res_missing.stdout):
+        print(f"{RED}[FAIL] `prismio check` without source did not print a diagnostic "
+              f"pointing at --help{RESET}")
+        return False
+
+    # 5. The compiler-development commands are in --help-all, not --help.
+    res_all = run_command([str(PRISMIO_EXE), "--help-all"])
+    if (res_all.returncode != 0 or "Compiler-development commands" not in res_all.stdout
+            or "dump-ast" in res_help.stdout or "bootstrap" in res_help.stdout):
+        print(f"{RED}[FAIL] --help and --help-all do not split the user and "
+              f"compiler-development commands{RESET}")
         return False
 
     print(f"{GREEN}[PASS] CLI usage and help formatting verified{RESET}")
@@ -816,30 +827,59 @@ def preserved_project_host():
     from the snapshot to the restore, so a waiting suite never saves a host that
     is halfway through someone else's test.
     """
-    artifact = PROJECT_ROOT / ".prismio" / "build" / "debug" / ("prismio.exe" if os.name == "nt" else "prismio")
+    build_root = PROJECT_ROOT / ".prismio" / "build"
+    artifact = build_root / "debug" / ("prismio.exe" if os.name == "nt" else "prismio")
     candidate = artifact.with_name(artifact.name + ".next")
+    # **The whole debug profile directory is moved aside, not just the host.** A
+    # hosted `clean` removes that directory, and the first version of this parked
+    # the host inside it: the test's own `clean` deleted the parked host, and with
+    # it every other file a developer kept there -- two older compiler builds were
+    # lost that way. The toolchain beside it goes too, since `clean` removes it.
+    # Moved, never copied, and outside `.prismio/build`: the host is trusted by its
+    # identity -- inode and modification time among it -- and a copy would come
+    # back as a host the launcher refuses to run.
+    kept = [build_root / "debug", build_root / "lib", build_root / "stdlib"]
+    parking = PROJECT_ROOT / ".prismio" / f"suite-parked-{os.getpid()}"
 
     with project_host_lock():
-        saved = None
-        if artifact.exists():
-            handle, saved = tempfile.mkstemp(prefix="prismio-host-")
-            os.close(handle)
-            # copy2 rather than copy: the executable bit has to survive the round trip.
-            shutil.copy2(artifact, saved)
+        aside = {}
+        parking.mkdir(parents=True, exist_ok=True)
+        for path in kept:
+            if path.exists():
+                moved = parking / path.name
+                os.replace(path, moved)
+                aside[path] = moved
+        artifact.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            for leftover in (artifact, candidate):
-                if leftover.exists():
-                    leftover.unlink()
             yield artifact, candidate
         finally:
-            for leftover in (artifact, candidate):
-                if leftover.exists():
-                    leftover.unlink()
-            if saved is not None:
-                artifact.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(saved, artifact)
-                os.unlink(saved)
+            for path, moved in aside.items():
+                if path.exists():
+                    shutil.rmtree(path)
+                os.replace(moved, path)
+            shutil.rmtree(parking, ignore_errors=True)
+
+
+def trust_host(path):
+    """Record `path` as a host this machine promoted, exactly as the launcher does.
+
+    The stamp is the file's identity (runtime/build_driver.c, host_identity):
+    device, inode, size and modification time to the nanosecond on POSIX; volume
+    serial, file index, size and last-write FILETIME on Windows. A test that puts
+    a stand-in where the host lives has to trust it before the launcher will run
+    it, which is the behaviour under test in the other direction.
+    """
+    st = os.stat(path)
+    if os.name == "nt":
+        filetime = st.st_mtime_ns // 100 + 116444736000000000
+        identity = (f"{st.st_dev} {st.st_ino >> 32} {st.st_ino & 0xffffffff} "
+                    f"{st.st_size >> 32} {st.st_size & 0xffffffff} "
+                    f"{filetime >> 32} {filetime & 0xffffffff}")
+    else:
+        identity = (f"{st.st_dev} {st.st_ino} {st.st_size} "
+                    f"{st.st_mtime_ns // 1_000_000_000} {st.st_mtime_ns % 1_000_000_000}")
+    Path(f"{path}.trusted").write_text(f"prismio-host-stamp 1\n{identity}\n", encoding="ascii")
 
 
 @contextlib.contextmanager
@@ -888,6 +928,160 @@ def show_run(result):
     print(f"exit status {result.returncode}")
     print(f"stdout:\n{elide_middle(result.stdout or '')}")
     print(f"stderr:\n{elide_middle(result.stderr or '')}")
+
+
+def run_ums_project_test():
+    """What a project's user sees: `run`, `test`, `clean`, commands, native code.
+
+    Each check is one of the defects the UMS release audit reproduced
+    (docs/UMS_RELEASE_AUDIT.md), asserted from the outside, in a project outside
+    the checkout so nothing in the tree can stand in for the installed toolchain.
+    """
+    print(f"\n{BLUE}--- Running ums_project ---{RESET}")
+    problems = []
+    exe_suffix = ".exe" if os.name == "nt" else ""
+
+    with tempfile.TemporaryDirectory(prefix="prismio-ums-project-") as temp_dir:
+        project = Path(temp_dir) / "app"
+        env = dict(os.environ)
+        env.pop("PRISMIO_INTERNAL_HOSTED", None)
+        env["PRISMIO_OBJ_CACHE_DIR"] = str(Path(temp_dir) / "objcache")
+        env["PRISMIO_OBJ_CACHE_TRACE"] = "1"
+
+        def prismio(*args, cwd=project):
+            return subprocess.run([str(PRISMIO_EXE), *args], capture_output=True,
+                                  text=True, cwd=str(cwd), env=env)
+
+        created = prismio("init", "app", cwd=Path(temp_dir))
+        if created.returncode != 0:
+            print(f"{RED}[FAIL] ums_project: `prismio init` failed{RESET}")
+            show_run(created)
+            return False
+
+        (project / "src" / "main.psm").write_text(
+            "import std.io\nimport std.process\nimport std.string\n"
+            "extern fn native_answer() -> Int\n\n"
+            "fn main() -> Int {\n"
+            "    for i in 1..<process.args.count {\n"
+            "        println(process.args[i])\n"
+            "    }\n"
+            "    println(native_answer().toString())\n"
+            "    return 3\n"
+            "}\n", encoding="utf-8")
+        (project / "csrc" / "include").mkdir(parents=True)
+        (project / "csrc" / "include" / "answer.h").write_text("#define BASE 40\n", encoding="utf-8")
+        (project / "csrc" / "answer.c").write_text(
+            '#include "answer.h"\nint native_answer(void) { return BASE + BONUS; }\n', encoding="utf-8")
+        (project / "csrc" / "flags.rsp").write_text("-DBONUS=2\n", encoding="utf-8")
+        (project / "tools").mkdir()
+        (project / "tools" / "probe.py").write_text(
+            "import os, sys\n"
+            "print('cwd=' + os.path.basename(os.getcwd()))\n"
+            "print('argv=' + '|'.join(sys.argv[1:]))\n"
+            "sys.exit(int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 0)\n",
+            encoding="utf-8")
+        (project / "tools" / "app.psm").write_text(
+            "fn main() -> Int {\n    return 0\n}\n", encoding="utf-8")
+        (project / "tests").mkdir()
+        (project / "tests" / "pass.psm").write_text("fn main() -> Int {\n    return 0\n}\n", encoding="utf-8")
+        (project / "tests" / "broken.psm").write_text("fn main() -> Int {\n    return nope\n}\n", encoding="utf-8")
+        (project / "build.ums").write_text(
+            'project {\n    name = "app"\n    version = "1.0.0-beta.1"\n    prismio = "0.1"\n}\n'
+            'targets {\n'
+            '    executable("app") {\n'
+            '        entry = "src/main.psm"\n'
+            '        native {\n'
+            '            source("csrc/answer.c")\n'
+            '            include("csrc/include")\n'
+            '            responseFile("csrc/flags.rsp")\n'
+            '        }\n'
+            '    }\n'
+            '    test("pass") { entry = "tests/pass.psm" }\n'
+            '    test("broken") { entry = "tests/broken.psm" }\n'
+            '}\n'
+            'commands {\n'
+            '    command("probe") { run("tools/probe.py", args) }\n'
+            '    command("tool") { run("tools/app.psm") }\n'
+            '}\n', encoding="utf-8")
+
+        # 1. `run` forwards what follows `--` to the program verbatim, and the
+        #    program's own exit status is the command's.
+        ran = prismio("run", "--", "a", "b c", "$(echo x)")
+        lines = (ran.stdout or "").splitlines()
+        if ran.returncode != 3 or lines[-4:] != ["a", "b c", "$(echo x)", "42"]:
+            problems.append("`prismio run -- args` did not pass the arguments through, "
+                            f"or lost the exit status (got {ran.returncode}, {lines[-4:]})")
+        if "P1023" in (ran.stderr or ""):
+            problems.append("a program's own non-zero exit was reported as a toolchain error")
+
+        # 2. The native source compiled with its include directory and its
+        #    response file (42 above), and a header edit reaches the next build.
+        (project / "csrc" / "include" / "answer.h").write_text("#define BASE 100\n", encoding="utf-8")
+        edited = prismio("run")
+        if "[objcache miss] answer" not in edited.stderr or "102" not in edited.stdout:
+            problems.append("editing a header a native source includes did not rebuild it")
+        again = prismio("run")
+        if "[objcache hit] answer" not in again.stderr:
+            problems.append("an unchanged native source was not served from the cache")
+
+        # 3. The debug and release profiles are different builds.
+        prismio("build", "--release")
+        debug_exe = project / ".prismio" / "build" / "debug" / f"app{exe_suffix}"
+        release_exe = project / ".prismio" / "build" / "release" / f"app{exe_suffix}"
+        if (not debug_exe.is_file() or not release_exe.is_file()
+                or debug_exe.read_bytes() == release_exe.read_bytes()):
+            problems.append("`--release` built the same binary as the debug profile")
+
+        # 4. Command steps: arguments are never shell syntax, every step runs
+        #    in the project root, and a failing step's status is the command's.
+        probe = prismio("probe", "7", "$HOME", "trail\\", cwd=project / "src")
+        if ("cwd=app" not in probe.stdout or "argv=7|$HOME|trail\\" not in probe.stdout
+                or probe.returncode != 7):
+            problems.append("a project command step was shell-interpreted, ran outside the "
+                            f"project root, or lost its status ({probe.returncode})")
+            show_run(probe)
+
+        # 5. A `.psm` tool is built under tools/, never over a target.
+        before = debug_exe.read_bytes()
+        prismio("tool")
+        if (not (project / ".prismio" / "build" / "debug" / "tools" / f"app{exe_suffix}").is_file()
+                or debug_exe.read_bytes() != before):
+            problems.append("a .psm tool named like a target overwrote it")
+
+        # 6. `test` runs every test even when one does not build, and fails.
+        tested = prismio("test")
+        if tested.returncode == 0 or "ok    pass" not in tested.stdout or "did not build" not in tested.stdout:
+            problems.append("`prismio test` stopped at a test that does not build")
+        only = prismio("test", "pass")
+        if only.returncode != 0 or "broken" in only.stdout:
+            problems.append("`prismio test <name>` did not run just the named test")
+
+        # 7. A target name is a target, not a file that cannot be read.
+        named = prismio("build", "nope")
+        if "P1080" not in named.stderr:
+            problems.append("`prismio build <unknown>` did not name the declared targets")
+
+        # 8. `clean` removes the whole profile, tools included.
+        cleaned = prismio("clean")
+        if cleaned.returncode != 0 or (project / ".prismio" / "build" / "debug").exists():
+            problems.append("`prismio clean` left the profile directory behind")
+
+        # 9. A project that needs a newer Prismio says so.
+        manifest = (project / "build.ums").read_text(encoding="utf-8")
+        (project / "build.ums").write_text(manifest.replace('prismio = "0.1"', 'prismio = "99.0"'),
+                                           encoding="utf-8")
+        newer = prismio("build")
+        if newer.returncode == 0 or "P1078" not in newer.stderr:
+            problems.append("a manifest asking for Prismio 99.0 was built anyway")
+
+    if problems:
+        print(f"{RED}[FAIL] ums_project:{RESET}")
+        for problem in problems:
+            print(f"  - {problem}")
+        return False
+    print(f"{GREEN}[PASS] ums_project: run arguments and status, native sources, profiles, "
+          f"command steps, tools, tests, targets, clean and the version check{RESET}")
+    return True
 
 
 def run_ums_test():
@@ -1058,6 +1252,25 @@ def run_ums_test():
                 print(f"{RED}[FAIL] ums: the complete build command was not hosted{RESET}")
                 show_run(local_build)
                 return False
+
+            # **The manifest-built compiler is the compiler under test.** It is
+            # built from build.ums -- its C sources, `runtime = "none"`, the LLVM
+            # response files -- rather than from a table inside the toolchain, and
+            # the proof that the two recipes agree is that both compilers emit
+            # the same IR for the compiler's own source.
+            with tempfile.TemporaryDirectory(prefix="prismio-host-ir-") as ir_dir:
+                ours = Path(ir_dir) / "tested.ll"
+                theirs = Path(ir_dir) / "host.ll"
+                env = dict(launcher_env, PRISMIO_INTERNAL_HOSTED="1")
+                subprocess.run([str(PRISMIO_EXE), "build", "src/main.psm", "-o", str(ours)],
+                               capture_output=True, cwd=str(PROJECT_ROOT), env=env)
+                subprocess.run([str(compiler_artifact), "build", "src/main.psm", "-o", str(theirs)],
+                               capture_output=True, cwd=str(PROJECT_ROOT), env=env)
+                if (not ours.is_file() or not theirs.is_file()
+                        or ours.read_bytes() != theirs.read_bytes()):
+                    print(f"{RED}[FAIL] ums: the compiler build.ums produces does not emit "
+                          f"the IR the compiler under test emits{RESET}")
+                    return False
 
             # A host alone in a build directory can build itself and nothing
             # else: the runtime is installed bitcode with no source fallback, and
@@ -1323,10 +1536,43 @@ def run_ums_test():
                 show_run(stale_built)
                 return False
 
+            # **A host this machine did not promote is never started**, for any
+            # command -- `--version` and `check` included, which an editor sends
+            # when a file is opened. The stand-in writes a marker when it runs, so
+            # "not run" is observed rather than inferred from the output.
+            marker = Path(launcher_dir) / "untrusted-ran"
+            marker_source = Path(launcher_dir) / "marker_host.c"
+            marker_source.write_text(
+                "#include <stdio.h>\n"
+                "int main(void) {\n"
+                f"    FILE* f = fopen({json.dumps(str(marker))}, \"w\");\n"
+                "    if (f) fclose(f);\n"
+                "    return 0;\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            marker_host = Path(launcher_dir) / ("marker.exe" if os.name == "nt" else "marker")
+            if subprocess.run([clang_path, str(marker_source), "-o", str(marker_host)],
+                              capture_output=True).returncode != 0:
+                print(f"{RED}[FAIL] ums: could not build the untrusted-host stand-in{RESET}")
+                return False
+            shutil.copy2(marker_host, compiler_artifact)
+            untrusted = subprocess.run(
+                [str(launcher), "--version"], capture_output=True, text=True,
+                cwd=str(PROJECT_ROOT), env=launcher_env,
+            )
+            if (marker.exists() or "P1077" not in untrusted.stderr
+                    or "Using global toolchain" not in untrusted.stderr):
+                print(f"{RED}[FAIL] ums: a project host this machine did not build was run{RESET}")
+                print(f"marker written: {marker.exists()}")
+                show_run(untrusted)
+                return False
+
             # `clean` is the one command exempt from the repair. It removes this
             # project's artifacts and then the launcher removes the host itself,
             # so rebuilding the binary about to be deleted is work thrown away.
             shutil.copy2(stale_host, compiler_artifact)
+            trust_host(compiler_artifact)
             stale_clean = subprocess.run(
                 [str(launcher), "clean"], capture_output=True, text=True,
                 cwd=str(PROJECT_ROOT / "ums"), env=launcher_env,
@@ -1344,6 +1590,7 @@ def run_ums_test():
             # of it: the repair is stage 0 building and promoting a new host, and
             # the command that follows must reach *that* binary.
             shutil.copy2(stale_host, compiler_artifact)
+            trust_host(compiler_artifact)
             repaired = subprocess.run(
                 [str(launcher), "--version"], capture_output=True, text=True,
                 cwd=str(PROJECT_ROOT), env=launcher_env,
@@ -1391,7 +1638,10 @@ def run_ums_test():
             # A corrupt active generation falls back to stage 0 rather than becoming
             # a permanent dead end. The command is not replayed after a host failure;
             # fallback happens only because the preflight could not start the host.
+            # Trusted first, so this reaches the start check rather than stopping
+            # at the stamp -- an overwritten host no longer matches its own.
             compiler_artifact.write_bytes(b"not a Prismio compiler\n")
+            trust_host(compiler_artifact)
             fallback_build = subprocess.run(
                 [str(launcher), "build"], capture_output=True, text=True,
                 cwd=str(PROJECT_ROOT), env=launcher_env,
@@ -1416,6 +1666,7 @@ def run_ums_test():
     print(f"{GREEN}[PASS] ums: manifest lowering, validation, build planning, "
           f"native linkage, host routing, dependency resolution and the lockfile{RESET}")
     return True
+
 
 
 def run_check_overlay_test():
@@ -1709,6 +1960,44 @@ def run_aif_test():
         return False
 
     print(f"{GREEN}[PASS] AIF assigns every SPEC 4.2 clause its expected tier{RESET}")
+    return True
+
+
+def run_aif_loop_bracket_test():
+    """Regime (a) keeps a per-iteration allocation out of the caller's region.
+
+    `perIteration`'s Vec dies at the end of each iteration; bracketed into the
+    caller's region it stayed until the call returned, and `transient_allocation`
+    read 34.7 MB peak for what its own tier holds in 1.75 MB. `wholeCall`'s Vec is
+    the control: the same function shape without the loop, still bracketed, so
+    this cannot pass by bracketing nothing.
+    """
+    print(f"\n{BLUE}--- Running aif_loop_bracket ---{RESET}")
+    fixture = TEST_DIR / "aif_loop_bracket.psm"
+    report = run_command([str(PRISMIO_EXE), "aif", str(fixture)])
+    problems = []
+    if report.returncode != 0:
+        problems.append(f"aif exited {report.returncode}")
+    placements = {}
+    for line in report.stdout.splitlines():
+        found = re.match(r"^\d+\s+aif_loop_bracket\.psm:(\d+):\d+\s+Vec<Int>\s+(.+?)\s{2,}(.+)$", line)
+        if found:
+            placements[int(found.group(1))] = (found.group(2).strip(), found.group(3).strip())
+    per = placements.get(9)
+    whole = placements.get(19)
+    if per is None or whole is None:
+        problems.append(f"expected sites on lines 9 and 19, found {sorted(placements)}")
+    else:
+        if per[1] == "caller region selected":
+            problems.append(f"the per-iteration Vec was bracketed: {per}")
+        if whole[1] != "caller region selected":
+            problems.append(f"the whole-call control was not bracketed, so the check is vacuous: {whole}")
+    if problems:
+        print(f"{RED}[FAIL] aif loop bracket{RESET}")
+        for problem in problems:
+            print(f"  {problem}")
+        return False
+    print(f"{GREEN}[PASS] a per-iteration Vec keeps its own tier; a whole-call one is still bracketed{RESET}")
     return True
 
 
@@ -2983,163 +3272,6 @@ def run_object_cache_test():
     return True
 
 
-def run_bootstrap_command_test():
-    """`prismio bootstrap` builds a compiler, and the compiler it builds is right.
-
-    This command could not link between the move to the LLVM C API and
-    2026-08-17: its link line had no `-lLLVM-C`, so it compiled everything and
-    then failed with several hundred undefined `_LLVM*` symbols. Nothing in the
-    tree ran it -- CI and every session use `tools/bootstrap.sh` -- so nothing
-    noticed for months, while `compiler_build_executable` printed a NOTE
-    recommending it.
-
-    Two assertions, and the second is the one with teeth. "It linked" is what a
-    smoke test would check, and a compiler can link and still be wrong -- built
-    against stub headers, or against a different LLVM. So the binary it produces
-    is asked to compile a program, and its IR has to match byte for byte what
-    the compiler running this suite produces for the same program.
-
-    That is also what keeps the two recipes honest. There are two places that
-    know how to link a compiler now -- this command and the bootstrap scripts --
-    and two copies of a recipe that must agree is how this broke in the first
-    place. This is the check that makes a disagreement loud.
-
-    **The bootstrap is done with `-g`**, which costs about a second and buys two
-    things a separate test would pay a whole second bootstrap for again. First,
-    the flag reaches this command at all: `build` and `run` parsed it and
-    `bootstrap` did not, so the largest Prismio program in existence was the one
-    that could not be stepped through. Second, and this is the assertion with
-    teeth, the compiler built *with* `-g` must still emit byte-identical IR --
-    debug info describes a program, it does not change one, and a `-g` build that
-    compiled differently would be a different compiler.
-
-    On Mach-O the `.dSYM` is checked too, because the executable carries only a
-    debug map and the DWARF it points at is in an object file the build deletes.
-    `compiler_build_executable` ran dsymutil before that delete and
-    `compiler_bootstrap_executable` did not, so `bootstrap -g` emitted every byte
-    of the metadata and then threw away the half describing Prismio code.
-    """
-    print(f"\n{BLUE}--- Running bootstrap_command ---{RESET}")
-    problems = []
-
-    with tempfile.TemporaryDirectory(prefix="prismio-bootstrap-cmd-") as wd:
-        built = Path(wd) / "selfbuilt"
-        r = subprocess.run([str(Path(PRISMIO_EXE).resolve()), "bootstrap",
-                            str(TEST_DIR.parent / "src" / "main.psm"), "-o", str(built),
-                            "-g"],
-                           capture_output=True, text=True)
-        if r.returncode != 0 or not built.exists():
-            text = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
-            problems.append("`prismio bootstrap` did not produce a compiler: "
-                            + " | ".join(text[-4:]))
-        else:
-            fixture = TEST_DIR / "test_09_strings.psm"
-            mine, theirs = Path(wd) / "a.ll", Path(wd) / "b.ll"
-            a = run_command([str(built), "build", str(fixture), "-o", str(mine)])
-            b = run_command([str(Path(PRISMIO_EXE).resolve()), "build", str(fixture),
-                             "-o", str(theirs)])
-            if a.returncode != 0 or not mine.exists():
-                problems.append("the compiler `prismio bootstrap` built cannot compile a program")
-            elif b.returncode != 0 or not theirs.exists():
-                problems.append("the compiler running this suite could not emit the "
-                                "reference IR, so there was nothing to compare against")
-            elif mine.read_bytes() != theirs.read_bytes():
-                problems.append("the compiler `prismio bootstrap` built emits different IR "
-                                "from the one running this suite -- it linked, and it is not "
-                                "the same compiler")
-
-            # **A compiler that links and cannot JIT is the disagreement this
-            # test exists to make loud.** Two places know how to link a compiler
-            # -- this command and tools/bootstrap.{sh,ps1} -- and on Windows they
-            # need different things for ORC to reach the runtime: a COFF
-            # executable exports nothing, so the script builds an export table
-            # from the objects and the driver had to learn to do the same. The IR
-            # comparison above cannot see that, because such a compiler compiles
-            # correctly and fails only when asked to *run* something.
-            #
-            # The same fixture, so no second program has to be kept in step, and
-            # a string-heavy one at that: `--jit` resolves the runtime out of the
-            # compiler process, so every allocation crosses the seam and every
-            # release has to come back to the same allocator. It must be run from
-            # the repo, because a compiler in a temp directory resolves `std/`
-            # relative to the source it is given.
-            j = run_command([str(built), "run", str(fixture), "--jit"])
-            if j.returncode != 0 or "PASS: strings" not in (j.stdout or ""):
-                problems.append(
-                    f"the compiler `prismio bootstrap` built cannot `run --jit` "
-                    f"(exit {j.returncode}): "
-                    + elide_middle((j.stdout or "") + (j.stderr or "")))
-
-            # One-generation ABI bridge. The compiler being replaced may have
-            # emitted the old post-construction list-layout setter. Bootstrap
-            # links repository runtime sources, so that source build must carry
-            # PRISMIO_BOOTSTRAP_COMPAT even though packaged runtime bitcode must
-            # not expose the setter. Without this, `prismio build` cannot repair
-            # exactly the stale project host it exists to replace.
-            legacy_source = Path(wd) / "legacy_layout_compiler.psm"
-            legacy_source.write_text(
-                "extern fn ptr_null() -> Ptr\n"
-                "extern fn list_set_elem_inline(list: Ptr, elemSize: Int)\n\n"
-                "fn main() -> Int {\n"
-                "    list_set_elem_inline(ptr_null(), 4)\n"
-                "    return 0\n"
-                "}\n")
-            legacy_exe = Path(wd) / "legacy-layout-bridge"
-            legacy = subprocess.run(
-                [str(built), "bootstrap", str(legacy_source),
-                 "-o", str(legacy_exe)], capture_output=True, text=True,
-                cwd=str(PROJECT_ROOT))
-            legacy_run = (subprocess.run([str(legacy_exe)], capture_output=True,
-                                         text=True)
-                          if legacy_exe.is_file() else None)
-            if (legacy.returncode != 0 or legacy_run is None
-                    or legacy_run.returncode != 0):
-                problems.append(
-                    "bootstrap cannot link the previous generation's "
-                    "list-layout ABI, so a stale project host cannot self-repair: "
-                    + elide_middle((legacy.stdout or "") + (legacy.stderr or "")))
-
-            if sys.platform == "darwin":
-                if not Path(str(built) + ".dSYM").is_dir():
-                    problems.append("`bootstrap -g` produced no .dSYM: on Mach-O the "
-                                    "executable carries a debug map and the DWARF it "
-                                    "points at is in the program object, which the "
-                                    "build deletes -- so the metadata was emitted and "
-                                    "then thrown away")
-            else:
-                print(f"  (no .dSYM check: only Mach-O keeps DWARF outside the binary)")
-
-    # `-g` has to be named in the guard that decides whether argument 2 is the
-    # source path, or `prismio bootstrap -g` compiles a file called `-g`. Run
-    # where `src/main.psm` cannot resolve, so the two outcomes are told apart by
-    # *which* path is reported missing and neither one builds anything.
-    with tempfile.TemporaryDirectory(prefix="prismio-bootstrap-flag-") as wd:
-        r = subprocess.run([str(Path(PRISMIO_EXE).resolve()), "bootstrap", "-g",
-                            "-o", str(Path(wd) / "out")],
-                           capture_output=True, text=True, cwd=wd)
-        said = ((r.stdout or "") + (r.stderr or ""))
-        if r.returncode == 0:
-            problems.append("`prismio bootstrap -g` succeeded in a directory with no "
-                            "`src/main.psm`, so it built something other than the "
-                            "default source")
-        elif "cannot read -g" in said:
-            problems.append("`prismio bootstrap -g` reports `-g` as the missing source: "
-                            "the flag was taken for the source path")
-        elif "cannot read src/main.psm" not in said:
-            problems.append("`prismio bootstrap -g` failed for a reason this test did "
-                            f"not expect, so it is not checking the guard: {said.strip()[:120]}")
-
-    if problems:
-        print(f"{RED}[FAIL] `prismio bootstrap` does not build a working compiler{RESET}")
-        for p in problems:
-            print(f"  {p}")
-        return False
-
-    print(f"{GREEN}[PASS] `prismio bootstrap -g` builds a debuggable compiler whose "
-          f"IR matches this one's{RESET}")
-    return True
-
-
 def run_bootstrap_cache_key_test():
     """The bootstrap scripts cache toolchain objects, and the key has to be content.
 
@@ -4186,6 +4318,16 @@ def run_ownership_probes_test():
         # One allocation site backs every `concat`; a builder storing `concat`
         # results stopped every `concat` argument being released.
         ("concat_argument_probe.psm", "PASS", True),
+        # A Vec<String> only literals reach, and an element replaced under a
+        # live view: both leaked, and releasing at the store would free the view.
+        ("vec_element_replace_probe.psm", "PASS", True),
+        ("test_217_vec_filled.psm", "ok", True),
+        # `Map<K, V>()`, `Map()` from an annotation, and a bare `let` of a Map,
+        # which was a zeroed struct until 2026-09-28.
+        ("test_222_type_constructors.psm", "ok", True),
+        # Map literals: a computed String key is an argument temporary, and a
+        # literal of plain keys is a producer, clean in a field and a return.
+        ("test_223_map_literals.psm", "ok", True),
     )
     problems = []
     exe_suffix = ".exe" if platform.system() == "Windows" else ""
@@ -5450,8 +5592,12 @@ def run_jit_test():
         # Through std.process, which names `prismio_argc` with `extern let`:
         # the declaration is where the jitted module's copy and the compiler's
         # can be confused.
+        # And through std.map, whose non-generic functions ship compiled in
+        # `map.plib`: this runs outside any checkout, so a JIT that ran the
+        # program's module alone found none of them.
         prog.write_text('import std.io\n'
                         'import std.process\n'
+                        'import std.map\n'
                         '\n'
                         'struct Point { x: Int, y: Int }\n'
                         '\n'
@@ -5467,6 +5613,10 @@ def run_jit_test():
                         '    println(total(p))\n'
                         '    print("argc: ")\n'
                         '    println(process.args.count)\n'
+                        '    let m: Map<String, Int> = mapNew<String, Int>()\n'
+                        '    m.set("k", 7)\n'
+                        '    print("map: ")\n'
+                        '    println(m.length)\n'
                         '    return 0\n'
                         '}\n')
 
@@ -7058,20 +7208,20 @@ def run_aif_verify_test():
         "test_100_string_append_reuse": 0,
         # `sortBy` over inline and boxed elements, and `list_swap`. What this
         # guards is the 0 violations: the sorts used to free an address inside a
-        # flat-struct list's block. The 1 is the long String in `words` -- a list
-        # that hands out an element is not released (KNOWN_ISSUES).
-        "test_144_sort_inline_elements": 1,
+        # flat-struct list's block. It read 1 until 2026-09-27: `words` holds only
+        # literals written at a push, which no site describes, so the list was
+        # never told it owned them (aif_elem_literal_copies_only).
+        "test_144_sort_inline_elements": 0,
         # A flat element copied within its own list, whose release of that
         # interior address aborted in `free`. See list_release_source.
         "test_145_list_set_within_list": 0,
         # Vec's methods, and the removals above all. What this guards is the 0
         # violations: `removeAt` takes an element a live view still reads, and a
         # removal that released it at once would be a free under that view. The
-        # 3 are the known shapes, identical in a control with no removal at all:
-        # the two long Strings in `words`, a Vec that hands out an element and so
-        # is not released, and the name inside the `Job` copy `removeAt` returns
-        # through two generic calls.
-        "test_155_vec_methods": 3,
+        # 1 is the name inside the `Job` copy `removeAt` returns through two
+        # generic calls. It read 3 until 2026-09-27, the other two being the long
+        # Strings in `words`, a Vec only literals reach (aif_elem_literal_copies_only).
+        "test_155_vec_methods": 1,
         # `x[i] = v` across arrays, Vec and Slice. An array store is a plain
         # store with no release, admitted only for elements nobody owns, so a
         # leak here is an owning element getting through that gate.
@@ -7705,6 +7855,12 @@ def run_byte_loop_vectorise_test():
       firstByte   has none, so it does not
       optimised   sumBytes's loop has a `vector.body`
 
+    An executable internalises everything but `main`, so the optimiser inlines
+    single-caller `sumBytes` into `main` and deletes it before the vectoriser
+    runs; the loop is read wherever it ends up. `main`'s only other loop builds
+    a StringBuilder through calls, which cannot vectorise, so a `vector.body`
+    in the dump is still the byte loop's.
+
     The last alone would pass a compiler that stopped resolving anywhere, which
     is the tokenizer's 204,000 per-character tests back; the first two alone
     would pass one whose loop still did not vectorise. PRISMIO_LLVM_ARGS is a
@@ -7734,15 +7890,16 @@ def run_byte_loop_vectorise_test():
         exe = Path(td) / ("probe" + (".exe" if os.name == "nt" else ""))
         env = dict(os.environ)
         env["PRISMIO_LLVM_ARGS"] = ("-print-after=loop-vectorize "
-                                    "-filter-print-funcs=sumBytes__String")
+                                    "-filter-print-funcs=sumBytes__String,main")
         opt = subprocess.run([str(PRISMIO_EXE), "build", str(src), "-o", str(exe)],
                              capture_output=True, text=True, errors="replace", env=env)
         dump = (opt.stdout or "") + (opt.stderr or "")
         if opt.returncode != 0:
             problems.append(f"optimised build failed: {elide_middle(dump)}")
         else:
-            if "sumBytes__String" not in dump:
-                problems.append("LLVM printed nothing for sumBytes; the switch was not honoured")
+            if "sumBytes__String" not in dump and "@main(" not in dump:
+                problems.append("LLVM printed nothing for sumBytes or main; "
+                                "the switch was not honoured")
             elif "vector.body" not in dump:
                 problems.append("sumBytes's byte loop did not vectorise")
             ok, out, _ = run_program(exe)
@@ -7755,6 +7912,66 @@ def run_byte_loop_vectorise_test():
             print(f"  {p}")
         return False
     print(f"{GREEN}[PASS] a byteAt loop vectorises; parameters resolve only where a loop is{RESET}")
+    return True
+
+
+def run_cold_function_test():
+    """`cold fn` lowers to LLVM `cold` and `noinline`, and nothing else does.
+
+    test_231_cold_functions checks that every placement runs; this reads its IR,
+    because the marker changes no behaviour and a lowering that dropped it would
+    pass any output check. It is load-bearing for performance: an executable
+    internalises every function but `main`, LLVM inlines an internal function's
+    only call whatever its size, and std's `mapInsert` is `cold` so that it is
+    not folded back into `mapSet` (key_value_update measured 1.28x without it).
+
+    Marked: a free function, a `private` one, an `impl` method and a generic
+    instantiation. Unmarked: a function *named* `cold` and ordinary neighbours.
+    """
+    print(f"\n{BLUE}--- Running cold_function ---{RESET}")
+    src = TEST_DIR / "test_231_cold_functions.psm"
+    problems = []
+    with tempfile.TemporaryDirectory(prefix="prismio-cold-") as td:
+        ll = Path(td) / "cold.ll"
+        built = run_command([str(PRISMIO_EXE), "build", str(src), "-o", str(ll)])
+        if built.returncode != 0 or not ll.exists():
+            problems.append(f"IR build failed: "
+                            f"{elide_middle((built.stdout or '') + (built.stderr or ''))}")
+        else:
+            text = ll.read_text(encoding="utf-8", errors="replace")
+            groups = {}
+            for m in re.finditer(r"^attributes (#\d+) = \{ (.*?) \}$", text, re.M):
+                groups[m.group(1)] = m.group(2).split()
+
+            def attrs(prefix):
+                m = re.search(r"^define [^@\n]*@\"?" + re.escape(prefix) + r"[^(]*\([^)]*\)([^{]*)\{",
+                              text, re.M)
+                if not m:
+                    return None
+                found = []
+                for ref in re.findall(r"#\d+", m.group(1)):
+                    found += groups.get(ref, [])
+                return found
+
+            for name in ("failWith__", "sumSquares__", "reset__Struct_Counter", "lengthOr$Int"):
+                got = attrs(name)
+                if got is None:
+                    problems.append(f"{name} was not emitted")
+                elif "cold" not in got or "noinline" not in got:
+                    problems.append(f"{name} is cold but carries {got}")
+            for name in ("cold__Int", "bumped__Struct_Counter", "clamp__Int"):
+                got = attrs(name)
+                if got is None:
+                    problems.append(f"{name} was not emitted")
+                elif "cold" in got or "noinline" in got:
+                    problems.append(f"{name} is not cold but carries {got}")
+
+    if problems:
+        print(f"{RED}[FAIL] cold functions{RESET}")
+        for p in problems:
+            print(f"  {p}")
+        return False
+    print(f"{GREEN}[PASS] cold functions lower to cold+noinline, and only they do{RESET}")
     return True
 
 
@@ -8650,9 +8867,11 @@ def main():
         ("crlf_triple_string", run_crlf_triple_string_test),
         ("source_not_utf8", run_source_not_utf8_test),
         ("ums", run_ums_test),
+        ("ums_project", run_ums_project_test),
         ("corpus", run_corpus_test),
         ("aif_tiers", run_aif_test),
         ("aif_human_report", run_aif_human_report_test),
+        ("aif_loop_bracket", run_aif_loop_bracket_test),
         ("aif_concurrency", run_aif_concurrency_test),
         ("aif_widening", run_aif_widening_test),
         ("aif_stack_slot", run_aif_stack_slot_test),
@@ -8665,7 +8884,6 @@ def main():
         ("split_release", run_split_release_test),
         ("forced_layout", run_forced_layout_test),
         ("bootstrap_cache_key", run_bootstrap_cache_key_test),
-        ("bootstrap_command", run_bootstrap_command_test),
         ("manifest_parseable", run_manifest_parseable_test),
         ("oracle_vocabulary", run_oracle_vocabulary_test),
         ("elem_mode_agreement", run_elem_mode_agreement_test),
@@ -8700,6 +8918,7 @@ def main():
         ("string_operator_ledger", run_string_operator_ledger_test),
         ("overflow_checks", run_overflow_checks_test),
         ("byte_loop_vectorise", run_byte_loop_vectorise_test),
+        ("cold_function", run_cold_function_test),
         ("identifier_security", run_identifier_security_test),
         ("curated_closure", run_curated_closure_test),
         ("curated_emits", run_curated_emits_test),

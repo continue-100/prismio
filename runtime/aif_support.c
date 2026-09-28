@@ -5314,6 +5314,26 @@ static int site_is_loop_struct(int site_id, int caller_scope) {
     return 0;
 }
 
+// A site allocated inside a loop of its own function whose value does not
+// outlive an iteration of it: its escape scope is inside a loop too. Its own tier
+// releases it at the end of that iteration. An automatic bracket moves it into
+// the caller's region instead, which lasts the whole call, so every iteration's
+// block stays until the call returns -- memory in proportion to the trip count,
+// and each new block a fresh page. `transient_allocation`, a 4000-element Vec
+// built and dropped 800 times, read 34.7 MB peak and 5x the time of freeing
+// each one (1.75 MB) until this.
+//
+// Declining is the placement the site had before bracketing existed, so it is
+// sound whatever else is true. A `region` the programmer wrote is not second-
+// guessed: that extent is a decision, not an inference.
+static int site_dies_per_iteration(int site_id) {
+    const Site* s = &sites[site_id];
+    if (s->scope < 0 || s->scope >= scope_count) return 0;
+    if (scopes[s->scope].loop_depth == 0) return 0;
+    if (s->E < 0 || s->E >= scope_count) return 0;     // Caller or Global
+    return scopes[s->E].loop_depth > 0;
+}
+
 static void bracket_place(void) {
     if (bracket_place_ready) return;
     bracket_place_ready = 1;
@@ -5370,7 +5390,8 @@ static void bracket_place(void) {
         for (int s = 0; s < site_count; s++) {
             int f = sites[s].fn;
             if (f < 0 || f >= fn_count || !bits_test(&bracket_place_extent, f)) continue;
-            if (scopes[r].region_name < 0 && site_is_loop_struct(s, e->scope)) {
+            if (scopes[r].region_name < 0
+                    && (site_is_loop_struct(s, e->scope) || site_dies_per_iteration(s))) {
                 continue;
             }
             // If an inner arena (inside a callee in the extent) already claimed
@@ -6968,6 +6989,46 @@ int aif_elem_owner_at_node(const void* node) {
         else if (agreed != d) return AIF_ELEM_NONE;
     }
     return agreed;
+}
+
+// Whether the only elements that reach this container are literals written at
+// a push, which codegen copies in (generateOwnedStringLiteral) -- so every one is
+// an owned block the container should release.
+//
+// aif_elem_owner_at_node cannot say so: it decides from the sites that reach the
+// container, and a literal copy is not a site. With nothing to agree on it
+// answered NONE, and `words.push("…")` twice leaked both copies -- while the same
+// pushes beside one real String site were released, by that site's mode.
+//
+// Answers the site half only. A literal copy is a String, and only codegen knows
+// the element type, so it asks this for a `Vec<String>` and nothing else: telling
+// a scalar Vec to release its elements would free integers. A container that may
+// hold an untracked value through a key (a literal bound to a name first, which
+// may still be `.rodata`) is declined exactly as the site path declines it.
+int aif_elem_literal_copies_only(const void* node) {
+    if (node == NULL) return 0;
+    int container = -1;
+    for (NodeSite* n = node_buckets[node_hash(node)]; n; n = n->next) {
+        if (n->node == node) { container = n->site; break; }
+    }
+    if (container < 0) return 0;
+    if (container_may_hold_untracked(container)) return 0;
+    for (int s = 0; s < site_count; s++) {
+        if (bits_test(&container_of[s], container)) return 0;
+    }
+    int literal = 0;
+    Bits holders = {0};
+    for (int ci = 0; ci < con_count && !literal; ci++) {
+        const Constraint* k = &cons[ci];
+        if (k->kind != AIF_CON_RETAIN_IN || k->a < 0 || k->a >= vs_count) continue;
+        const ValueSet* v = &vsets[k->a];
+        if (!v->untracked || v->len != 0) continue;
+        resolve(k->b, &holders);
+        if (bits_test(&holders, container)) literal = 1;
+        bits_clear(&holders);
+    }
+    bits_free(&holders);
+    return literal;
 }
 
 // The element type of a container whose elements are released by type.

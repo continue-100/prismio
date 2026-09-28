@@ -45,11 +45,14 @@ would erase comments and formatting that have no semantic-model representation.
 
 ### The compiler executes; UMS orchestrates
 
-`src/main.psm` contains a thin `buildUmsProject` adapter. UMS owns discovery,
-manifest interpretation, validation, target enumeration, and artifact paths.
-The adapter calls the existing `compileSource` for each planned executable, so
-UMS does not duplicate lexing, semantic analysis, AIF, LLVM generation, or
-native linking.
+`src/project/` is the adapter, in three parts: `ums_cli.psm` for the project
+verbs, `host.psm` for routing to a project's own compiler, and `commands.psm`
+for running a declared command. UMS owns discovery, manifest interpretation,
+validation, target enumeration, and artifact paths. The adapter hands each
+planned target's native inputs to the driver and calls the existing
+`compileSource` with a `CompileOptions` built from the selected profile, so UMS
+does not duplicate lexing, semantic analysis, AIF, LLVM generation, or native
+linking.
 
 ### Host selection is a stable prefix
 
@@ -79,12 +82,24 @@ The launcher remains alive while the executable at `toolchain.host` builds its
 same split lets `clean` remove a running Windows compiler only after its process
 has ended. A hosted command failure is returned directly and is never replayed.
 
-Artifact kind does not encode linkage. `executable`, `test`, and the future
-`library` describe outputs; a target's ordered `link` inputs describe native
-dependencies. `library`, `search`, `file`, and `framework` lower to quoted clang
-arguments. `component("prismio.backend")` selects the toolchain-owned local
-backend bundle and its transitive LLVM dependency. Host promotion is selected
-only by matching the planned output to `toolchain.host`.
+Before any of that, the launcher asks whether this machine promoted the host.
+Promotion writes `<host>.trusted` holding the file's identity -- device, inode,
+size and modification time -- and a host whose identity does not match is never
+started, because starting it is running whatever the project put there: the
+probes run it too, and an editor's `check` reaches the launcher when a file is
+opened. `toolchain.host` must also name a path under `.prismio/`, which a
+checkout does not carry.
+
+Artifact kind does not encode linkage, and nothing about a target is built into
+the toolchain. `executable`, `test`, and the future `library` describe outputs;
+a target's `native` block names the C it compiles (sources, include
+directories, defines, flags, response files), its ordered `link` inputs name
+what it links, `runtime` says whether the installed runtime is merged in, and
+`exportDynamic` whether its symbols are visible to code it loads. The Prismio
+compiler is one such target. There used to be a `component("prismio.backend")`
+that selected a backend bundle every shipped compiler knew how to build; it is
+gone, and the compiler's build.ums names those sources instead. Host promotion
+is selected only by matching the planned output to `toolchain.host`.
 
 ### A command is manifest data; which names are free is not
 
@@ -157,7 +172,10 @@ belong in the parser or project metadata.
 - Local-path dependencies resolve and all dependencies are written to a
   lockfile, but resolved sources are not added to import search or linked.
   Registry dependencies still have no fetch implementation.
-- Debug and release profiles are CLI inputs; profile blocks are not parsed yet.
+- Profiles are `debug` and `release` only, and a `profiles` block sets two
+  things for each: `debugInfo` and `overflowChecks`.
+- Native sources are C only; a C++ source would need its runtime library
+  linked, which nothing declares yet.
 - Manifest edits exist as a tested source transformation, but no dependency CLI
   command writes the returned text to `build.ums` yet.
 - Target selection, target triples in manifests, incremental fingerprints,

@@ -1,0 +1,8 @@
+// expect-error: not after the prefix
+// `0x_FF`: a separator after `0x` has no digit before it.
+import std.io
+
+fn main() -> Int {
+    let mask = 0x_FF
+    return mask
+}

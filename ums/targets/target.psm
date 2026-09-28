@@ -12,18 +12,39 @@ enum UmsTargetKind {
     TEST
 }
 
-// A target's artifact shape and the native things it links are separate axes.
-// `executable("prismio")` is still an executable; linking Prismio's own backend
-// does not turn it into a fourth artifact kind. Components name toolchain-owned
-// bundles with transitive requirements, while the other forms map directly to
-// ordinary native linker inputs.
+// A target's artifact shape and the native things it links are separate axes:
+// an executable that links C of its own is still an executable. Every form maps
+// directly to an ordinary linker input; a response file is a file of them, which
+// is how a manifest links a library whose flags another tool computed (LLVM's,
+// written by tools/setup_llvm.py).
 enum UmsLinkKind {
     UNKNOWN,
     LIBRARY,
     SEARCH,
     FILE,
     FRAMEWORK,
-    COMPONENT
+    RESPONSE_FILE
+}
+
+// What a target's `native { ... }` block declares: C sources to compile with the
+// toolchain's clang and link into the executable, and the flags they compile
+// with. Nothing about a source is inferred -- the manifest names the include
+// directories, the defines and any flag file a source needs.
+enum UmsNativeKind {
+    UNKNOWN,
+    SOURCE,
+    INCLUDE,
+    DEFINE,
+    FLAG,
+    RESPONSE_FILE
+}
+
+struct UmsNativeInput {
+    kind: UmsNativeKind,
+    value: String,
+    line: Int,
+    col: Int,
+    len: Int
 }
 
 struct UmsLinkInput {
@@ -35,13 +56,21 @@ struct UmsLinkInput {
 }
 
 
+// `runtime` is "installed" -- the Prismio runtime bitcode the toolchain ships,
+// merged into the program -- or "none", for a program whose native sources
+// provide every runtime symbol themselves (a Prismio compiler, built from the
+// runtime in its own checkout). `exportDynamic` makes the executable's symbols
+// visible to code it loads while running, such as a JIT-compiled module.
 struct UmsTarget {
     kind: UmsTargetKind,
     name: String,
     entry: String,
     sourcePath: String,
     outputPath: String,
+    runtime: String,
+    exportDynamic: Bool,
     links: Vec<UmsLinkInput>,
+    natives: Vec<UmsNativeInput>,
     line: Int,
     col: Int,
     len: Int
@@ -55,7 +84,10 @@ public fn umsTarget(kind: UmsTargetKind, name: String, entry: String,
         entry: entry.clone(),
         sourcePath: "".clone(),
         outputPath: "".clone(),
+        runtime: "installed".clone(),
+        exportDynamic: false,
         links: [],
+        natives: [],
         line: line,
         col: col,
         len: len
@@ -73,16 +105,15 @@ public fn umsLinkInput(kind: UmsLinkKind, value: String,
     }
 }
 
-public fn umsTargetHasComponent(target: UmsTarget, name: String) -> Bool {
-    let mut i = 0
-    while (i < target.links.length) {
-        let input = target.links[i]
-        if (input.kind == UmsLinkKind.COMPONENT and input.value.equals(name)) {
-            return true
-        }
-        i = i + 1
+public fn umsNativeInput(kind: UmsNativeKind, value: String,
+                  line: Int, col: Int, len: Int) -> UmsNativeInput {
+    return UmsNativeInput {
+        kind: kind,
+        value: value.clone(),
+        line: line,
+        col: col,
+        len: len
     }
-    return false
 }
 
 public fn umsTargetFind(targets: Vec<UmsTarget>, name: String) -> Int {

@@ -52,6 +52,7 @@ releasing the container.
 | Build | `[]`, `[a, b, c]` | literal, lowered to `vecOf` |
 | | `let v: Vec<T>` with no initializer | sema gives it `[]` (2026-09-18) |
 | | `Vec<T>.withCapacity(n)` | rewrite → `list_new_with_capacity` |
+| | `Vec<T>.filled(n, x)` | scalar `T`: rewrite → `list_new_filled` → runtime `list_new_filled_inline`, one allocation and fill (2026-09-27); otherwise std.vec's `vecFilled`, `T: Copy` |
 | Size | `length`, `isEmpty`, `isNotEmpty` | library |
 | | `capacity` | new runtime entry |
 | Read | `v[i]`, `for x in v`, `v[a..b]` | rewrite → `list_get` (2026-09-24; a Slice keeps its own path) |

@@ -109,12 +109,15 @@ jobs:
       # failed with "Missing runtime module" the first time this job got past
       # its lint gate. Packaging comes first, and everything that builds a
       # program uses the package. It is also the thing a user installs.
+      #
+      # The compiler is named without `.exe` on purpose: that is how build.ums
+      # names one, and package.py resolving it (tools/executable.py) is what
+      # `prismio dist` depends on on Windows.
       - name: Package the toolchain
         shell: bash
         run: |
           set -e
-          EXT=""; [ "$RUNNER_OS" = "Windows" ] && EXT=".exe"
-          python tools/package.py --compiler "build/gen2$EXT" --out dist/Prismio
+          python tools/package.py --compiler "build/gen2" --out dist/Prismio
 
       # run_suite.py tests a *copy* of the packaged toolchain: the ums fixture
       # rebuilds a project host and the cache fixtures count what a build
@@ -166,10 +169,9 @@ jobs:
             echo "seed carries a target directive; it must stay target-neutral"; exit 1; }
           echo "seed is target-neutral"
 
-      # The separation this asserts is not cosmetic: a compiled program links
-      # runtime.a only, so no `ir_*` backend symbol may reach a user binary. It
-      # also proves the installed libraries are the ones actually used rather
-      # than the embedded fallback.
+      # The separation this asserts is not cosmetic: a compiled program merges
+      # the runtime bitcode only, so no `ir_*` backend symbol may reach a user
+      # binary, and the backend ships inside the compiler and nowhere else.
       - name: Verify the packaged toolchain
         shell: bash
         run: |
@@ -196,14 +198,14 @@ jobs:
           struct Note { id: Int }
 
           fn main() -> Int {
-              let mut ids: Vec<Int> = list_new()
-              list_push(ids, 3)
-              list_push(ids, 1)
-              list_push(ids, 2)
+              let mut ids: Vec<Int> = []
+              ids.push(3)
+              ids.push(1)
+              ids.push(2)
               ids.sort()
 
               let m: Map<Int, Int> = mapNew<Int, Int>()
-              mapSet(m, list_get(ids, 0), 10)
+              mapSet(m, ids[0], 10)
 
               let c: Channel<Note> = chan_new(2)
               chan_send(c, Note { id: 7 })
@@ -216,7 +218,7 @@ jobs:
               }
               chan_free(c)
 
-              println(list_get(ids, 0) + mapGetOr(m, 1, 0) + got)
+              println(ids[0] + mapGetOr(m, 1, 0) + got)
               return 0
           }
           PSM

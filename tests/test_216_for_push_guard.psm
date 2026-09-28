@@ -1,0 +1,159 @@
+// E1 for a range `for`: the preheader capacity guard, with the trip count taken
+// from the range rather than read out of a `while` condition. Each arm is a way
+// the count could be off by one -- an included end, a loop counting down, a
+// run-time direction, an empty range -- and each is built with exactly the room
+// the loop needs or one element less, so a count that is one too low would push
+// past the capacity instead of growing. An `if` counts its larger arm, so the
+// branch arms below are the case where counting both would be too loose and
+// counting neither too tight.
+//
+// Every list is checked for `length <= capacity` afterwards. A guard that held
+// when it should not have skips the growth, and the overrun shows there whatever
+// allocator the list came from -- an arena chunk hides it from AddressSanitizer.
+
+import std.io
+
+fn digest(xs: Vec<Int>) -> Int {
+    let mut acc = 0
+    for i in 0..<xs.length {
+        acc = (acc * 31 + xs[i]) % 65521
+    }
+    return acc
+}
+
+fn overran(xs: Vec<Int>) -> Bool {
+    return xs.length > xs.capacity
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+// `0..<n`: n pushes into room for n.
+fn upExclusive(n: Int, room: Int) -> Vec<Int> {
+    let mut xs: Vec<Int> = Vec<Int>.withCapacity(room)
+    for i in 0..<n {
+        xs.push(i * 3)
+    }
+    return xs
+}
+
+// `0..n`: n + 1 pushes, two receivers, one pushed twice.
+fn upInclusive(n: Int, room: Int) -> Int {
+    let mut xs: Vec<Int> = Vec<Int>.withCapacity(room)
+    let mut ys: Vec<Int> = Vec<Int>.withCapacity(2 * room)
+    for i in 0..n {
+        xs.push(i)
+        ys.push(i + 1)
+        ys.push(i + 2)
+    }
+    if (overran(xs) or overran(ys)) { return -1 }
+    if (xs.length != n + 1 or ys.length != 2 * (n + 1)) { return -1 }
+    if (xs[n] != n or ys[2 * n + 1] != n + 2) { return -1 }
+    return digest(xs) + digest(ys)
+}
+
+// `n..<0` and `n..0` count down: n and n + 1 pushes.
+fn down(n: Int, room: Int, included: Bool) -> Vec<Int> {
+    let mut xs: Vec<Int> = Vec<Int>.withCapacity(room)
+    if (included) {
+        for i in n..0 {
+            xs.push(i)
+        }
+    } else {
+        for i in n..<0 {
+            xs.push(i)
+        }
+    }
+    return xs
+}
+
+// Neither end is a literal, so the direction is chosen at run time and each
+// copy has its own guard.
+fn either(a: Int, b: Int, room: Int) -> Vec<Int> {
+    let mut xs: Vec<Int> = Vec<Int>.withCapacity(room)
+    for i in a..b {
+        xs.push(i * i)
+    }
+    return xs
+}
+
+// One push in each arm is one push per iteration; a push after the `if` is a
+// second, and an `else if` chain is still one.
+fn branches(n: Int, room: Int) -> Vec<Int> {
+    let mut xs: Vec<Int> = Vec<Int>.withCapacity(room)
+    for i in 0..<n {
+        if (i % 3 == 0) {
+            xs.push(i)
+        } else if (i % 3 == 1) {
+            xs.push(0 - i)
+        } else {
+            xs.push(1)
+        }
+    }
+    return xs
+}
+
+fn armThenTail(n: Int, room: Int) -> Vec<Int> {
+    let mut xs: Vec<Int> = Vec<Int>.withCapacity(room)
+    for i in 0..<n {
+        if (i % 2 == 0) {
+            xs.push(i)
+        }
+        xs.push(2)
+    }
+    return xs
+}
+
+// A lone scalar fill into an empty list takes the prepared-capacity path.
+fn loneFill(n: Int) -> Vec<Int> {
+    let mut xs: Vec<Int> = []
+    for i in 0..<n {
+        xs.push(7)
+    }
+    return xs
+}
+
+// Pushes into a list that already holds elements.
+fn appended(n: Int) -> Vec<Int> {
+    let mut xs: Vec<Int> = Vec<Int>.withCapacity(n)
+    xs.push(99)
+    for i in 0..<n {
+        xs.push(i)
+    }
+    return xs
+}
+
+fn main() -> Int {
+    let n = 1000
+    for room in (n - 1)..n {
+        let a = upExclusive(n, room)
+        if (overran(a) or a.length != n or a[n - 1] != 3 * (n - 1)) { return fail("0..<n") }
+        if (upInclusive(n, room) < 0) { return fail("0..n, two receivers") }
+        let c = down(n, room, false)
+        if (overran(c) or c.length != n or c[0] != n or c[n - 1] != 1) { return fail("n..<0") }
+        let d = down(n, room, true)
+        if (overran(d) or d.length != n + 1 or d[n] != 0) { return fail("n..0") }
+        let e = either(n, 1, room)
+        if (overran(e) or e.length != n or e[0] != n * n or e[n - 1] != 1) { return fail("run-time down") }
+        let f = either(1, n, room)
+        if (overran(f) or f.length != n or f[n - 1] != n * n) { return fail("run-time up") }
+        let b = branches(n, room)
+        if (overran(b) or b.length != n or b[3] != 3 or b[4] != -4 or b[5] != 1) { return fail("if arms") }
+        let t = armThenTail(n, room + n / 2)
+        if (overran(t) or t.length != n + n / 2 or t[0] != 0 or t[1] != 2) { return fail("arm then tail") }
+    }
+    if (upExclusive(0, 0).length != 0) { return fail("empty range") }
+    if (either(5, 5, 0).length != 1) { return fail("a..a runs once") }
+
+    let g = loneFill(n)
+    if (overran(g) or g.length != n or g[n - 1] != 7) { return fail("lone fill") }
+    let h = appended(n)
+    if (overran(h) or h.length != n + 1 or h[0] != 99 or h[n] != n - 1) { return fail("appended") }
+
+    println(upInclusive(50, 51))
+    println("ok")
+    return 0
+}
