@@ -44,3 +44,83 @@ impl Display for Char   { fn show(self) -> String { return strFromChar(self) } }
 // back a value the caller owns, and returning the receiver's own storage would
 // give two owners for one allocation.
 impl Display for String { fn show(self) -> String { return strClone(self) } }
+
+// A scalar's `T?` shows as its value, or as `none` -- the keyword that writes it.
+impl Display for Int? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for I8? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for I16? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for I64? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for Isize? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for U8? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for U16? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for U32? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for U64? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for Usize? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for Char? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for Float? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+impl Display for Bool? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}

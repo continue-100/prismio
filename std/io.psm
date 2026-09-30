@@ -496,3 +496,165 @@ public fn println(value: Char) {
     let text = prismioStdIoChar(value, '\n')
     prismioStdIoOut(text)
 }
+
+// A scalar's `T?`: its value, or `none`.
+
+public fn print(value: Int?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: I8?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: I16?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: I64?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: Isize?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: U8?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: U16?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: U32?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: U64?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: Usize?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: Char?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: Float?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+public fn print(value: Bool?) {
+    if (value == none) { prismioStdIoOut("none") } else { print(expect(value)) }
+}
+
+public fn println(value: Int?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: I8?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: I16?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: I64?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: Isize?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: U8?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: U16?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: U32?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: U64?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: Usize?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: Char?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: Float?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+public fn println(value: Bool?) {
+    if (value == none) { prismioStdIoOut("none\n") } else { println(expect(value)) }
+}
+
+public fn eprint(value: Int?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: I8?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: I16?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: I64?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: Isize?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: U8?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: U16?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: U32?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: U64?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: Usize?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: Char?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: Float?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+public fn eprint(value: Bool?) {
+    if (value == none) { prismioStdIoErr("none") } else { eprint(expect(value)) }
+}
+
+public fn eprintln(value: Int?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: I8?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: I16?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: I64?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: Isize?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: U8?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: U16?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: U32?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: U64?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: Usize?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: Char?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: Float?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}
+public fn eprintln(value: Bool?) {
+    if (value == none) { prismioStdIoErr("none\n") } else { eprintln(expect(value)) }
+}

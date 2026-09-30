@@ -39,6 +39,21 @@ impl Copy for Char   { fn copyOf(self) -> Self { return self } }
 impl Copy for Float  { fn copyOf(self) -> Self { return self } }
 impl Copy for Bool   { fn copyOf(self) -> Self { return self } }
 
+// A scalar's `T?` is a flag and a value, owning nothing, so it copies itself too.
+impl Copy for Int?   { fn copyOf(self) -> Self { return self } }
+impl Copy for I8?    { fn copyOf(self) -> Self { return self } }
+impl Copy for I16?   { fn copyOf(self) -> Self { return self } }
+impl Copy for I64?   { fn copyOf(self) -> Self { return self } }
+impl Copy for Isize? { fn copyOf(self) -> Self { return self } }
+impl Copy for U8?    { fn copyOf(self) -> Self { return self } }
+impl Copy for U16?   { fn copyOf(self) -> Self { return self } }
+impl Copy for U32?   { fn copyOf(self) -> Self { return self } }
+impl Copy for U64?   { fn copyOf(self) -> Self { return self } }
+impl Copy for Usize? { fn copyOf(self) -> Self { return self } }
+impl Copy for Char?  { fn copyOf(self) -> Self { return self } }
+impl Copy for Float? { fn copyOf(self) -> Self { return self } }
+impl Copy for Bool?  { fn copyOf(self) -> Self { return self } }
+
 // The one that is not the identity, and the reason this trait exists.
 impl Copy for String {
     fn copyOf(self) -> Self {

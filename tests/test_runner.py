@@ -7088,6 +7088,7 @@ def run_aif_verify_test():
         # 2026-09-30: scalar T? in every container, as values; Vec<Int?> did
         # not pass the LLVM verifier before.
         "test_238_scalar_optionals": 0,
+        "test_242_optional_std": 0,
         "test_24_drop": 0,
         "test_25_conventions": 0,
         # Both were 1 -- `escapes() -> Point` and `escapes() -> Wide`, each a T2

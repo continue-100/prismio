@@ -1,0 +1,55 @@
+// The standard library on a scalar `T?`: `Copy`, `Eq`, `Ord` and `Display`, and
+// printing. Each is one `impl` per scalar type in std/, which the seed could not
+// parse before `impl ... for Int?` was accepted -- so `Vec<Int?>` had no
+// `contains`, `sort` or `pop`, and `println(Int?)` had no overload. The harness
+// runs this under `--verify` and requires 0 leaked.
+
+import std.io
+import std.vec
+import std.display
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let present: Int? = 3
+    let absent: Int? = none
+    if (present.show() != "3" or absent.show() != "none") { return fail("Display for Int?") }
+    let f: Float? = 2.5
+    let flag: Bool? = true
+    let letter: Char? = 'z'
+    if (f.show() != "2.5" or flag.show() != "true" or letter.show() != "z") {
+        return fail("Display for Float?, Bool? or Char?")
+    }
+
+    let mut xs: Vec<Int?> = [3, none, 1, 2, none]
+    if (xs.contains(none) == false or xs.contains(7) or xs.indexOf(1) != 2) {
+        return fail("Eq through contains and indexOf")
+    }
+    let copy = xs.clone()
+    xs.sort()
+    if (xs[0] != none or xs[1] != none or xs[2].unwrapOr(0) != 1 or xs[4].unwrapOr(0) != 3) {
+        return fail("Ord: none sorts first")
+    }
+    if (xs.isSorted() == false or xs.binarySearch(2) != 3) { return fail("isSorted, binarySearch") }
+    if (copy[0].unwrapOr(0) != 3 or copy[1] != none) { return fail("Copy through clone") }
+    let last = xs.pop()
+    if (xs.length != 4) { return fail("pop") }
+
+    let mut fs: Vec<Float?> = [2.5, none, 0.5]
+    fs.sort()
+    if (fs[0] != none or fs[1].unwrapOr(0.0) != 0.5) { return fail("sorting Float?") }
+    let wide = Vec<Float?>.filled(3, 1.5)
+    let empty = Vec<Float?>.filled(2, none)
+    if (wide[2].unwrapOr(0.0) != 1.5 or empty[1] != none) { return fail("Vec<Float?>.filled") }
+
+    print(present)
+    print(" ")
+    println(absent)
+    println(f)
+    println("PASS: optional std")
+    return 0
+}

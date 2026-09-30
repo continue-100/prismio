@@ -1916,6 +1916,16 @@ internal fn strAnyChars<F>(s: String, keep: F) -> Bool {
 // Formatting and parsing
 // ---------------------------------------------------------------------------
 
+// `none`, as an owned String: Display's text for an absent `T?`.
+internal fn strFromNone() -> String {
+    let text = str_with_capacity(4)
+    __builtin_string_put_byte(text, 0, 'n')
+    __builtin_string_put_byte(text, 1, 'o')
+    __builtin_string_put_byte(text, 2, 'n')
+    __builtin_string_put_byte(text, 3, 'e')
+    return text
+}
+
 internal fn strFromBool(value: Bool) -> String {
     if (value) {
         let yes = str_with_capacity(4)

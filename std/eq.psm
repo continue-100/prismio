@@ -43,3 +43,19 @@ impl Eq for Float  { fn eq(self, other: Self) -> Bool { return self == other } }
 // By value, not by address. Comparing two Strings with `==` is the mistake this
 // exists to make unnecessary.
 impl Eq for String { fn eq(self, other: Self) -> Bool { return self.equals(other) } }
+
+// Equal when both are `none`, or both present with equal values -- what `==`
+// on a scalar `T?` already is.
+impl Eq for Int?   { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for I8?    { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for I16?   { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for I64?   { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for Isize? { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for U8?    { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for U16?   { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for U32?   { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for U64?   { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for Usize? { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for Char?  { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for Float? { fn eq(self, other: Self) -> Bool { return self == other } }
+impl Eq for Bool?  { fn eq(self, other: Self) -> Bool { return self == other } }

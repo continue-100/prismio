@@ -25,8 +25,8 @@ reference's `T?` is unchanged: a nullable pointer, where `none` is null.
 
 | # | Task | Status |
 |---|---|---|
-| 0 | [Cast bugs](#0-cast-bugs) | done 2026-09-30 (suite pending) |
-| 1 | [Scalar optionals: `T?` by value](#1-scalar-optionals) | in progress (std impls after the seed refresh) |
+| 0 | [Cast bugs](#0-cast-bugs) | done 2026-09-30 |
+| 1 | [Scalar optionals: `T?` by value](#1-scalar-optionals) | done 2026-09-30 |
 | 2 | [`as String`](#2-as-string) | todo |
 | 3 | [Checked number conversions: `x as T?`](#3-checked-number-conversions) | todo |
 | 4 | [Text to value: `s as T` and `s as T?`](#4-text-to-value) | todo |
@@ -108,9 +108,16 @@ compiler's IR for `src/` identical to the session-start compiler's;
 `aif_differential` agrees on every corpus program and AIF test (`src/main.psm`
 was mid-edit and did not parse, so it was not compared).
 
-**Left in task 1:**
-- the seed refresh, then `impl Copy`/`Eq`/`Display` for scalar `T?` in std
-  (`sort`, `contains`, `pop`, a wide `filled`) and `println` of a `T?`.
+**std, done 2026-09-30.** `Copy`, `Eq`, `Ord` and `Display` for each scalar
+`T?`, and `print`/`println`/`eprint`/`eprintln` of one: its value, or `none`.
+`Ord` puts `none` before every value. So `Vec<Int?>` has `contains`, `indexOf`,
+`clone`, `pop`, `sort`, `binarySearch`, and `Vec<Float?>.filled`. One `impl` per
+type, which needed `impl Trait for Int?` in the parser and so a seed refresh
+first (c80ef0b). Two resolution bugs on the way, both fixed there: a generic
+template beat an exact concrete overload (`f(5)` beside `f(Int)` and `f<T>(T)`),
+and `show(n)` beside `show(Int)` and `show(Int?)` was ambiguous -- an argument
+taken as it is now outranks one wrapped into a `T?`. test_240, test_242,
+neg_241; suite 484/484 from the committed seed.
 
 Original list, for reference:
 
