@@ -378,7 +378,7 @@ private fn semaStringComparison(module: ASTNode, expr: ASTNode, op: String,
     semaBindToStandardString(cmp)
 
     let zero = createNode(NodeKind.LITERAL_EXPR)
-    zero.i1 = TokenType.NUMBER_LITERAL
+    zero.i1 = TokenType.NUMBER_LITERAL as Int
     zero.s1 = "0"
     nodeSpanFrom(zero, expr)
 
@@ -479,7 +479,7 @@ private fn semaForEachDesugar(module: ASTNode, stmt: ASTNode) -> Bool {
         semaBecomeCall(length, "slice_len", semaForSourceArgs(source))
     } else if (sourceT.kind == TypeKind.ARRAY and sourceT.length > 0) {
         length.kind = NodeKind.LITERAL_EXPR
-        length.i1 = TokenType.NUMBER_LITERAL
+        length.i1 = TokenType.NUMBER_LITERAL as Int
         length.s1 = sourceT.length.toString()
     } else if (sourceT.kind == TypeKind.ARRAY) {
         semaErrorAt(source, "the length of this array is not known here, so `for ... in` cannot iterate it")
@@ -664,7 +664,7 @@ private fn semaForPrependLet(stmt: ASTNode, name: String, value: ASTNode) {
 // ever over a collection.
 private fn semaForBecomeRange(stmt: ASTNode, indexName: String, length: ASTNode) {
     let zero = createNode(NodeKind.LITERAL_EXPR)
-    zero.i1 = TokenType.NUMBER_LITERAL
+    zero.i1 = TokenType.NUMBER_LITERAL as Int
     zero.s1 = "0"
     nodeSpanFrom(zero, length)
 
@@ -946,7 +946,7 @@ private fn semaUnsupportedExpr(expr: ASTNode) -> TypeInfo {
 
 private fn semaLiteralExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
     let mut t = typeInvalid()
-    if (expr.i1 == TokenType.NUMBER_LITERAL) {
+    if (expr.i1 == TokenType.NUMBER_LITERAL as Int) {
         t = typeInt()
         // **`Int` here is a first guess, not the answer.** A literal is
         // re-typed by whatever it meets -- an annotation, a parameter, the
@@ -961,10 +961,10 @@ private fn semaLiteralExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
             diag_note("the widest are `I64` and `U64`, at 64 bits")
         }
     }
-    if (expr.i1 == TokenType.FLOAT_LITERAL) { t = typeFloat() }
-    if (expr.i1 == TokenType.BOOL_LITERAL) { t = typeBool() }
-    if (expr.i1 == TokenType.CHAR_LITERAL) { t = typeChar() }
-    if (expr.i1 == TokenType.STRING_LITERAL) { t = typeString() }
+    if (expr.i1 == TokenType.FLOAT_LITERAL as Int) { t = typeFloat() }
+    if (expr.i1 == TokenType.BOOL_LITERAL as Int) { t = typeBool() }
+    if (expr.i1 == TokenType.CHAR_LITERAL as Int) { t = typeChar() }
+    if (expr.i1 == TokenType.STRING_LITERAL as Int) { t = typeString() }
     nodeSetType(expr, t)
     return t
 }
@@ -1050,6 +1050,16 @@ private fn semaCastExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
         return semaExpr(module, expr)
     }
 
+    // Into an enum only from itself: an Int might not be one of its variants,
+    // and `n as Color` had no arm in any `match`. The checked form says so.
+    if (toT.kind == TypeKind.ENUM and typeEquals(fromT, toT) == false) {
+        let fix = "; write `as ".concat(typeDisplay(toT), "?` and handle `none`")
+        semaErrorAt(expr, semaArticle(typeDisplay(fromT)).concat(" might not be ",
+                                                                 semaArticle(typeDisplay(toT)), fix))
+        nodeSetType(expr, toT)
+        return toT
+    }
+
     let fromScalar = fromT.kind == TypeKind.INT or fromT.kind == TypeKind.FLOAT
                       or fromT.kind == TypeKind.CHAR or fromT.kind == TypeKind.BOOL
                       or fromT.kind == TypeKind.ENUM
@@ -1102,6 +1112,18 @@ private fn semaCheckedCast(module: ASTNode, expr: ASTNode, source: ASTNode,
 
     let mut from = fromT
     if (typeIsValueOptional(fromT)) { from = typeOptionalInner(fromT) }
+    // `n as Color?`: present when `n` is one of the variants, which are the
+    // ordinals `0..count` -- a fieldless enum has no written discriminants. The
+    // count rides on the node (`i3`) for generateCheckedCast.
+    if (inner.kind == TypeKind.ENUM) {
+        if (from.kind != TypeKind.INT and typeEquals(from, inner) == false) {
+            semaErrorAt(expr, "`as ".concat(typeDisplay(toT), "` takes an integer or a ",
+                                            typeDisplay(inner), "; found ", typeDisplay(fromT)))
+        }
+        expr.i3 = semaEnumVariantCount(module, inner.name)
+        nodeSetType(expr, toT)
+        return toT
+    }
     // A literal that fits is named in the target type, as `as T` does, so
     // `4294967295 as U32?` is present rather than a wrapped Int.
     if (inner.kind == TypeKind.INT and semaIsIntLiteral(source)
@@ -1114,6 +1136,31 @@ private fn semaCheckedCast(module: ASTNode, expr: ASTNode, source: ASTNode,
     }
     nodeSetType(expr, toT)
     return toT
+}
+
+// A type's name with its indefinite article: "an Int", "a U8", "a Color".
+private fn semaArticle(name: String) -> String {
+    let first = name.byteAt(0)
+    if (first == 65 or first == 69 or first == 73 or first == 79) { return "an ".concat(name) }
+    return "a ".concat(name)
+}
+
+// How many variants a fieldless enum declares.
+private fn semaEnumVariantCount(module: ASTNode, enumName: String) -> Int {
+    let count = ir_decl_count(enumName)
+    for i in 0..<count {
+        let decl = ptr_to_node(ir_decl_at(enumName, i))
+        if (decl.kind == NodeKind.ENUM_DECL) {
+            let mut variants = 0
+            let mut variant = decl.child1
+            while (nodeExists(variant)) {
+                variants = variants + 1
+                variant = ptr_to_node(variant).next
+            }
+            return variants
+        }
+    }
+    return 0
 }
 
 // The String method that reads a `T`, or "" for a type text has no reading of.
@@ -1135,7 +1182,7 @@ private fn semaTextCast(expr: ASTNode, source: ASTNode, toT: TypeInfo) -> TypeIn
         semaErrorAt(expr, "text reads as a number or a Bool, not as ".concat(typeDisplay(toT)))
         return toT
     }
-    let isLiteral = source.kind == NodeKind.LITERAL_EXPR and source.i1 == TokenType.STRING_LITERAL
+    let isLiteral = source.kind == NodeKind.LITERAL_EXPR and source.i1 == TokenType.STRING_LITERAL as Int
     if (isLiteral == false) {
         let mut what = "a number"
         if (toT.kind == TypeKind.BOOL) { what = "true or false" }
@@ -1155,14 +1202,14 @@ private fn semaTextCast(expr: ASTNode, source: ASTNode, toT: TypeInfo) -> TypeIn
     if (toT.kind == TypeKind.BOOL) {
         expr.kind = NodeKind.LITERAL_EXPR
         expr.s1 = value.clone()
-        expr.i1 = TokenType.BOOL_LITERAL
+        expr.i1 = TokenType.BOOL_LITERAL as Int
         expr.child1 = ptr_null()
         expr.child2 = ptr_null()
         return toT
     }
     source.s1 = value
-    source.i1 = TokenType.NUMBER_LITERAL
-    if (toT.kind == TypeKind.FLOAT) { source.i1 = TokenType.FLOAT_LITERAL }
+    source.i1 = TokenType.NUMBER_LITERAL as Int
+    if (toT.kind == TypeKind.FLOAT) { source.i1 = TokenType.FLOAT_LITERAL as Int }
     nodeSetType(source, toT)
     return toT
 }
@@ -1974,8 +2021,9 @@ private fn semaMemberAccessExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
     }
 
     if (objectNode.kind == NodeKind.IDENTIFIER_EXPR and semaEnumHasVariant(module, objectNode.s1, expr.s1)) {
-        nodeSetType(expr, typeInt())
-        return typeInt()
+        let variantT = typeEnum(objectNode.s1)
+        nodeSetType(expr, variantT)
+        return variantT
     }
 
     // After the enum paths, so a variant always wins and no existing program
@@ -2409,7 +2457,7 @@ private fn semaSeparatorArgument(marker: ASTNode) -> Ptr {
         return ptr_null()
     }
 
-    let isText = arg.kind == NodeKind.LITERAL_EXPR and arg.i1 == TokenType.STRING_LITERAL
+    let isText = arg.kind == NodeKind.LITERAL_EXPR and arg.i1 == TokenType.STRING_LITERAL as Int
     if (isText == false and arg.kind != NodeKind.IDENTIFIER_EXPR) {
         semaErrorAt(arg, "a separator must be a String literal or a name")
         diag_note("the separator is written once per gap, so bind this to a `let` and pass the name")
@@ -2427,7 +2475,7 @@ private fn semaSeparatorArgument(marker: ASTNode) -> Ptr {
 private fn semaSeparatorCopy(sourcePtr: Ptr, anchor: ASTNode) -> ASTNode {
     if (nodeExists(sourcePtr) == false) {
         let space = createNode(NodeKind.LITERAL_EXPR)
-        space.i1 = TokenType.STRING_LITERAL
+        space.i1 = TokenType.STRING_LITERAL as Int
         space.s1 = " "
         nodeSpanFrom(space, anchor)
         return space
@@ -3047,7 +3095,7 @@ private fn semaForStep(module: ASTNode, stepNode: ASTNode) {
     semaExpectAssignable(stepNode, "for step", typeInt(), stepT)
 
     let mut notPositive = stepNode.kind == NodeKind.LITERAL_EXPR
-        and stepNode.i1 == TokenType.NUMBER_LITERAL
+        and stepNode.i1 == TokenType.NUMBER_LITERAL as Int
         and stepNode.s1.parseInt().unwrapOr(1) <= 0
     if (stepNode.kind == NodeKind.UNARY_EXPR and stepNode.s1.equals("-")) {
         let operand = ptr_to_node(stepNode.child1)
@@ -3074,10 +3122,12 @@ private fn semaMatchStatement(module: ASTNode, stmt: ASTNode, expectedReturn: Ty
         semaErrorAt(ptr_to_node(stmt.child1), "match scrutinee must be an integer or enum value, found ".concat(typeDisplay(scrutT)))
     }
     // Only a `_` arm makes an integer match exhaustive: the scrutinee is not
-    // confined to the values the arms name (see semaCheckExhaustive).
+    // confined to the values the arms name (see semaCheckExhaustive). An enum's
+    // is, so naming every variant is exhaustive too.
     if (semaMatchHasWildcard(stmt)) { stmt.i3 = 1 }
+    if (scrutT.kind == TypeKind.ENUM and semaMatchCoversEnum(stmt, scrutT.name)) { stmt.i3 = 1 }
     let mut patExpected = typeCopy(scrutT)
-    if (scrutT.kind == TypeKind.ENUM) { patExpected = typeInt() }
+
     let mut armPtr = stmt.child2
     while (nodeExists(armPtr)) {
         let arm = ptr_to_node(armPtr)
@@ -4164,10 +4214,10 @@ private fn semaRouteStructComparison(module: ASTNode, expr: ASTNode, op: String,
         // one comparand serves both without a negation node and without
         // rewriting `expr.s1`. Overwriting it frees the string `op` is still
         // reading, which surfaced as garbage in unrelated diagnostics.
-        comparand.i1 = TokenType.BOOL_LITERAL
+        comparand.i1 = TokenType.BOOL_LITERAL as Int
         comparand.s1 = "true".clone()
     } else {
-        comparand.i1 = TokenType.NUMBER_LITERAL
+        comparand.i1 = TokenType.NUMBER_LITERAL as Int
         comparand.s1 = "0".clone()
     }
 

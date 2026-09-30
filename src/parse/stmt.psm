@@ -252,7 +252,7 @@ private fn parseRepeatStatement(p: Parser) -> ASTNode {
 
     p.expectVal(TokenType.SEPARATOR, "(", "repeat count")
     let zero = p.node(NodeKind.LITERAL_EXPR)
-    zero.i1 = TokenType.NUMBER_LITERAL
+    zero.i1 = TokenType.NUMBER_LITERAL as Int
     zero.s1 = "0"
     forNode.child1 = node_to_ptr(zero)
     forNode.child2 = node_to_ptr(parseExpression(p, 0))

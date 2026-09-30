@@ -1212,7 +1212,7 @@ private fn forIsIntLiteral(n: ASTNode) -> Bool {
     if (n.kind == NodeKind.UNARY_EXPR and n.s1.equals("-")) {
         return forIsIntLiteral(ptr_to_node(n.child1))
     }
-    return n.kind == NodeKind.LITERAL_EXPR and n.i1 == TokenType.NUMBER_LITERAL
+    return n.kind == NodeKind.LITERAL_EXPR and n.i1 == TokenType.NUMBER_LITERAL as Int
         and n.s1.parseIntOr(0) == n.s1.parseIntOr(1)
 }
 
@@ -1259,7 +1259,7 @@ private fn generateForCopy(stmt: ASTNode, entryLabel: Int, endLabel: Int, endVal
 // Sema has refused a literal step that is not positive, so only a computed one
 // needs testing at run time.
 private fn forStepIsLiteral(stepNode: ASTNode) -> Bool {
-    return stepNode.kind == NodeKind.LITERAL_EXPR and stepNode.i1 == TokenType.NUMBER_LITERAL
+    return stepNode.kind == NodeKind.LITERAL_EXPR and stepNode.i1 == TokenType.NUMBER_LITERAL as Int
 }
 
 // A computed step of zero or less is a run-time error, reported where the loop
@@ -1391,12 +1391,12 @@ private fn generateLoopJump(target: Int, floor: Int, regionDepth: Int) {
 // Anything else -- a name, a call, a field -- keeps the chain and its order.
 private fn matchPatternIsConstant(pattern: ASTNode) -> Bool {
     if (pattern.kind == NodeKind.LITERAL_EXPR) {
-        return pattern.i1 == TokenType.NUMBER_LITERAL or pattern.i1 == TokenType.CHAR_LITERAL
-            or pattern.i1 == TokenType.BOOL_LITERAL
+        return pattern.i1 == TokenType.NUMBER_LITERAL as Int or pattern.i1 == TokenType.CHAR_LITERAL as Int
+            or pattern.i1 == TokenType.BOOL_LITERAL as Int
     }
     if (pattern.kind == NodeKind.UNARY_EXPR and pattern.s1.equals("-")) {
         let operand = ptr_to_node(pattern.child1)
-        return operand.kind == NodeKind.LITERAL_EXPR and operand.i1 == TokenType.NUMBER_LITERAL
+        return operand.kind == NodeKind.LITERAL_EXPR and operand.i1 == TokenType.NUMBER_LITERAL as Int
     }
     if (pattern.kind == NodeKind.MEMBER_ACCESS_EXPR) {
         let owner = ptr_to_node(pattern.child1)

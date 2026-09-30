@@ -1,0 +1,40 @@
+// A fieldless enum is its own type, not an Int (docs/CONVERSIONS_PLAN.md, task
+// 6). `c as Int` names a variant's ordinal; the way back is `n as Color?`, which
+// is `none` for a number that is no variant. So a value of the enum is always one
+// of its variants, and a `match` naming every variant is exhaustive without `_`.
+
+import std.io
+
+enum Color { Red, Green, Blue }
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+// Every arm returns and there is no `_`: the function does not fall off its end.
+fn weight(c: Color) -> Int {
+    match (c) {
+        Color.Red => { return 1 }
+        Color.Green => { return 2 }
+        Color.Blue => { return 3 }
+    }
+}
+
+fn main() -> Int {
+    let c = Color.Blue
+    if (c as Int != 2 or weight(c) != 3) { return fail("as Int and an exhaustive match") }
+    let n = 1
+    let g = n as Color?
+    if (g == none or weight(expect(g)) != 2) { return fail("1 as Color? is Green") }
+    if (7 as Color? != none or -1 as Color? != none) { return fail("no variant is none") }
+    let mut v: Vec<Color> = []
+    v.push(Color.Green)
+    v.push(Color.Red)
+    if (v[0] != Color.Green or weight(v[1]) != 1) { return fail("a Vec<Color>") }
+    let maybe: Color? = Color.Red
+    if (maybe == none or maybe != Color.Red as Color?) { return fail("a Color?") }
+    println("PASS: enum is a type")
+    return 0
+}

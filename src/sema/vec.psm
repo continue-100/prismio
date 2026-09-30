@@ -84,7 +84,7 @@ internal fn semaVecIsProperty(kind: TypeKind, name: String) -> Bool {
 
 private fn semaVecIntLiteral(text: String, at: ASTNode) -> ASTNode {
     let literal = createNode(NodeKind.LITERAL_EXPR)
-    literal.i1 = TokenType.NUMBER_LITERAL
+    literal.i1 = TokenType.NUMBER_LITERAL as Int
     literal.s1 = text.clone()
     nodeSpanFrom(literal, at)
     return literal

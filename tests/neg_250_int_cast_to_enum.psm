@@ -1,0 +1,8 @@
+// expect-error: an Int might not be a Color; write `as Color?` and handle `none`
+// `7 as Color` used to compile, and no `match` on the result had an arm for it.
+enum Color { Red, Green }
+
+fn main() -> Int {
+    let c = 7 as Color
+    return 0
+}

@@ -18,20 +18,30 @@ fn fail(message: String) -> Int {
 }
 
 fn main() -> Int {
-    if (ExitCode.Ok != 0) {
+    if (ExitCode.Ok as Int != 0) {
         return fail("first enum variant should be 0")
     }
 
-    if (ExitCode.ParseError != 1) {
+    if (ExitCode.ParseError as Int != 1) {
         return fail("second enum variant should be 1")
     }
 
-    if (ExitCode.RuntimeError != 2) {
+    if (ExitCode.RuntimeError as Int != 2) {
         return fail("third enum variant should be 2")
     }
 
-    if (Color.Blue != 2) {
+    if (Color.Blue as Int != 2) {
         return fail("enum numbering should reset per enum")
+    }
+
+    // A variant is its enum's, not an Int: `as Int` names its ordinal, and
+    // the way back is the checked `as Color?` -- `none` past the last variant.
+    let blue = 2 as Color?
+    if (blue == none or expect(blue) != Color.Blue) {
+        return fail("2 as Color? should be Blue")
+    }
+    if (3 as Color? != none) {
+        return fail("3 as Color? should be none")
     }
 
     println("PASS: enums")

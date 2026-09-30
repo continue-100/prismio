@@ -2768,8 +2768,8 @@
       "source_location": "L373",
       "_origin": "ast",
       "id": "aif_prototype_aif_scopes",
-      "community": 107,
-      "community_name": "4 \u00b7 Transfer rules",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": "scopes"
     },
     {
@@ -2779,8 +2779,8 @@
       "source_location": "L377",
       "_origin": "ast",
       "id": "aif_prototype_aif_scopes_init",
-      "community": 107,
-      "community_name": "4 \u00b7 Transfer rules",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": ".__init__()"
     },
     {
@@ -2790,8 +2790,8 @@
       "source_location": "L383",
       "_origin": "ast",
       "id": "aif_prototype_aif_scopes_new",
-      "community": 107,
-      "community_name": "4 \u00b7 Transfer rules",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": ".new()"
     },
     {
@@ -2801,8 +2801,8 @@
       "source_location": "L391",
       "_origin": "ast",
       "id": "aif_prototype_aif_scopes_lca",
-      "community": 107,
-      "community_name": "4 \u00b7 Transfer rules",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": ".lca()"
     },
     {
@@ -2889,8 +2889,8 @@
       "source_location": "L494",
       "_origin": "ast",
       "id": "aif_prototype_aif_model_is_ref",
-      "community": 64,
-      "community_name": "Cross-language results \u2014 Prismio vs Rust vs Swift",
+      "community": 311,
+      "community_name": ".new_site",
       "norm_label": ".is_ref()"
     },
     {
@@ -2999,8 +2999,8 @@
       "source_location": "L695",
       "_origin": "ast",
       "id": "aif_prototype_aif_engine_build",
-      "community": 107,
-      "community_name": "4 \u00b7 Transfer rules",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": ".build()"
     },
     {
@@ -3032,8 +3032,8 @@
       "source_location": "L979",
       "_origin": "ast",
       "id": "aif_prototype_aif_engine_declared_contract",
-      "community": 67,
-      "community_name": "g1_arena.rs",
+      "community": 64,
+      "community_name": "Cross-language results \u2014 Prismio vs Rust vs Swift",
       "norm_label": ".declared_contract()"
     },
     {
@@ -3043,8 +3043,8 @@
       "source_location": "L995",
       "_origin": "ast",
       "id": "aif_prototype_aif_engine_call_is_summarised",
-      "community": 67,
-      "community_name": "g1_arena.rs",
+      "community": 64,
+      "community_name": "Cross-language results \u2014 Prismio vs Rust vs Swift",
       "norm_label": ".call_is_summarised()"
     },
     {
@@ -3054,8 +3054,8 @@
       "source_location": "L1018",
       "_origin": "ast",
       "id": "aif_prototype_aif_engine_ref",
-      "community": 236,
-      "community_name": "arena_emit_range",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": ".ref()"
     },
     {
@@ -3065,8 +3065,8 @@
       "source_location": "L1022",
       "_origin": "ast",
       "id": "aif_prototype_aif_engine_note_var_scope",
-      "community": 107,
-      "community_name": "4 \u00b7 Transfer rules",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": ".note_var_scope()"
     },
     {
@@ -3076,8 +3076,8 @@
       "source_location": "L1032",
       "_origin": "ast",
       "id": "aif_prototype_aif_engine_holder_scope",
-      "community": 107,
-      "community_name": "4 \u00b7 Transfer rules",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": ".holder_scope()"
     },
     {
@@ -3186,8 +3186,8 @@
       "source_location": "L1196",
       "_origin": "ast",
       "id": "aif_prototype_aif_engine_walk",
-      "community": 107,
-      "community_name": "4 \u00b7 Transfer rules",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": ".walk()"
     },
     {
@@ -3384,8 +3384,8 @@
       "source_location": "L374",
       "_origin": "ast",
       "id": "aif_prototype_aif_rationale_374",
-      "community": 107,
-      "community_name": "4 \u00b7 Transfer rules",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": "scope forest. each function's body block is a root; join is the lca,     which e"
     },
     {
@@ -3417,8 +3417,8 @@
       "source_location": "L495",
       "_origin": "ast",
       "id": "aif_prototype_aif_rationale_495",
-      "community": 64,
-      "community_name": "Cross-language results \u2014 Prismio vs Rust vs Swift",
+      "community": 311,
+      "community_name": ".new_site",
       "norm_label": "does a value of this type participate in the memory model at all?"
     },
     {
@@ -3461,8 +3461,8 @@
       "source_location": "L980",
       "_origin": "ast",
       "id": "aif_prototype_aif_rationale_980",
-      "community": 67,
-      "community_name": "g1_arena.rs",
+      "community": 64,
+      "community_name": "Cross-language results \u2014 Prismio vs Rust vs Swift",
       "norm_label": "what the extern declaration said, or none to fall through.          a declared c"
     },
     {
@@ -3472,8 +3472,8 @@
       "source_location": "L996",
       "_origin": "ast",
       "id": "aif_prototype_aif_rationale_996",
-      "community": 67,
-      "community_name": "g1_arena.rs",
+      "community": 64,
+      "community_name": "Cross-language results \u2014 Prismio vs Rust vs Swift",
       "norm_label": "spec 5.2.1's bracketing question, at a call: is what this callee does         to"
     },
     {
@@ -3483,8 +3483,8 @@
       "source_location": "L1033",
       "_origin": "ast",
       "id": "aif_prototype_aif_rationale_1033",
-      "community": 107,
-      "community_name": "4 \u00b7 Transfer rules",
+      "community": 67,
+      "community_name": "g1_arena.rs",
       "norm_label": "where a value assigned to `name` has to stay alive until."
     },
     {
@@ -8180,8 +8180,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "runtime_aif_containers_h_runtime_aif_containers",
-      "community": 22,
-      "community_name": "llvm-api-backend.c",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "aif_containers.h"
     },
     {
@@ -8191,8 +8191,8 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "runtime_aif_containers_bits_test",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "bits_test()"
     },
     {
@@ -8202,8 +8202,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "runtime_aif_containers_h_bits",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "bits"
     },
     {
@@ -8213,8 +8213,8 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "runtime_aif_containers_ctz64",
-      "community": 22,
-      "community_name": "llvm-api-backend.c",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "ctz64()"
     },
     {
@@ -8224,8 +8224,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "word",
-      "community": 22,
-      "community_name": "llvm-api-backend.c",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "word"
     },
     {
@@ -8400,8 +8400,8 @@
       "source_location": "L291",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_fn_lookup",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "aif_fn_lookup()"
     },
     {
@@ -8488,8 +8488,8 @@
       "source_location": "L412",
       "_origin": "ast",
       "id": "runtime_aif_support_nominal_find_id",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "nominal_find_id()"
     },
     {
@@ -8598,8 +8598,8 @@
       "source_location": "L523",
       "_origin": "ast",
       "id": "runtime_aif_support_field_is_inline",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "field_is_inline()"
     },
     {
@@ -8796,8 +8796,8 @@
       "source_location": "L979",
       "_origin": "ast",
       "id": "runtime_aif_support_traversals_reset",
-      "community": 0,
-      "community_name": "malloc",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "traversals_reset()"
     },
     {
@@ -9038,8 +9038,8 @@
       "source_location": "L1333",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_layout_cand_field_hot",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "aif_layout_cand_field_hot()"
     },
     {
@@ -9258,8 +9258,8 @@
       "source_location": "L1683",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_compute_type_acyclic",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "aif_compute_type_acyclic()"
     },
     {
@@ -9269,8 +9269,8 @@
       "source_location": "L1711",
       "_origin": "ast",
       "id": "runtime_aif_support_type_acyclic_id",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "type_acyclic_id()"
     },
     {
@@ -9280,8 +9280,8 @@
       "source_location": "L1716",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_type_acyclic",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "aif_type_acyclic()"
     },
     {
@@ -10171,8 +10171,8 @@
       "source_location": "L2523",
       "_origin": "ast",
       "id": "runtime_aif_support_solver_alloc",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "solver_alloc()"
     },
     {
@@ -10380,8 +10380,8 @@
       "source_location": "L3400",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_site_widened",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "aif_site_widened()"
     },
     {
@@ -10688,8 +10688,8 @@
       "source_location": "L3799",
       "_origin": "ast",
       "id": "runtime_aif_support_enclosing_region",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "enclosing_region()"
     },
     {
@@ -10886,8 +10886,8 @@
       "source_location": "L4201",
       "_origin": "ast",
       "id": "runtime_aif_support_site_arena_scope_full",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "site_arena_scope_full()"
     },
     {
@@ -10897,8 +10897,8 @@
       "source_location": "L4288",
       "_origin": "ast",
       "id": "runtime_aif_support_site_arena_scope",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "site_arena_scope()"
     },
     {
@@ -10908,8 +10908,8 @@
       "source_location": "L4294",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_arena_blockers",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_arena_blockers()"
     },
     {
@@ -10919,8 +10919,8 @@
       "source_location": "L4304",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_nearest_region_name",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_nearest_region_name()"
     },
     {
@@ -10952,8 +10952,8 @@
       "source_location": "L4335",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_region_serves",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_region_serves()"
     },
     {
@@ -11029,8 +11029,8 @@
       "source_location": "L4413",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_site_arena_is_pinned",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_site_arena_is_pinned()"
     },
     {
@@ -11095,8 +11095,8 @@
       "source_location": "L4594",
       "_origin": "ast",
       "id": "runtime_aif_support_bracket_prepare",
-      "community": 22,
-      "community_name": "llvm-api-backend.c",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "bracket_prepare()"
     },
     {
@@ -11117,8 +11117,8 @@
       "source_location": "L4727",
       "_origin": "ast",
       "id": "runtime_aif_support_bits_subset",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "bits_subset()"
     },
     {
@@ -11150,8 +11150,8 @@
       "source_location": "L4754",
       "_origin": "ast",
       "id": "runtime_aif_support_bracket_blockers_compute",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "bracket_blockers_compute()"
     },
     {
@@ -11183,8 +11183,8 @@
       "source_location": "L4823",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_fn_calls_in_region",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_fn_calls_in_region()"
     },
     {
@@ -11194,8 +11194,8 @@
       "source_location": "L4837",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_region_call_sites",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_region_call_sites()"
     },
     {
@@ -11227,8 +11227,8 @@
       "source_location": "L4923",
       "_origin": "ast",
       "id": "runtime_aif_support_key_index_build",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 22,
+      "community_name": "llvm-api-backend.c",
       "norm_label": "key_index_build()"
     },
     {
@@ -11249,8 +11249,8 @@
       "source_location": "L4976",
       "_origin": "ast",
       "id": "runtime_aif_support_enclosing_pinned_region",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "enclosing_pinned_region()"
     },
     {
@@ -11370,8 +11370,8 @@
       "source_location": "L5345",
       "_origin": "ast",
       "id": "runtime_aif_support_site_dies_per_iteration",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "site_dies_per_iteration()"
     },
     {
@@ -11381,8 +11381,8 @@
       "source_location": "L5353",
       "_origin": "ast",
       "id": "runtime_aif_support_bracket_place",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "bracket_place()"
     },
     {
@@ -11392,8 +11392,8 @@
       "source_location": "L5430",
       "_origin": "ast",
       "id": "runtime_aif_support_site_bracket_region",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "site_bracket_region()"
     },
     {
@@ -11403,8 +11403,8 @@
       "source_location": "L5436",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_bracket_count",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_bracket_count()"
     },
     {
@@ -11414,8 +11414,8 @@
       "source_location": "L5438",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_bracket_callee",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_bracket_callee()"
     },
     {
@@ -11425,8 +11425,8 @@
       "source_location": "L5443",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_bracket_scope",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_bracket_scope()"
     },
     {
@@ -11436,8 +11436,8 @@
       "source_location": "L5452",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_bracket_served",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_bracket_served()"
     },
     {
@@ -11447,8 +11447,8 @@
       "source_location": "L5472",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_site_is_bracketed",
-      "community": 76,
-      "community_name": "package.sh script",
+      "community": 5,
+      "community_name": "lang_runtime.c",
       "norm_label": "aif_site_is_bracketed()"
     },
     {
@@ -11656,8 +11656,8 @@
       "source_location": "L6174",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_param_reusable",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "aif_param_reusable()"
     },
     {
@@ -11678,8 +11678,8 @@
       "source_location": "L6304",
       "_origin": "ast",
       "id": "runtime_aif_support_key_find",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "key_find()"
     },
     {
@@ -11689,8 +11689,8 @@
       "source_location": "L6324",
       "_origin": "ast",
       "id": "runtime_aif_support_base_type_id",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "base_type_id()"
     },
     {
@@ -11700,8 +11700,8 @@
       "source_location": "L6347",
       "_origin": "ast",
       "id": "runtime_aif_support_field_closes_cycle",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "field_closes_cycle()"
     },
     {
@@ -11711,8 +11711,8 @@
       "source_location": "L6377",
       "_origin": "ast",
       "id": "runtime_aif_support_vs_may_be_untracked",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "vs_may_be_untracked()"
     },
     {
@@ -11722,8 +11722,8 @@
       "source_location": "L6388",
       "_origin": "ast",
       "id": "runtime_aif_support_key_may_be_untracked",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "key_may_be_untracked()"
     },
     {
@@ -11733,8 +11733,8 @@
       "source_location": "L6422",
       "_origin": "ast",
       "id": "runtime_aif_support_vs_is_bare_literal",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 22,
+      "community_name": "llvm-api-backend.c",
       "norm_label": "vs_is_bare_literal()"
     },
     {
@@ -11744,8 +11744,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "valueset",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 22,
+      "community_name": "llvm-api-backend.c",
       "norm_label": "valueset"
     },
     {
@@ -11755,8 +11755,8 @@
       "source_location": "L6428",
       "_origin": "ast",
       "id": "runtime_aif_support_key_may_return_untracked",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 22,
+      "community_name": "llvm-api-backend.c",
       "norm_label": "key_may_return_untracked()"
     },
     {
@@ -11766,8 +11766,8 @@
       "source_location": "L6455",
       "_origin": "ast",
       "id": "runtime_aif_support_vs_may_return_untracked",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 22,
+      "community_name": "llvm-api-backend.c",
       "norm_label": "vs_may_return_untracked()"
     },
     {
@@ -11777,8 +11777,8 @@
       "source_location": "L6470",
       "_origin": "ast",
       "id": "runtime_aif_support_site_is_enum",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "site_is_enum()"
     },
     {
@@ -11788,8 +11788,8 @@
       "source_location": "L6482",
       "_origin": "ast",
       "id": "runtime_aif_support_field_holds_enum_view",
-      "community": 22,
-      "community_name": "llvm-api-backend.c",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "field_holds_enum_view()"
     },
     {
@@ -11799,8 +11799,8 @@
       "source_location": "L6496",
       "_origin": "ast",
       "id": "runtime_aif_support_field_release_of",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "field_release_of()"
     },
     {
@@ -11810,8 +11810,8 @@
       "source_location": "L6587",
       "_origin": "ast",
       "id": "runtime_aif_support_field_declared_type",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "field_declared_type()"
     },
     {
@@ -11821,8 +11821,8 @@
       "source_location": "L6639",
       "_origin": "ast",
       "id": "runtime_aif_support_type_releases_of",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "type_releases_of()"
     },
     {
@@ -11832,8 +11832,8 @@
       "source_location": "L6685",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_type_releases",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "aif_type_releases()"
     },
     {
@@ -11843,8 +11843,8 @@
       "source_location": "L6703",
       "_origin": "ast",
       "id": "runtime_aif_support_same_scc",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "same_scc()"
     },
     {
@@ -11854,8 +11854,8 @@
       "source_location": "L6711",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_type_in_cycle",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "aif_type_in_cycle()"
     },
     {
@@ -11865,8 +11865,8 @@
       "source_location": "L6718",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_field_is_cyclic",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "aif_field_is_cyclic()"
     },
     {
@@ -11887,8 +11887,8 @@
       "source_location": "L6764",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_scc_type_count",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "aif_scc_type_count()"
     },
     {
@@ -11909,8 +11909,8 @@
       "source_location": "L6781",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_field_release",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "aif_field_release()"
     },
     {
@@ -11920,8 +11920,8 @@
       "source_location": "L6859",
       "_origin": "ast",
       "id": "runtime_aif_support_type_is_reclaimed",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "type_is_reclaimed()"
     },
     {
@@ -11931,8 +11931,8 @@
       "source_location": "L6878",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_type_is_reclaimed",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "aif_type_is_reclaimed()"
     },
     {
@@ -11942,8 +11942,8 @@
       "source_location": "L6882",
       "_origin": "ast",
       "id": "runtime_aif_support_compute_released_fields",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "compute_released_fields()"
     },
     {
@@ -11975,8 +11975,8 @@
       "source_location": "L6946",
       "_origin": "ast",
       "id": "runtime_aif_support_vs_keeps_untracked",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "vs_keeps_untracked()"
     },
     {
@@ -12129,8 +12129,8 @@
       "source_location": "L7233",
       "_origin": "ast",
       "id": "runtime_aif_support_node_args_reset",
-      "community": 0,
-      "community_name": "malloc",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "node_args_reset()"
     },
     {
@@ -12151,8 +12151,8 @@
       "source_location": "L7275",
       "_origin": "ast",
       "id": "runtime_aif_support_ret_partial_build",
-      "community": 5,
-      "community_name": "lang_runtime.c",
+      "community": 22,
+      "community_name": "llvm-api-backend.c",
       "norm_label": "ret_partial_build()"
     },
     {
@@ -12173,8 +12173,8 @@
       "source_location": "L7370",
       "_origin": "ast",
       "id": "runtime_aif_support_fn_may_return_param",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "fn_may_return_param()"
     },
     {
@@ -12184,8 +12184,8 @@
       "source_location": "L7390",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_fn_may_return_param",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "aif_fn_may_return_param()"
     },
     {
@@ -12239,8 +12239,8 @@
       "source_location": "L7569",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_fn_may_return_view_of_param",
-      "community": 12,
-      "community_name": "ir_intern",
+      "community": 76,
+      "community_name": "package.sh script",
       "norm_label": "aif_fn_may_return_view_of_param()"
     },
     {
@@ -12404,8 +12404,8 @@
       "source_location": "L7966",
       "_origin": "ast",
       "id": "runtime_aif_support_flow_reset",
-      "community": 0,
-      "community_name": "malloc",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "flow_reset()"
     },
     {
@@ -12492,8 +12492,8 @@
       "source_location": "L8139",
       "_origin": "ast",
       "id": "runtime_aif_support_aif_reset",
-      "community": 0,
-      "community_name": "malloc",
+      "community": 132,
+      "community_name": "g1_idiomatic.rs",
       "norm_label": "aif_reset()"
     },
     {
@@ -18806,8 +18806,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "llvmtyperef",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "llvmtyperef"
     },
     {
@@ -20335,8 +20335,8 @@
       "source_location": "L2342",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_array_slot",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "array_slot()"
     },
     {
@@ -20346,8 +20346,8 @@
       "source_location": "L2352",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_array_base",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "array_base()"
     },
     {
@@ -20357,8 +20357,8 @@
       "source_location": "L2358",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_ir_array_alloca",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "ir_array_alloca()"
     },
     {
@@ -20368,8 +20368,8 @@
       "source_location": "L2367",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_ir_array_alloca_zeroed",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "ir_array_alloca_zeroed()"
     },
     {
@@ -20379,8 +20379,8 @@
       "source_location": "L2378",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_array_copy_bytes",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "array_copy_bytes()"
     },
     {
@@ -20390,8 +20390,8 @@
       "source_location": "L2384",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_ir_array_copy",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "ir_array_copy()"
     },
     {
@@ -20412,8 +20412,8 @@
       "source_location": "L2402",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_ir_array_from_value",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "ir_array_from_value()"
     },
     {
@@ -20478,8 +20478,8 @@
       "source_location": "L2473",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_ir_array_literal_end",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "ir_array_literal_end()"
     },
     {
@@ -21160,8 +21160,8 @@
       "source_location": "L4160",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_existing_global_of_type",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "existing_global_of_type()"
     },
     {
@@ -21171,8 +21171,8 @@
       "source_location": "L4174",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_ir_global_extern",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "ir_global_extern()"
     },
     {
@@ -21182,8 +21182,8 @@
       "source_location": "L4184",
       "_origin": "ast",
       "id": "runtime_llvm_api_backend_ir_global_stub",
-      "community": 204,
-      "community_name": "13. Performance",
+      "community": 107,
+      "community_name": "4 \u00b7 Transfer rules",
       "norm_label": "ir_global_stub()"
     },
     {
@@ -44749,7 +44749,7 @@
       "label": "7. Docs",
       "file_type": "document",
       "source_file": "docs/CONVERSIONS_PLAN.md",
-      "source_location": "L201",
+      "source_location": "L215",
       "_origin": "ast",
       "id": "docs_conversions_plan_7_docs",
       "community": 146,
@@ -44760,7 +44760,7 @@
       "label": "8. IntelliJ plugin",
       "file_type": "document",
       "source_file": "docs/CONVERSIONS_PLAN.md",
-      "source_location": "L209",
+      "source_location": "L223",
       "_origin": "ast",
       "id": "docs_conversions_plan_8_intellij_plugin",
       "community": 146,
@@ -44771,7 +44771,7 @@
       "label": "9. Build and verify",
       "file_type": "document",
       "source_file": "docs/CONVERSIONS_PLAN.md",
-      "source_location": "L214",
+      "source_location": "L228",
       "_origin": "ast",
       "id": "docs_conversions_plan_9_build_and_verify",
       "community": 146,
@@ -136213,7 +136213,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/CONVERSIONS_PLAN.md",
-      "source_location": "L201",
+      "source_location": "L215",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_conversions_plan_tasks",
@@ -136224,7 +136224,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/CONVERSIONS_PLAN.md",
-      "source_location": "L209",
+      "source_location": "L223",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_conversions_plan_tasks",
@@ -136235,7 +136235,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/CONVERSIONS_PLAN.md",
-      "source_location": "L214",
+      "source_location": "L228",
       "weight": 1.0,
       "_origin": "ast",
       "source": "docs_conversions_plan_tasks",
@@ -139855,5 +139855,5 @@
       "source_file": "tests/test_23_move.psm"
     }
   ],
-  "built_at_commit": "56cd0b811708e3c1608670c62cd64e44567385be"
+  "built_at_commit": "69720ef87a36b6cd1f977c2884d61f152f5f21c9"
 }

@@ -1,0 +1,9 @@
+// expect-error: initializer for `c`: expected Color, found Int
+// An Int might be no variant at all, so it does not go where a Color is
+// expected; `n as Color?` is the checked way across.
+enum Color { Red, Green }
+
+fn main() -> Int {
+    let c: Color = 1
+    return 0
+}

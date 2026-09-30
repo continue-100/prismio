@@ -237,11 +237,11 @@ internal fn getExprType(expr: ASTNode) -> String {
     }
 
     if (expr.kind == NodeKind.LITERAL_EXPR) {
-        if (expr.i1 == TokenType.NUMBER_LITERAL) { return "i32" }
-        if (expr.i1 == TokenType.FLOAT_LITERAL) { return "double" }
-        if (expr.i1 == TokenType.BOOL_LITERAL) { return "i1" }
-        if (expr.i1 == TokenType.CHAR_LITERAL) { return "i8" }
-        if (expr.i1 == TokenType.STRING_LITERAL) { return "ptr" }
+        if (expr.i1 == TokenType.NUMBER_LITERAL as Int) { return "i32" }
+        if (expr.i1 == TokenType.FLOAT_LITERAL as Int) { return "double" }
+        if (expr.i1 == TokenType.BOOL_LITERAL as Int) { return "i1" }
+        if (expr.i1 == TokenType.CHAR_LITERAL as Int) { return "i8" }
+        if (expr.i1 == TokenType.STRING_LITERAL as Int) { return "ptr" }
     }
 
     if (expr.kind == NodeKind.IDENTIFIER_EXPR) {

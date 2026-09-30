@@ -254,24 +254,8 @@ internal fn semaDeclaredReturnType(module: ASTNode, retChild: Ptr) -> TypeInfo {
     return typeVoid()
 }
 
-// Enum values are i32-backed (see typeEnum in types.psm), and an enum variant
-// expression such as `TokenType.EOF` types as plain Int (see MEMBER_ACCESS_EXPR in
-// semaExpr). So an enum-typed binding compared against one of its own variants
-// reads as Enum-vs-Int here, and the compiler's own AST does the mirror image:
-// it stores kinds in plain Int fields (ASTNode.i1) and compares them to variants.
-// Both directions are the intended, pervasive spelling, so treat Enum and Int as
-// interchangeable. Only the default 32-bit `Int` qualifies — a sized integer such
-// as I64 still has to match exactly.
-private fn semaEnumMatchesInt(a: TypeInfo, b: TypeInfo) -> Bool {
-    if (a.kind != TypeKind.ENUM) { return false }
-    if (b.kind != TypeKind.INT) { return false }
-    return b.name.equals("Int")
-}
-
 internal fn semaTypesMatch(expected: TypeInfo, actual: TypeInfo) -> Bool {
     if (typeEquals(expected, actual)) { return true }
-    if (semaEnumMatchesInt(expected, actual)) { return true }
-    if (semaEnumMatchesInt(actual, expected)) { return true }
     // REQUIREMENTS 4. A present value goes into an optional slot without
     // ceremony; the reverse does not, and that asymmetry is the whole guarantee.
     // Widening is safe because the representations are identical -- a `T?` is one
@@ -296,7 +280,7 @@ internal fn semaExpectAssignable(node: ASTNode, context: String, expected: TypeI
 }
 
 internal fn semaIsIntLiteral(e: ASTNode) -> Bool {
-    return e.kind == NodeKind.LITERAL_EXPR and e.i1 == TokenType.NUMBER_LITERAL
+    return e.kind == NodeKind.LITERAL_EXPR and e.i1 == TokenType.NUMBER_LITERAL as Int
 }
 
 // Both of these ask the declaration index for the declarations carrying the
@@ -438,7 +422,7 @@ private fn semaZeroValue(module: ASTNode, annotation: ASTNode) -> ASTNode {
     }
     if (t.kind == TypeKind.FLOAT) {
         let f = createNode(NodeKind.LITERAL_EXPR)
-        f.i1 = TokenType.FLOAT_LITERAL
+        f.i1 = TokenType.FLOAT_LITERAL as Int
         f.s1 = "0.0"
         return f
     }
@@ -446,7 +430,7 @@ private fn semaZeroValue(module: ASTNode, annotation: ASTNode) -> ASTNode {
     // comes from the field's declared type at the store, not from here.
     if (t.kind == TypeKind.INT or t.kind == TypeKind.CHAR or t.kind == TypeKind.BOOL) {
         let n = createNode(NodeKind.LITERAL_EXPR)
-        n.i1 = TokenType.NUMBER_LITERAL
+        n.i1 = TokenType.NUMBER_LITERAL as Int
         n.s1 = "0"
         return n
     }

@@ -604,7 +604,7 @@ private fn relTerm(rs: RelLoop, rl: RangeLoop, p: Ptr, commit: Bool) -> Bool {
 // A decimal `Int` literal of at most REL_LITERAL_DIGITS digits, into `literal`.
 // The parse runs with two fallbacks: they agree only when the text is a number.
 private fn relLiteral(rs: RelLoop, n: ASTNode) -> Bool {
-    if (n.kind != NodeKind.LITERAL_EXPR or n.i1 != TokenType.NUMBER_LITERAL) { return false }
+    if (n.kind != NodeKind.LITERAL_EXPR or n.i1 != TokenType.NUMBER_LITERAL as Int) { return false }
     if (__builtin_string_len(n.s1) > REL_LITERAL_DIGITS + 1) { return false }
     let value = n.s1.parseIntOr(0)
     if (value != n.s1.parseIntOr(1)) { return false }

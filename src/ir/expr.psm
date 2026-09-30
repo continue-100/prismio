@@ -151,7 +151,7 @@ internal fn nodeIsStringLiteralExpr(exprPtr: Ptr) -> Bool {
     if (nodeIsNull(exprPtr)) { return false }
     let n = ptr_to_node(exprPtr)
     if (n.kind != NodeKind.LITERAL_EXPR) { return false }
-    return n.i1 == TokenType.STRING_LITERAL
+    return n.i1 == TokenType.STRING_LITERAL as Int
 }
 
 // Whether any assignment to `name` stores something this scope does not own.
@@ -1753,7 +1753,7 @@ private fn irBindsChain(head: Ptr, name: String) -> Bool {
 }
 
 private fn irIsInvariantTerm(n: ASTNode, iv: String, bodyPtr: Ptr) -> Bool {
-    if (n.kind == NodeKind.LITERAL_EXPR) { return n.i1 == TokenType.NUMBER_LITERAL }
+    if (n.kind == NodeKind.LITERAL_EXPR) { return n.i1 == TokenType.NUMBER_LITERAL as Int }
     if (n.kind != NodeKind.IDENTIFIER_EXPR) { return false }
     if (n.s1.equals(iv)) { return false }
     return irBodyBindsName(bodyPtr, n.s1) == false
@@ -1816,7 +1816,7 @@ private fn irIVStepText(nodePtr: Ptr, name: String, op: String) -> String {
             if (lhs.kind != NodeKind.IDENTIFIER_EXPR) { return "" }
             if (lhs.s1.equals(name) == false) { return "" }
             if (amount.kind != NodeKind.LITERAL_EXPR) { return "" }
-            if (amount.i1 != TokenType.NUMBER_LITERAL) { return "" }
+            if (amount.i1 != TokenType.NUMBER_LITERAL as Int) { return "" }
             return amount.s1
         }
     }
@@ -1926,7 +1926,7 @@ private fn irLoneCall(body: ASTNode, iv: String) -> Ptr {
     if (base.kind != NodeKind.IDENTIFIER_EXPR or base.s1.equals(iv) == false) {
         return ptr_null()
     }
-    if (step.kind != NodeKind.LITERAL_EXPR or step.i1 != TokenType.NUMBER_LITERAL) {
+    if (step.kind != NodeKind.LITERAL_EXPR or step.i1 != TokenType.NUMBER_LITERAL as Int) {
         return ptr_null()
     }
     if (step.s1.equals("1") == false) { return ptr_null() }
@@ -2046,8 +2046,8 @@ private fn irIsZeroScalar(nodePtr: Ptr) -> Bool {
     if (nodeIsNull(nodePtr)) { return false }
     let n = ptr_to_node(nodePtr)
     if (n.kind != NodeKind.LITERAL_EXPR) { return false }
-    if (n.i1 == TokenType.NUMBER_LITERAL) { return n.s1.equals("0") }
-    if (n.i1 == TokenType.BOOL_LITERAL) { return n.s1.equals("false") }
+    if (n.i1 == TokenType.NUMBER_LITERAL as Int) { return n.s1.equals("0") }
+    if (n.i1 == TokenType.BOOL_LITERAL as Int) { return n.s1.equals("false") }
     return false
 }
 
@@ -2882,20 +2882,20 @@ private fn generateStructLiteralFields(expr: ASTNode, structName: String, destPt
 
 
 private fn generateLiteral(expr: ASTNode) -> String {
-    if (expr.i1 == TokenType.NUMBER_LITERAL) {
+    if (expr.i1 == TokenType.NUMBER_LITERAL as Int) {
         return expr.s1
     }
-    if (expr.i1 == TokenType.FLOAT_LITERAL) {
+    if (expr.i1 == TokenType.FLOAT_LITERAL as Int) {
         return expr.s1
     }
-    if (expr.i1 == TokenType.BOOL_LITERAL) {
+    if (expr.i1 == TokenType.BOOL_LITERAL as Int) {
         if (expr.s1.equals("true")) { return "1" }
         return "0"
     }
-    if (expr.i1 == TokenType.CHAR_LITERAL) {
+    if (expr.i1 == TokenType.CHAR_LITERAL as Int) {
         return expr.s1
     }
-    if (expr.i1 == TokenType.STRING_LITERAL) {
+    if (expr.i1 == TokenType.STRING_LITERAL as Int) {
         // The literal's global was named by the collect_strings pre-pass.
         //
         // Named by the collect_strings pre-pass -- unless that pass has no
@@ -3187,7 +3187,7 @@ private fn arrayLiteralIsNumeric(first: Ptr) -> Bool {
     while (nodeExists(elemPtr)) {
         let elemNode = ptr_to_node(elemPtr)
         if (elemNode.kind != NodeKind.LITERAL_EXPR) { return false }
-        if (elemNode.i1 != TokenType.NUMBER_LITERAL and elemNode.i1 != TokenType.FLOAT_LITERAL) {
+        if (elemNode.i1 != TokenType.NUMBER_LITERAL as Int and elemNode.i1 != TokenType.FLOAT_LITERAL as Int) {
             return false
         }
         elemPtr = elemNode.next
@@ -3392,7 +3392,7 @@ private fn generateCast(expr: ASTNode) -> String {
         // Unwritten, it is a present value wrapped where a `T?` is expected
         // (semaWrapPresent); written, it is `x as T?`.
         if (nodeIsNull(expr.child2)) { return generatePresent(val, toT) }
-        return generateCheckedCast(val, fromT, toT)
+        return generateCheckedCast(val, fromT, toT, expr.i3)
     }
 
     // Char and Bool are unsigned here as they are when widening below.
@@ -3440,7 +3440,7 @@ private fn generateCast(expr: ASTNode) -> String {
 // be one that cannot be poison -- which is why a Float goes through the
 // saturating conversion even though the flag has already ruled out every input
 // that would saturate.
-private fn generateCheckedCast(val: String, fromT: TypeInfo, toT: TypeInfo) -> String {
+private fn generateCheckedCast(val: String, fromT: TypeInfo, toT: TypeInfo, variants: Int) -> String {
     let inner = typeOptionalInner(toT)
     let mut from = fromT
     let mut value = val
@@ -3455,7 +3455,14 @@ private fn generateCheckedCast(val: String, fromT: TypeInfo, toT: TypeInfo) -> S
 
     let mut converted = value.clone()
     let mut fits = "true"
-    if (toKey.equals("double")) {
+    // Into an enum: one unsigned compare against the variant count, which is
+    // `0 <= n < count` since a negative `n` is a large unsigned one.
+    if (inner.kind == TypeKind.ENUM) {
+        if (from.kind == TypeKind.INT) {
+            fits = ir_get_temp_name(ir_icmp_ult(fromKey, value, variants.toString()))
+            converted = checkedIntegerConvert(value, from, typeInt())
+        }
+    } else if (toKey.equals("double")) {
         if (fromKey.equals("double") == false) {
             if (typeIntIsUnsigned(from)) {
                 converted = ir_get_temp_name(ir_uitofp(fromKey, value, "double"))

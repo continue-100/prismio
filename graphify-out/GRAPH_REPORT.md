@@ -1,7 +1,7 @@
 # Graph Report - prismio  (2026-09-30)
 
 ## Corpus Check
-- 310 files · ~707,567 words
+- 310 files · ~707,717 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `56cd0b81`
+- Built from commit: `69720ef8`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -354,7 +354,7 @@
 
 ### Community 0 - "malloc"
 Cohesion: 0.02
-Nodes (52): aif_call_edge(), aif_call_opaque(), aif_check_pins(), aif_con_arg(), aif_con_bind(), aif_con_borrow(), aif_con_escape_caller(), aif_con_escape_global() (+44 more)
+Nodes (48): aif_call_edge(), aif_call_opaque(), aif_check_pins(), aif_con_arg(), aif_con_bind(), aif_con_borrow(), aif_con_escape_caller(), aif_con_escape_global() (+40 more)
 
 ### Community 1 - "fn compile_source(path, output_file, run_after_build) -> Int"
 Cohesion: 0.18
@@ -374,7 +374,7 @@ Nodes (44): RtProfField, RtProfType, list_get(), list_get_inline(), list_get_inl
 
 ### Community 5 - "lang_runtime.c"
 Cohesion: 0.07
-Nodes (51): CallEdge, bits_test(), Bits, aif_arena_high_water(), aif_arena_range_first(), aif_arena_range_last(), aif_arena_unsized_sites(), aif_auto_arena_at_node() (+43 more)
+Nodes (52): CallEdge, aif_arena_blockers(), aif_arena_high_water(), aif_arena_range_first(), aif_arena_range_last(), aif_arena_unsized_sites(), aif_auto_arena_at_node(), aif_bracket_callee() (+44 more)
 
 ### Community 7 - "Borrow Checking"
 Cohesion: 0.08
@@ -397,8 +397,8 @@ Cohesion: 0.08
 Nodes (62): byte_gep(), coerce_for(), global_named(), intern_value(), ir_alloca(), ir_array_copy_into(), ir_array_copy_key(), ir_array_load() (+54 more)
 
 ### Community 12 - "ir_intern"
-Cohesion: 0.07
-Nodes (53): NodeArgs, aif_arena_at_node(), aif_call_arg_outlives_call(), aif_cycle_at_node(), aif_elem_owner_at_node(), aif_elem_type_at_node(), aif_field_is_counted(), aif_field_is_cyclic() (+45 more)
+Cohesion: 0.12
+Nodes (29): NodeArgs, aif_arena_at_node(), aif_call_arg_outlives_call(), aif_cycle_at_node(), aif_elem_owner_at_node(), aif_elem_type_at_node(), aif_field_is_counted(), aif_frees_at_scope_node() (+21 more)
 
 ### Community 13 - "setup_llvm.py"
 Cohesion: 0.08
@@ -437,8 +437,8 @@ Cohesion: 0.08
 Nodes (17): AIF Evidence, Before quoting any number, Judgement, Measured, Projected, not measured, 1 · How it was found, 2 · The defect, 3 · The fix, and why only one of the three (+9 more)
 
 ### Community 22 - "llvm-api-backend.c"
-Cohesion: 0.13
-Nodes (42): Deriv, aif_oom(), bits_clear(), bits_count_at_least_two(), bits_ensure(), bits_free(), bits_is_empty(), bits_or() (+34 more)
+Cohesion: 0.12
+Nodes (44): Deriv, aif_oom(), bits_clear(), bits_count_at_least_two(), bits_ensure(), bits_free(), bits_is_empty(), bits_or() (+36 more)
 
 ### Community 23 - "Enum Types"
 Cohesion: 0.24
@@ -605,8 +605,8 @@ Cohesion: 0.22
 Nodes (21): bench_next_random(), Key, cost_ns(), displacement(), keys_ids(), keys_sort_strings(), main(), mix_a() (+13 more)
 
 ### Community 64 - "Cross-language results — Prismio vs Rust vs Swift"
-Cohesion: 0.13
-Nodes (20): base_type(), bracket_masks(), elem_key(), ffi_arena_cannot_serve(), main(), measure_masks(), SPEC 5.2.1: per function, may a caller's `region` bracket a call to it?      The, The counts the differential compares against `prismio aif --summary`.      **`re (+12 more)
+Cohesion: 0.12
+Nodes (21): base_type(), bracket_masks(), elem_key(), ffi_arena_cannot_serve(), main(), measure_masks(), SPEC 5.2.1: per function, may a caller's `region` bracket a call to it?      The, The counts the differential compares against `prismio aif --summary`.      **`re (+13 more)
 
 ### Community 65 - "g4_tuned.rs"
 Cohesion: 0.12
@@ -617,8 +617,8 @@ Cohesion: 0.10
 Nodes (21): 1 · AIF core — genuinely ours, 2 · AIF's stake in language features it does not own, 3 · Compiler requirements AIF genuinely has, 4 · Measurement, 5 · Not AIF — recorded, then handed over, 6 · Over-built — defer or cut, A3. Realised context counts *(measurement)*, A4. Arena high-water marks *(measurement)* (+13 more)
 
 ### Community 67 - "g1_arena.rs"
-Cohesion: 0.15
-Nodes (9): Engine, Does this expression contain `join <name>`?          Stops at any statement kind, The statement list under a block child slot, or [] when absent., Some path through this statement leaves the scope without joining.          `in_, Every path through this statement joins., Every path through this chain joins before control leaves it.          The escap, Mark every `let t = spawn ...` in this chain that is joined before the         c, What the extern declaration said, or None to fall through.          A declared c (+1 more)
+Cohesion: 0.12
+Nodes (10): Engine, Where a value assigned to `name` has to stay alive until., Does this expression contain `join <name>`?          Stops at any statement kind, The statement list under a block child slot, or [] when absent., Some path through this statement leaves the scope without joining.          `in_, Every path through this statement joins., Every path through this chain joins before control leaves it.          The escap, Mark every `let t = spawn ...` in this chain that is joined before the         c (+2 more)
 
 ### Community 70 - "g2_cull_probe.c"
 Cohesion: 0.10
@@ -645,8 +645,8 @@ Cohesion: 0.17
 Nodes (12): 1 · For 0.1, 2 · Where it stands, 3 · Design, 4 · Phases, 5 · Alternatives considered and set aside, 6 · Acceptance, before calling channels production-ready, 7 · Decisions still needed, Channels: what 0.1 needs, and the production design after it (+4 more)
 
 ### Community 76 - "package.sh script"
-Cohesion: 0.14
-Nodes (18): aif_arena_blockers(), aif_bracket_callee(), aif_bracket_count(), aif_bracket_scope(), aif_bracket_served(), aif_fn_calls_in_region(), aif_nearest_region_name(), aif_region_call_sites() (+10 more)
+Cohesion: 0.11
+Nodes (27): ctz64(), aif_field_is_cyclic(), aif_field_release(), aif_fn_lookup(), aif_fn_may_return_param(), aif_fn_may_return_view_of_param(), aif_param_reusable(), aif_type_acyclic() (+19 more)
 
 ### Community 77 - "Tier 2 — required by specified AIF features"
 Cohesion: 0.23
@@ -770,7 +770,7 @@ Nodes (13): 0 · The diagnosis, and the one thing everybody had backwards, 1 · 
 
 ### Community 107 - "4 · Transfer rules"
 Cohesion: 0.27
-Nodes (3): Where a value assigned to `name` has to stay alive until., Scope forest. Each function's body block is a root; join is the LCA,     which e, Scopes
+Nodes (12): LLVMTypeRef, array_base(), array_copy_bytes(), array_slot(), existing_global_of_type(), ir_array_alloca(), ir_array_alloca_zeroed(), ir_array_copy() (+4 more)
 
 ### Community 108 - "5 · The fixed-point algorithm"
 Cohesion: 0.15
@@ -869,8 +869,8 @@ Cohesion: 0.25
 Nodes (11): NameList, ir_declare_named_type(), ir_is_borrowed(), ir_is_global_name(), ir_is_moved(), ir_mark_borrowed(), ir_mark_moved(), ir_named_type_kind() (+3 more)
 
 ### Community 132 - "g1_idiomatic.rs"
-Cohesion: 0.13
-Nodes (18): Nominal, aif_layout_cand_bytes(), aif_layout_field(), aif_layout_rank(), aif_layout_split_select(), aif_layout_veto_reason(), candidate_with_hot(), candidates_clear() (+10 more)
+Cohesion: 0.08
+Nodes (34): Nominal, bits_test(), Bits, aif_compute_type_acyclic(), aif_layout_cand_bytes(), aif_layout_cand_field_hot(), aif_layout_field(), aif_layout_rank() (+26 more)
 
 ### Community 133 - "g2_arena.rs"
 Cohesion: 0.20
@@ -1157,8 +1157,8 @@ Cohesion: 0.36
 Nodes (8): JitProcessSymbols, LLVMErrorRef, LLVMOrcLLJITRef, compiler_pending_arguments(), ir_jit_run_file(), jit_failed(), jit_failed_unresolved(), jit_process_symbols()
 
 ### Community 204 - "13. Performance"
-Cohesion: 0.08
-Nodes (42): LLVMTypeRef, ir_get_struct_field_count(), ir_get_struct_field_type_at(), ir_is_struct_type_name(), array_base(), array_copy_bytes(), array_slot(), attach_cold() (+34 more)
+Cohesion: 0.10
+Nodes (30): ir_get_struct_field_count(), ir_get_struct_field_type_at(), ir_is_struct_type_name(), attach_cold(), attach_cold_rc(), get_or_declare_alloc_fn(), ir_alloc_cycle(), ir_alloc_object() (+22 more)
 
 ### Community 205 - "Getting Started"
 Cohesion: 0.17
@@ -1281,7 +1281,7 @@ Cohesion: 0.33
 Nodes (5): 1 · The shapes, 2 · Why, 3 · What moved, 4 · Pinned, Three ownership shapes that freed memory that was not live
 
 ### Community 236 - "arena_emit_range"
-Cohesion: 0.33
+Cohesion: 0.40
 Nodes (4): elem_spelling_resolved(), Bind a tainted base's element keys together, both ways.          A base with eve, Whether this spelling names one container rather than every instance of a     ba, vs_ref()
 
 ### Community 237 - "list_set"
@@ -1509,8 +1509,8 @@ Cohesion: 0.29
 Nodes (6): Landing, Properties are declared: `prop`, Still open, The rule before, The rule now, Which std functions are properties
 
 ### Community 311 - ".new_site"
-Cohesion: 0.22
-Nodes (5): ann_leaf_name(), Model, The type an annotation refers to: `[T]` and `List<T>` hang T off c1,     and the, Tarjan-free SCC via iterative Kosaraju on the type reference graph         (INFE, Site
+Cohesion: 0.18
+Nodes (6): ann_leaf_name(), Model, The type an annotation refers to: `[T]` and `List<T>` hang T off c1,     and the, Does a value of this type participate in the memory model at all?, Tarjan-free SCC via iterative Kosaraju on the type reference graph         (INFE, Site
 
 ### Community 313 - "The relational tier, byte-sized Bool elements, and three gaps read from disassembly"
 Cohesion: 0.33

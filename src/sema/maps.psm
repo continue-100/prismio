@@ -207,7 +207,7 @@ private fn semaMapAllPlain(chain: Ptr) -> Bool {
 private fn semaMapCount(at: ASTNode, count: Int) -> ASTNode {
     let n = createNode(NodeKind.LITERAL_EXPR)
     nodeSpanFrom(n, at)
-    n.i1 = TokenType.NUMBER_LITERAL
+    n.i1 = TokenType.NUMBER_LITERAL as Int
     n.s1 = count.toString()
     return n
 }

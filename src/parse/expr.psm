@@ -90,7 +90,7 @@ internal fn parseExpression(p: Parser, precedence: Int) -> ASTNode {
 private fn foldNegativeLiteral(operand: ASTNode, minus: Token) -> Bool {
     if (operand.kind != NodeKind.LITERAL_EXPR) { return false }
 
-    let isNumber = operand.i1 == TokenType.NUMBER_LITERAL or operand.i1 == TokenType.FLOAT_LITERAL
+    let isNumber = operand.i1 == TokenType.NUMBER_LITERAL as Int or operand.i1 == TokenType.FLOAT_LITERAL as Int
     if (isNumber == false or operand.s1.startsWith("-")) { return false }
 
     operand.s1 = "-".concat(operand.s1)
@@ -230,7 +230,7 @@ private fn parseStructLiteral(p: Parser, name: Token) -> ASTNode {
 private fn interpolationChunk(p: Parser, parts: NodeList, tok: Token) {
     if (__builtin_string_len(tok.value) == 0) { return }
     let chunk = parserNodeFrom(NodeKind.LITERAL_EXPR, tok)
-    chunk.i1 = TokenType.STRING_LITERAL
+    chunk.i1 = TokenType.STRING_LITERAL as Int
     chunk.s1 = tok.value
     nodeListPush(parts, chunk)
 }
@@ -266,7 +266,7 @@ private fn interpolationJoin(p: Parser, parts: Ptr, anchor: Token) -> ASTNode {
 
     if (count == 0) {
         let empty = parserNodeFrom(NodeKind.LITERAL_EXPR, anchor)
-        empty.i1 = TokenType.STRING_LITERAL
+        empty.i1 = TokenType.STRING_LITERAL as Int
         empty.s1 = ""
         return empty
     }
@@ -396,7 +396,7 @@ private fn parseSliceEnd(p: Parser, rangeOp: Token) -> ASTNode {
     let pastEnd = parserNodeFrom(NodeKind.BINARY_EXPR, rangeOp)
     pastEnd.s1 = "+"
     let one = parserNodeFrom(NodeKind.LITERAL_EXPR, rangeOp)
-    one.i1 = TokenType.NUMBER_LITERAL
+    one.i1 = TokenType.NUMBER_LITERAL as Int
     one.s1 = "1"
     pastEnd.child1 = node_to_ptr(end)
     pastEnd.child2 = node_to_ptr(one)
@@ -553,7 +553,7 @@ private fn parsePrimary(p: Parser) -> ASTNode {
 
     if (isLiteralToken(current)) {
         let literal = p.node(NodeKind.LITERAL_EXPR)
-        literal.i1 = current.type
+        literal.i1 = current.type as Int
         literal.s1 = current.value
         p.advance()
         return parseSuffixes(p, literal)

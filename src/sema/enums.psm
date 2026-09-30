@@ -241,7 +241,7 @@ public fn enumDesugarModule(module: ASTNode) {
 
 private fn enumTagLiteral(tag: Int) -> ASTNode {
     let literal = createNode(NodeKind.LITERAL_EXPR)
-    literal.i1 = TokenType.NUMBER_LITERAL
+    literal.i1 = TokenType.NUMBER_LITERAL as Int
     literal.s1 = tag.toString()
     return literal
 }
@@ -617,6 +617,45 @@ private fn semaCheckExhaustive(stmt: ASTNode, shadow: ASTNode) {
                                                               diagQuote(shadow.s1),
                                                               "; add the missing arms or a `_` arm"))
     }
+}
+
+// Whether a match on a fieldless enum names every variant. A value of the enum
+// can only be one of them -- `n as Color` is refused and `n as Color?` checks --
+// so such a match is exhaustive without a `_` arm, and a function whose arms all
+// return does not fall off its end. A partial match is still allowed: it is an
+// integer-style match that simply runs no arm for the rest.
+internal fn semaMatchCoversEnum(stmt: ASTNode, enumName: String) -> Bool {
+    let count = ir_decl_count(enumName)
+    for i in 0..<count {
+        let decl = ptr_to_node(ir_decl_at(enumName, i))
+        if (decl.kind == NodeKind.ENUM_DECL) {
+            let mut variantPtr = decl.child1
+            while (nodeExists(variantPtr)) {
+                let variant = ptr_to_node(variantPtr)
+                if (semaMatchNamesVariant(stmt, enumName, variant.s1) == false) { return false }
+                variantPtr = variant.next
+            }
+            return true
+        }
+    }
+    return false
+}
+
+private fn semaMatchNamesVariant(stmt: ASTNode, enumName: String, variantName: String) -> Bool {
+    let mut armPtr = stmt.child2
+    while (nodeExists(armPtr)) {
+        let arm = ptr_to_node(armPtr)
+        if (arm.s1.equals("_") == false and nodeExists(arm.child1)) {
+            let pattern = ptr_to_node(arm.child1)
+            if (pattern.kind == NodeKind.MEMBER_ACCESS_EXPR and pattern.s1.equals(variantName)
+                    and nodeExists(pattern.child1)
+                    and ptr_to_node(pattern.child1).s1.equals(enumName)) {
+                return true
+            }
+        }
+        armPtr = arm.next
+    }
+    return false
 }
 
 // Is this variant already taken by an arm before position `before`?

@@ -118,7 +118,7 @@ internal fn semaChannelLower(expr: ASTNode, name: String, receiver: ASTNode, arg
         call.child2 = node_to_ptr(receiver)
         nodeSpanFrom(call, expr)
         let zero = createNode(NodeKind.LITERAL_EXPR)
-        zero.i1 = TokenType.NUMBER_LITERAL
+        zero.i1 = TokenType.NUMBER_LITERAL as Int
         zero.s1 = "0"
         nodeSpanFrom(zero, expr)
         expr.kind = NodeKind.BINARY_EXPR

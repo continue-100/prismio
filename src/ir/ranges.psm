@@ -422,7 +422,7 @@ private fn rangeUpdateStep(rhsPtr: Ptr, name: String) -> Ptr {
 // A non-negative integer literal of at most RANGE_LITERAL_DIGITS digits, or -1.
 private fn rangeLiteralValue(n: ASTNode) -> Int {
     if (n.kind != NodeKind.LITERAL_EXPR) { return 0 - 1 }
-    if (n.i1 != TokenType.NUMBER_LITERAL) { return 0 - 1 }
+    if (n.i1 != TokenType.NUMBER_LITERAL as Int) { return 0 - 1 }
     if (__builtin_string_len(n.s1) > RANGE_LITERAL_DIGITS) { return 0 - 1 }
     return n.s1.parseIntOr(0 - 1)
 }

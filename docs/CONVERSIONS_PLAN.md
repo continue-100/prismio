@@ -31,7 +31,7 @@ reference's `T?` is unchanged: a nullable pointer, where `none` is null.
 | 3 | [Checked number conversions: `x as T?`](#3-checked-number-conversions) | done 2026-09-30 |
 | 4 | [Text to value: `s as T` and `s as T?`](#4-text-to-value) | done 2026-09-30 |
 | 5 | [std fill-out: every width has `toString`, `toFloat`, `parse`](#5-std-fill-out) | done 2026-09-30 |
-| 6 | [Enum and `Int` interchange](#6-enum-and-int) | todo (known issue) |
+| 6 | [Enum and `Int` interchange](#6-enum-and-int) | done 2026-09-30 |
 | 7 | [Docs, both apps](#7-docs) | todo |
 | 8 | [IntelliJ plugin](#8-intellij-plugin) | todo |
 | 9 | [Build and verify everything](#9-build-and-verify) | todo |
@@ -197,6 +197,20 @@ on the result has no arm for it. Refusing only the cast closes nothing and broke
 `Color.Blue as Color`, since a variant types as `Int`. A distinct enum type is a
 change to how every `.kind == NodeKind.X` in `src/` is checked. Recorded in
 `KNOWN_ISSUES.md`; the decision is open.
+
+**Decided and done 2026-09-30: a distinct type.** A variant types as its enum,
+and `semaEnumMatchesInt` is gone. `c as Int` names the ordinal; `n as Color`
+is an error naming `n as Color?`, which is present for `0 <= n < count` (one
+unsigned compare; variants have no written discriminants). `let c: Color = 1`
+and an Int argument for a Color are errors, and a match pattern is checked
+against the scrutinee's own type. Because a Color can only hold its variants,
+a `match` naming every variant is now exhaustive without `_`, so a function
+whose arms all return does not fall off its end (semaMatchCoversEnum).
+
+The cost in `src/` was 61 sites, all one pattern: `ASTNode.i1` is an `Int` that
+holds a `TokenType`, now written and compared as `TokenType.X as Int`. The
+compiler's IR is byte-identical. test_05 and test_22 encoded the old rule and
+were updated; test_248, neg_249, neg_250.
 
 ### 7. Docs
 

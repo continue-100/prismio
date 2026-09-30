@@ -834,7 +834,7 @@ private fn generateTaskThunk(func: ASTNode) {
 // Pre-pass: collect string literals
 internal fn collectStringsExpr(expr: ASTNode) {
     if (expr.kind == NodeKind.LITERAL_EXPR) {
-        if (expr.i1 == TokenType.STRING_LITERAL) {
+        if (expr.i1 == TokenType.STRING_LITERAL as Int) {
             let strName = ".str.s".concat(irStringCounter.toString())
             irStringCounter = irStringCounter + 1
             ir_global_string(strName, expr.s1)
@@ -2359,7 +2359,7 @@ public fn generateModule(module: ASTNode) {
                     varType = getExprType(initNode)
                 }
                 if (initNode.kind == NodeKind.LITERAL_EXPR) {
-                    if (initNode.i1 == TokenType.STRING_LITERAL) {
+                    if (initNode.i1 == TokenType.STRING_LITERAL as Int) {
                         // A global initializer sits outside every function, so the
                         // per-function string pre-pass never reaches it. Give the
                         // literal its global here and point the variable at it;

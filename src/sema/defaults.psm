@@ -98,7 +98,7 @@ private fn semaDefaultReset(target: ASTNode, kind: NodeKind) {
 
 private fn semaDefaultLiteral(target: ASTNode, token: TokenType, text: String) -> String {
     semaDefaultReset(target, NodeKind.LITERAL_EXPR)
-    target.i1 = token
+    target.i1 = token as Int
     target.s1 = text.clone()
     return ""
 }

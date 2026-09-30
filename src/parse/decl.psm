@@ -421,7 +421,7 @@ internal fn parseTypeArgList(p: Parser, node: ASTNode) {
         // after this one sees anything but types in another argument list.
         if (p.check(TokenType.NUMBER_LITERAL)) {
             let length = p.node(NodeKind.LITERAL_EXPR)
-            length.i1 = TokenType.NUMBER_LITERAL
+            length.i1 = TokenType.NUMBER_LITERAL as Int
             length.s1 = p.current().value
             if (node.s1.equals("Array")) {
                 nodeListPush(args, length)
