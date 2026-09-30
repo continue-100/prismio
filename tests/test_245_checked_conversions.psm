@@ -1,0 +1,63 @@
+// `x as T?`: a conversion that can fail answers `none` rather than truncating
+// (docs/CONVERSIONS_PLAN.md, tasks 3 and 4).
+//
+//   * Between numbers: `none` when the value is not one of the target's --
+//     too large, a sign the target cannot hold, and from a Float a NaN, an
+//     infinity or a fraction. The bounds are exact: -128 as I8?, 2^63 as I64?.
+//   * From a `T?`: `none` stays `none`.
+//   * From a String: the parse, so `s as Int?` is `s.parseInt()`.
+//   * `"12" as Int`: text the compiler can read is converted at compile time.
+
+import std.io
+import std.string
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let big = 300
+    let neg = -1
+    if (big as U8? != none or (200 as U8?).unwrapOr(0 as U8) != 200 as U8) { return fail("Int as U8?") }
+    if (neg as U64? != none or (neg as I8?).unwrapOr(0 as I8) != -1 as I8) { return fail("-1 as U64? or I8?") }
+    if ((-129) as I8? != none or ((-128) as I8?).unwrapOr(0 as I8) != -128 as I8) { return fail("I8's edges") }
+    let u: U32 = 4000000000
+    if (u as Int? != none or (u as I64?).unwrapOr(0 as I64) != 4000000000 as I64) { return fail("U32 as Int? or I64?") }
+    let top: U64 = 18446744073709551615
+    let small: I64 = -5
+    if (top as I64? != none or small as U32? != none) { return fail("sign across widths") }
+
+    let fraction = 3.5
+    let nan = 0.0 / 0.0
+    if (fraction as Int? != none or (3.0 as Int?).unwrapOr(0) != 3) { return fail("Float as Int?") }
+    if (1e30 as I64? != none or nan as Int? != none) { return fail("out of range and NaN") }
+    if (9223372036854775808.0 as I64? != none) { return fail("2^63 is past I64") }
+    if ((-9223372036854775808.0 as I64?).unwrapOr(0 as I64) != (0 as I64) - (9223372036854775807 as I64) - (1 as I64)) {
+        return fail("-2^63 is I64.MIN")
+    }
+    if ((255.0 as U8?).unwrapOr(0 as U8) != 255 as U8 or 256.0 as U8? != none) { return fail("Float as U8?") }
+    if ((7 as Float?).unwrapOr(0.0) != 7.0) { return fail("Int as Float?") }
+
+    let maybe: Int? = 300
+    let absent: Int? = none
+    if ((maybe as U16?).unwrapOr(0 as U16) != 300 as U16 or absent as U16? != none) { return fail("from a T?") }
+
+    let text = "77"
+    if (("42" as Int?).unwrapOr(0) != 42 or "4x" as Int? != none or "256" as U8? != none) {
+        return fail("String as Int? or U8?")
+    }
+    if ((text as I16?).unwrapOr(0 as I16) != 77 as I16 or ("2.5" as Float?).unwrapOr(0.0) != 2.5
+            or ("true" as Bool?).unwrapOr(false) == false) {
+        return fail("String as I16?, Float? or Bool?")
+    }
+
+    if ("12" as Int != 12 or "-7" as I64 != -7 as I64 or "0.5" as Float != 0.5 or "false" as Bool) {
+        return fail("a literal read at compile time")
+    }
+    if ("18446744073709551615" as U64 != 18446744073709551615) { return fail("U64.MAX read at compile time") }
+
+    println("PASS: checked conversions")
+    return 0
+}

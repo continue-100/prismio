@@ -28,8 +28,8 @@ reference's `T?` is unchanged: a nullable pointer, where `none` is null.
 | 0 | [Cast bugs](#0-cast-bugs) | done 2026-09-30 |
 | 1 | [Scalar optionals: `T?` by value](#1-scalar-optionals) | done 2026-09-30 |
 | 2 | [`as String`](#2-as-string) | done 2026-09-30 |
-| 3 | [Checked number conversions: `x as T?`](#3-checked-number-conversions) | todo |
-| 4 | [Text to value: `s as T` and `s as T?`](#4-text-to-value) | todo |
+| 3 | [Checked number conversions: `x as T?`](#3-checked-number-conversions) | done 2026-09-30 |
+| 4 | [Text to value: `s as T` and `s as T?`](#4-text-to-value) | done 2026-09-30 |
 | 5 | [std fill-out: every width has `toString`, `toFloat`, `parse`](#5-std-fill-out) | done 2026-09-30 |
 | 6 | [Enum and `Int` interchange](#6-enum-and-int) | todo (known issue) |
 | 7 | [Docs, both apps](#7-docs) | todo |
@@ -149,12 +149,31 @@ types as `Int` (task 6). test_243.
 `300 as U8?`, `-1 as U64?`. From a `Float`, `none` also for NaN, an infinity, and
 a value with a fraction: `3.5 as Int?` is `none`, `3.0 as Int?` is 3.
 
+**Done 2026-09-30.** Branch-free (generateCheckedCast): a narrowing is a round
+trip -- truncate, extend back by the target's sign, compare -- and a same- or
+wider-width change of sign is one compare. From a Float the test is "whole, at
+least the low bound, below the high one", the bounds being powers of two a
+double holds exactly, so `2^63 as I64?` is `none` and `-2^63` is `I64.MIN`; NaN
+fails every ordered compare. The value goes through the saturating conversion
+so it is never poison. A `T?` source keeps `none`. Int to Float is always
+present (a Float's range covers every integer; precision is rounding, as with
+`as Float`). None of it allocates. test_245.
+
 ### 4. Text to value
 
 `s as T?` for every integer width, `Float` and `Bool`, with `parseInt`'s rules.
 `s as T` when `s` is a literal (or an immutable `let` bound to one): converted at
 compile time, an error when the text does not parse. Otherwise an error naming
 `as T?`.
+
+**Done 2026-09-30, for literals.** `s as T?` is the parse method (`as Int?` is
+`parseInt`), bound to std.string. `"12" as Int` is read at compile time by the
+same parse the run time uses, and stays a cast of the number literal so
+`"18446744073709551615" as U64` is named as `U64`. `"12Sf" as Int` is an error
+(neg_247), and so is any non-literal String (neg_246), which names `as Int?`.
+**Not done:** an immutable `let` bound to a literal. Sema keeps a binding's type,
+not its initializer, and a scoped table of literal values for this one case was
+not worth it; the error already says what to write.
 
 ### 5. std fill-out
 

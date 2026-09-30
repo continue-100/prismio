@@ -1,0 +1,8 @@
+// expect-error: `12Sf` does not read as Int
+// Text the compiler reads now is checked now: this is an error at compile time,
+// not a surprise when the program runs.
+import std.string
+
+fn main() -> Int {
+    return "12Sf" as Int
+}

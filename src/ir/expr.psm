@@ -3388,7 +3388,12 @@ private fn generateCast(expr: ASTNode) -> String {
         return val
     }
 
-    if (typeIsValueOptional(toT)) { return generatePresent(val, toT) }
+    if (typeIsValueOptional(toT)) {
+        // Unwritten, it is a present value wrapped where a `T?` is expected
+        // (semaWrapPresent); written, it is `x as T?`.
+        if (nodeIsNull(expr.child2)) { return generatePresent(val, toT) }
+        return generateCheckedCast(val, fromT, toT)
+    }
 
     // Char and Bool are unsigned here as they are when widening below.
     // `sitofp` read the i1 of `true` as -1 and the i8 of Char 200 as -56.
@@ -3426,6 +3431,128 @@ private fn generateCast(expr: ASTNode) -> String {
         return ir_get_temp_name(ir_zext(fromKey, val, toKey))
     }
     return ir_get_temp_name(ir_sext(fromKey, val, toKey))
+}
+
+// `x as T?` between numbers: the value converted, and present only when the
+// conversion loses nothing a number can say -- in range, and for a Float source
+// neither NaN, infinite nor fractional. Straight-line code, no branch: the flag is
+// a few compares and the value is computed whatever it says, so the value has to
+// be one that cannot be poison -- which is why a Float goes through the
+// saturating conversion even though the flag has already ruled out every input
+// that would saturate.
+private fn generateCheckedCast(val: String, fromT: TypeInfo, toT: TypeInfo) -> String {
+    let inner = typeOptionalInner(toT)
+    let mut from = fromT
+    let mut value = val
+    let mut present = "true"
+    if (typeIsValueOptional(fromT)) {
+        from = typeOptionalInner(fromT)
+        present = scalarOptionalField(val, fromT, 0)
+        value = scalarOptionalField(val, fromT, 1)
+    }
+    let fromKey = typeIrKey(from)
+    let toKey = typeIrKey(inner)
+
+    let mut converted = value.clone()
+    let mut fits = "true"
+    if (toKey.equals("double")) {
+        if (fromKey.equals("double") == false) {
+            if (typeIntIsUnsigned(from)) {
+                converted = ir_get_temp_name(ir_uitofp(fromKey, value, "double"))
+            } else {
+                converted = ir_get_temp_name(ir_sitofp(fromKey, value, "double"))
+            }
+        }
+    } else if (fromKey.equals("double")) {
+        fits = checkedFloatFits(value, inner)
+        let mut conversion = "llvm.fptosi.sat."
+        if (typeIntIsUnsigned(inner)) { conversion = "llvm.fptoui.sat." }
+        ir_call_begin()
+        ir_call_arg("double", value)
+        converted = ir_get_temp_name(ir_call_end(toKey, conversion.concat(toKey, ".f64")))
+    } else {
+        fits = checkedIntegerFits(value, from, inner)
+        converted = checkedIntegerConvert(value, from, inner)
+    }
+    if (present.equals("true") == false and fits.equals("true") == false) {
+        present = ir_get_temp_name(ir_and("i1", present, fits))
+    } else if (present.equals("true")) {
+        present = fits
+    }
+    let key = typeIrKey(toT)
+    let flagged = ir_get_temp_name(ir_insert_value(key, ir_get_temp_name(ir_undef(key)), present, "i1", 0))
+    return ir_get_temp_name(ir_insert_value(key, flagged, converted, toKey, 1))
+}
+
+// Width first, then sign: truncating or extending as `as T` does.
+private fn checkedIntegerConvert(value: String, from: TypeInfo, to: TypeInfo) -> String {
+    let fromBits = typeIntBits(from)
+    let toBits = typeIntBits(to)
+    if (fromBits > toBits) { return ir_get_temp_name(ir_trunc(typeIrKey(from), value, typeIrKey(to))) }
+    if (fromBits == toBits) { return value.clone() }
+    if (typeIntIsUnsigned(from)) { return ir_get_temp_name(ir_zext(typeIrKey(from), value, typeIrKey(to))) }
+    return ir_get_temp_name(ir_sext(typeIrKey(from), value, typeIrKey(to)))
+}
+
+// Whether an integer is a value of another integer type. Narrowing is a round
+// trip -- truncate, extend back as the target's sign says, compare -- which
+// catches both a magnitude too large and a sign the target cannot hold. At equal
+// or greater width only the sign can be lost: a negative value into an unsigned
+// type, or the top bit of an unsigned one into a signed type of the same width.
+private fn checkedIntegerFits(value: String, from: TypeInfo, to: TypeInfo) -> String {
+    let fromKey = typeIrKey(from)
+    let fromBits = typeIntBits(from)
+    let toBits = typeIntBits(to)
+    let fromUnsigned = typeIntIsUnsigned(from)
+    let toUnsigned = typeIntIsUnsigned(to)
+    if (fromBits > toBits) {
+        let narrow = ir_get_temp_name(ir_trunc(fromKey, value, typeIrKey(to)))
+        let mut back = ""
+        if (toUnsigned) {
+            back = ir_get_temp_name(ir_zext(typeIrKey(to), narrow, fromKey))
+        } else {
+            back = ir_get_temp_name(ir_sext(typeIrKey(to), narrow, fromKey))
+        }
+        return ir_get_temp_name(ir_icmp_eq(fromKey, back, value))
+    }
+    if (fromUnsigned == toUnsigned) { return "true" }
+    if (fromBits < toBits and fromUnsigned) { return "true" }
+    return ir_get_temp_name(ir_icmp_sge(fromKey, value, "0"))
+}
+
+// Whether a Float is exactly an integer of `to`: whole, and inside the range. The
+// bounds are powers of two, which a double holds exactly, and the upper one is
+// exclusive -- `I64.MAX` itself is not a double, so `x < 2^63` is the test and
+// `x <= I64.MAX` would round. NaN fails every ordered compare, and an infinity
+// fails the range, so neither needs a test of its own.
+private fn checkedFloatFits(value: String, to: TypeInfo) -> String {
+    let bits = typeIntBits(to)
+    let mut low = "0.0"
+    let mut high = checkedPowerOfTwo(bits)
+    if (typeIntIsUnsigned(to) == false) {
+        low = "-".concat(checkedPowerOfTwo(bits - 1))
+        high = checkedPowerOfTwo(bits - 1)
+    }
+    ir_call_begin()
+    ir_call_arg("double", value)
+    let whole = ir_get_temp_name(ir_call_end("double", "llvm.trunc.f64"))
+    let isWhole = ir_get_temp_name(ir_fcmp_oeq("double", whole, value))
+    let aboveLow = ir_get_temp_name(ir_fcmp_oge("double", value, low))
+    let belowHigh = ir_get_temp_name(ir_fcmp_olt("double", value, high))
+    let inRange = ir_get_temp_name(ir_and("i1", aboveLow, belowHigh))
+    return ir_get_temp_name(ir_and("i1", isWhole, inRange))
+}
+
+// 2^n as a double literal, for the bounds above.
+private fn checkedPowerOfTwo(n: Int) -> String {
+    if (n == 7) { return "128.0" }
+    if (n == 8) { return "256.0" }
+    if (n == 15) { return "32768.0" }
+    if (n == 16) { return "65536.0" }
+    if (n == 31) { return "2147483648.0" }
+    if (n == 32) { return "4294967296.0" }
+    if (n == 63) { return "9223372036854775808.0" }
+    return "18446744073709551616.0"
 }
 
 // `{ true, value }`: a present scalar `T?`. Its absent counterpart is the type's

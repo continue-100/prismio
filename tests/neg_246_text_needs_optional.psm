@@ -1,0 +1,9 @@
+// expect-error: a String might not hold a number; write `as Int?` and handle `none`
+// `as T` cannot fail, and text read at run time may not be a number, so the
+// conversion that can fail is the one to write.
+import std.string
+
+fn main() -> Int {
+    let text = "12"
+    return text as Int
+}

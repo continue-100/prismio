@@ -1027,6 +1027,15 @@ private fn semaCastExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
         }
     }
 
+    // `x as T?`: a conversion that can fail, answering `none` rather than
+    // truncating or trapping.
+    if (typeIsValueOptional(toT)) { return semaCheckedCast(module, expr, source, fromT, toT) }
+
+    // Text to a value that cannot be absent: only text the compiler can read.
+    if (fromT.kind == TypeKind.STRING and toT.kind != TypeKind.STRING) {
+        return semaTextCast(expr, source, toT)
+    }
+
     // `x as String` is the text `x.toString()` gives, and is lowered to that
     // call: an owned String the caller releases, from the same std.string
     // overload -- so the cast and the method cannot disagree about a digit.
@@ -1065,6 +1074,129 @@ private fn semaCastExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
 
     nodeSetType(expr, toT)
     return toT
+}
+
+// `x as T?` for a scalar `T`. Between numbers it is typed here and range-checked
+// in codegen (generateCheckedCast): `300 as U8?` and `-1 as U64?` are `none`, and
+// so are a NaN, an infinity and a fraction converted to an integer. From a String
+// it is the parse -- `s as Int?` is `s.parseInt()` -- so the two cannot differ.
+private fn semaCheckedCast(module: ASTNode, expr: ASTNode, source: ASTNode,
+                           fromT: TypeInfo, toT: TypeInfo) -> TypeInfo {
+    let inner = typeOptionalInner(toT)
+    if (fromT.kind == TypeKind.STRING) {
+        let parse = semaParseFunctionFor(inner)
+        if (parse.equals("")) {
+            semaErrorAt(expr, "text reads as a number or a Bool, not as ".concat(typeDisplay(inner)))
+            nodeSetType(expr, toT)
+            return toT
+        }
+        if (semaStringSugarAvailable(expr, parse, "`as ".concat(typeDisplay(toT), "` on a String")) == false) {
+            nodeSetType(expr, toT)
+            return toT
+        }
+        source.next = ptr_null()
+        semaBecomeCall(expr, parse, node_to_ptr(source))
+        semaBindToStandardString(expr)
+        return semaExpr(module, expr)
+    }
+
+    let mut from = fromT
+    if (typeIsValueOptional(fromT)) { from = typeOptionalInner(fromT) }
+    // A literal that fits is named in the target type, as `as T` does, so
+    // `4294967295 as U32?` is present rather than a wrapped Int.
+    if (inner.kind == TypeKind.INT and semaIsIntLiteral(source)
+            and typeIntLiteralFits(source.s1, inner)) {
+        nodeSetType(source, inner)
+    }
+    if (typeIsNumeric(from) == false or typeIsNumeric(inner) == false) {
+        semaErrorAt(expr, "`as ".concat(typeDisplay(toT), "` converts between numbers, or from a String; found ",
+                                        typeDisplay(fromT)))
+    }
+    nodeSetType(expr, toT)
+    return toT
+}
+
+// The String method that reads a `T`, or "" for a type text has no reading of.
+private fn semaParseFunctionFor(t: TypeInfo) -> String {
+    if (t.kind == TypeKind.INT or t.kind == TypeKind.FLOAT or t.kind == TypeKind.BOOL) {
+        return "parse".concat(t.name)
+    }
+    return ""
+}
+
+// `s as T` from a String, which cannot fail -- so only a literal the compiler
+// reads now: `"12" as Int` is the literal 12, and `"12Sf" as Int` is an error
+// here rather than a surprise at run time. Anything else might not be a number,
+// and the error names the form that says so.
+private fn semaTextCast(expr: ASTNode, source: ASTNode, toT: TypeInfo) -> TypeInfo {
+    nodeSetType(expr, toT)
+    let parse = semaParseFunctionFor(toT)
+    if (parse.equals("")) {
+        semaErrorAt(expr, "text reads as a number or a Bool, not as ".concat(typeDisplay(toT)))
+        return toT
+    }
+    let isLiteral = source.kind == NodeKind.LITERAL_EXPR and source.i1 == TokenType.STRING_LITERAL
+    if (isLiteral == false) {
+        let mut what = "a number"
+        if (toT.kind == TypeKind.BOOL) { what = "true or false" }
+        semaErrorAt(expr, "a String might not hold ".concat(what, "; write `as ", typeDisplay(toT),
+                                                            "?` and handle `none`"))
+        return toT
+    }
+    let value = semaReadLiteralAs(source.s1, toT)
+    if (value.equals("")) {
+        semaErrorAt(expr, diagQuote(source.s1).concat(" does not read as ", typeDisplay(toT)))
+        return toT
+    }
+    // A Bool is the literal itself. A number stays a cast of the number literal,
+    // because a bare literal is re-typed from its text each time it is checked
+    // -- `18446744073709551615` alone is an Int that does not fit -- and the
+    // cast is what names it in `toT`, as `4294967296 as U64` is named.
+    if (toT.kind == TypeKind.BOOL) {
+        expr.kind = NodeKind.LITERAL_EXPR
+        expr.s1 = value.clone()
+        expr.i1 = TokenType.BOOL_LITERAL
+        expr.child1 = ptr_null()
+        expr.child2 = ptr_null()
+        return toT
+    }
+    source.s1 = value
+    source.i1 = TokenType.NUMBER_LITERAL
+    if (toT.kind == TypeKind.FLOAT) { source.i1 = TokenType.FLOAT_LITERAL }
+    nodeSetType(source, toT)
+    return toT
+}
+
+// The literal text a String reads as, in `t`, or "" when it does not: parsed by
+// the same std.string functions `s as T?` calls at run time, so the compile-time
+// and run-time answers agree. A Float that is not finite has no literal
+// spelling and is refused with the rest.
+private fn semaReadLiteralAs(text: String, t: TypeInfo) -> String {
+    if (t.kind == TypeKind.BOOL) {
+        let flag = text.parseBool()
+        if (flag == none) { return "" }
+        if (expect(flag)) { return "true" }
+        return "false"
+    }
+    if (t.kind == TypeKind.FLOAT) {
+        let number = text.parseFloat()
+        if (number == none) { return "" }
+        let spelled = expect(number).toString()
+        if (spelled.equals("inf") or spelled.equals("-inf") or spelled.equals("nan")) { return "" }
+        return spelled
+    }
+    if (typeIntIsUnsigned(t)) {
+        let magnitude = text.parseU64()
+        if (magnitude == none) { return "" }
+        let digits = expect(magnitude).toString()
+        if (typeIntLiteralFits(digits, t) == false) { return "" }
+        return digits
+    }
+    let signed = text.parseI64()
+    if (signed == none) { return "" }
+    let digits = expect(signed).toString()
+    if (typeIntLiteralFits(digits, t) == false) { return "" }
+    return digits
 }
 
 // The types `as String` converts: every number, Bool, Char and String itself.
