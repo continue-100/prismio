@@ -539,39 +539,39 @@ struct Msg {
 public fn stage1(ch: Channel<Msg>, cfg: WorkConfig) -> Int {
     for i in 0..<cfg.count {
         let x = (i * 25173 + 13849) % 65521
-        chan_send(ch, Msg { val: x })
+        ch.send(Msg { val: x })
     }
-    chan_close(ch)
+    ch.close()
     return cfg.count
 }
 
 public fn stage2(in_ch: Channel<Msg>, out_ch: Channel<Msg>) -> Int {
     let mut count = 0
     loop {
-        let taken = chan_recv(in_ch)
+        let taken = in_ch.receive()
         if (taken == none) { break }
         let msg = expect(taken)
         let x = msg.val
         let y: I64 = ((x as I64) * 17 + 31) % 1000000007
-        chan_send(out_ch, Msg { val: y as Int })
+        out_ch.send(Msg { val: y as Int })
         count = count + 1
     }
-    chan_close(out_ch)
+    out_ch.close()
     return count
 }
 
 public fn benchChannelPipeline(scale: Int) -> Int {
     let count = 5000 * scale
     let cfg = WorkConfig { count: count }
-    let ch1: Channel<Msg> = chan_new(64)
-    let ch2: Channel<Msg> = chan_new(64)
+    let ch1 = Channel<Msg>(64)
+    let ch2 = Channel<Msg>(64)
 
-    let w1 = spawn stage1(chan_share(ch1), cfg)
-    let w2 = spawn stage2(chan_share(ch1), chan_share(ch2))
+    let w1 = spawn stage1(ch1.share(), cfg)
+    let w2 = spawn stage2(ch1.share(), ch2.share())
 
     let mut checksum: I64 = 0
     loop {
-        let taken = chan_recv(ch2)
+        let taken = ch2.receive()
         if (taken == none) { break }
         let msg = expect(taken)
         checksum = (checksum * 31 + (msg.val as I64)) % 1000000007
@@ -579,8 +579,8 @@ public fn benchChannelPipeline(scale: Int) -> Int {
 
     let _j1 = join w1
     let _j2 = join w2
-    chan_free(ch1)
-    chan_free(ch2)
+    ch1.free()
+    ch2.free()
 
     return checksum as Int
 }
