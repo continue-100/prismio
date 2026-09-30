@@ -41,7 +41,7 @@ fails a generation later with nothing pointing at the cause:
 
 ## graphify
 
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships. **It is generated and untracked** — `graphify update .` builds it from the tree, and a fresh clone will not have one until you do.
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships. `graphify update .` builds it from the tree. Only `graph.json`, `GRAPH_REPORT.md`, `manifest.json` and `graph.html` are tracked; the cache, `cost.json` and the `.graphify_*` sidecars stay local (see `.gitignore`). Commit the three with the change that moved them, not on their own.
 
 Rules:
 - For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
