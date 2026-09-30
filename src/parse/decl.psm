@@ -1590,7 +1590,7 @@ private fn parseWorkloadCount(p: Parser, clause: String) -> Int {
     if (tok.type != TokenType.NUMBER_LITERAL) {
         p.fatal("expected a count after `".concat(clause, "`"))
     }
-    let n = optionOr(tok.value.parseInt(), 0)
+    let n = tok.value.parseInt().unwrapOr(0)
     p.advance()
     // Zero repeats profiles nothing and a negative one is meaningless; both would
     // reach the runner and produce an empty profile that reads as a failed run.

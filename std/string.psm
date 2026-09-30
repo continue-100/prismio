@@ -1427,7 +1427,7 @@ internal fn strJoin(parts: Vec<String>, sep: String) -> String {
 // which returns 0 for "0" and 0 for "banana" and gives the caller no way to tell
 // them apart. REQUIREMENTS 14's whole argument against sentinels is this
 // function.
-internal fn strParseInt(s: String) -> Option<Int> {
+internal fn strParseInt(s: String) -> Int? {
     return strParseIntRadix(s, 10)
 }
 
@@ -1947,10 +1947,10 @@ internal fn strFromBool(value: Bool) -> String {
 // Exactly the two spellings `strFromBool` produces, case-insensitively. Not
 // "1"/"0" and not "yes"/"no": a parser that accepts more than its printer emits
 // is a parser whose round trip is untestable.
-internal fn strParseBool(s: String) -> Option<Bool> {
-    if (strEqualsIgnoreCase(s, "true")) { return Option<Bool>.Some(true) }
-    if (strEqualsIgnoreCase(s, "false")) { return Option<Bool>.Some(false) }
-    return Option<Bool>.None
+internal fn strParseBool(s: String) -> Bool? {
+    if (strEqualsIgnoreCase(s, "true")) { return true }
+    if (strEqualsIgnoreCase(s, "false")) { return false }
+    return none
 }
 
 // **Not correctly rounded, and that is a documented limit rather than a bug to
@@ -1980,15 +1980,15 @@ private extern fn str_double_value(text: String borrow) -> Float
 // Stricter than C: the whole string must be a number, so `"1.5kg"` and `" 1.5"`
 // are `None` rather than 1.5. `"inf"`, `"-inf"` and `"nan"` parse, because
 // `strFromFloat` writes them.
-internal fn strParseFloat(s: String) -> Option<Float> {
-    if (str_double_valid(s) == 0) { return Option<Float>.None }
-    return Option<Float>.Some(str_double_value(s))
+internal fn strParseFloat(s: String) -> Float? {
+    if (str_double_valid(s) == 0) { return none }
+    return str_double_value(s)
 }
 
-// The parse, or the caller's number. For the very common case where a bad value
-// means "use the default" and the `Option` would only ever be fed to `optionOr`.
+// The parse, or the caller's number: `parseInt().unwrapOr(fallback)`, named for
+// the very common case where a bad value means "use the default".
 internal fn strParseIntOr(s: String, fallback: Int) -> Int {
-    return optionOr(strParseInt(s), fallback)
+    return strParseInt(s).unwrapOr(fallback)
 }
 
 // ---------------------------------------------------------------------------
@@ -2470,14 +2470,14 @@ private fn strDigitValueIn(c: Int, radix: Int) -> Int {
     return value
 }
 
-// **`None` on overflow, and that is the fix this replaces.** The accumulator ran
+// **`none` on overflow, and that is the fix this replaces.** The accumulator ran
 // `acc * 10 + digit` with no bound, so `"99999999999"` came back as a `Some`
 // holding a wrapped number -- a parse that reported success and produced a value
 // the text does not say. Every digit is now checked before it is added: against
 // the largest value that can still be multiplied, and then against what is left
 // after multiplying.
-private fn strParseU64Body(s: String, at: Int, slen: Int, radix: Int) -> Option<U64> {
-    if (at >= slen) { return Option<U64>.None }
+private fn strParseU64Body(s: String, at: Int, slen: Int, radix: Int) -> U64? {
+    if (at >= slen) { return none }
     let wide = radix as U64
     let ceiling = strMaxU64() / wide
 
@@ -2485,28 +2485,28 @@ private fn strParseU64Body(s: String, at: Int, slen: Int, radix: Int) -> Option<
     let mut i = at
     while (i < slen) {
         let digit = strDigitValueIn(strByteAt(s, i), radix)
-        if (digit < 0) { return Option<U64>.None }
-        if (acc > ceiling) { return Option<U64>.None }
+        if (digit < 0) { return none }
+        if (acc > ceiling) { return none }
         acc = acc * wide
-        if (acc > strMaxU64() - (digit as U64)) { return Option<U64>.None }
+        if (acc > strMaxU64() - (digit as U64)) { return none }
         acc = acc + (digit as U64)
         i = i + 1
     }
-    return Option<U64>.Some(acc)
+    return acc
 }
 
 // A leading `+` is accepted and a leading `-` is not: an unsigned parse of a
 // negative number has no answer, and wrapping to a large positive one is the
 // class of bug this whole section exists to remove.
-internal fn strParseU64Radix(s: String, radix: Int) -> Option<U64> {
-    if (radix < 2 or radix > 36) { return Option<U64>.None }
+internal fn strParseU64Radix(s: String, radix: Int) -> U64? {
+    if (radix < 2 or radix > 36) { return none }
     let slen = __builtin_string_len(s)
-    if (slen == 0) { return Option<U64>.None }
+    if (slen == 0) { return none }
     if (strByteAt(s, 0) == 43) { return strParseU64Body(s, 1, slen, radix) }
     return strParseU64Body(s, 0, slen, radix)
 }
 
-internal fn strParseU64(s: String) -> Option<U64> {
+internal fn strParseU64(s: String) -> U64? {
     return strParseU64Radix(s, 10)
 }
 
@@ -2514,47 +2514,103 @@ private fn strMaxI64Magnitude() -> U64 {
     return strMaxU64() / (2 as U64)
 }
 
-internal fn strParseI64Radix(s: String, radix: Int) -> Option<I64> {
-    if (radix < 2 or radix > 36) { return Option<I64>.None }
+internal fn strParseI64Radix(s: String, radix: Int) -> I64? {
+    if (radix < 2 or radix > 36) { return none }
     let slen = __builtin_string_len(s)
-    if (slen == 0) { return Option<I64>.None }
+    if (slen == 0) { return none }
 
     let negative = strByteAt(s, 0) == 45
     let mut start = 0
     if (negative or strByteAt(s, 0) == 43) { start = 1 }
-    if (start >= slen) { return Option<I64>.None }
+    if (start >= slen) { return none }
 
     let magnitude = strParseU64Body(s, start, slen, radix)
-    if (optionIsNone(magnitude)) { return Option<I64>.None }
-    let value = optionOr(magnitude, 0 as U64)
+    if (magnitude == none) { return none }
+    let value = expect(magnitude)
 
     if (negative == false) {
-        if (value > strMaxI64Magnitude()) { return Option<I64>.None }
-        return Option<I64>.Some(value as I64)
+        if (value > strMaxI64Magnitude()) { return none }
+        return value as I64
     }
     // The negative range reaches one further than the positive one, and its end
     // has no positive counterpart to negate -- so it is named rather than
     // computed, which is also what keeps the negation below in range.
-    if (value > strMaxI64Magnitude() + (1 as U64)) { return Option<I64>.None }
+    if (value > strMaxI64Magnitude() + (1 as U64)) { return none }
     if (value == strMaxI64Magnitude() + (1 as U64)) {
-        return Option<I64>.Some((0 as I64) - (strMaxI64Magnitude() as I64) - (1 as I64))
+        return (0 as I64) - (strMaxI64Magnitude() as I64) - (1 as I64)
     }
-    return Option<I64>.Some((0 as I64) - (value as I64))
+    return (0 as I64) - (value as I64)
 }
 
-internal fn strParseI64(s: String) -> Option<I64> {
+internal fn strParseI64(s: String) -> I64? {
     return strParseI64Radix(s, 10)
 }
 
-internal fn strParseIntRadix(s: String, radix: Int) -> Option<Int> {
+// A signed parse into a width narrower than I64: `none` for a value that fits an
+// I64 and not the width, rather than truncating it.
+private fn strParseSignedIn(s: String, radix: Int, low: I64, high: I64) -> I64? {
     let wide = strParseI64Radix(s, radix)
-    if (optionIsNone(wide)) { return Option<Int>.None }
-    let value = optionOr(wide, 0 as I64)
-    // `Int` is i32, so a value that fits an I64 and not an Int is a
-    // number this function cannot return. It says so rather than truncating.
-    if (value > 2147483647 as I64) { return Option<Int>.None }
-    if (value < (0 - 2147483647 - 1) as I64) { return Option<Int>.None }
-    return Option<Int>.Some(value as Int)
+    if (wide == none) { return none }
+    let value = expect(wide)
+    if (value < low or value > high) { return none }
+    return value
+}
+
+private fn strParseUnsignedIn(s: String, radix: Int, high: U64) -> U64? {
+    let wide = strParseU64Radix(s, radix)
+    if (wide == none) { return none }
+    let value = expect(wide)
+    if (value > high) { return none }
+    return value
+}
+
+internal fn strParseIntRadix(s: String, radix: Int) -> Int? {
+    let value = strParseSignedIn(s, radix, (0 - 2147483647 - 1) as I64, 2147483647 as I64)
+    if (value == none) { return none }
+    return expect(value) as Int
+}
+
+internal fn strParseI8Radix(s: String, radix: Int) -> I8? {
+    let value = strParseSignedIn(s, radix, (0 - 128) as I64, 127 as I64)
+    if (value == none) { return none }
+    return expect(value) as I8
+}
+
+internal fn strParseI16Radix(s: String, radix: Int) -> I16? {
+    let value = strParseSignedIn(s, radix, (0 - 32768) as I64, 32767 as I64)
+    if (value == none) { return none }
+    return expect(value) as I16
+}
+
+// Isize and Usize are 64 bits on every target Prismio builds for.
+internal fn strParseIsizeRadix(s: String, radix: Int) -> Isize? {
+    let value = strParseI64Radix(s, radix)
+    if (value == none) { return none }
+    return expect(value) as Isize
+}
+
+internal fn strParseU8Radix(s: String, radix: Int) -> U8? {
+    let value = strParseUnsignedIn(s, radix, 255 as U64)
+    if (value == none) { return none }
+    return expect(value) as U8
+}
+
+internal fn strParseU16Radix(s: String, radix: Int) -> U16? {
+    let value = strParseUnsignedIn(s, radix, 65535 as U64)
+    if (value == none) { return none }
+    return expect(value) as U16
+}
+
+internal fn strParseU32Radix(s: String, radix: Int) -> U32? {
+    let value = strParseUnsignedIn(s, radix, 4294967295 as U64)
+    if (value == none) { return none }
+    return expect(value) as U32
+}
+
+internal fn strParseUsizeRadix(s: String, radix: Int) -> Usize? {
+    let value = strParseU64Radix(s, radix)
+    if (value == none) { return none }
+    return expect(value) as Usize
 }
 
 impl String {
@@ -2842,15 +2898,36 @@ impl String {
         return strScalarSubstring(self, start, count)
     }
 
-    public fn parseInt(self) -> Option<Int> { return strParseInt(self) }
-    public fn parseInt(self, radix: Int) -> Option<Int> { return strParseIntRadix(self, radix) }
+    // An owned copy, so that `x.toString()` and `x as String` read the same for
+    // every type that has text, a String included.
+    public fn toString(self) -> String { return strClone(self) }
+
+    // The number the text writes, or `none` when it writes none that fits: not a
+    // number, trailing text, or out of the type's range. A `T?` by value, so a
+    // parse allocates nothing; `s as Int?` is `s.parseInt()`.
+    public fn parseInt(self) -> Int? { return strParseInt(self) }
+    public fn parseInt(self, radix: Int) -> Int? { return strParseIntRadix(self, radix) }
     public fn parseIntOr(self, fallback: Int) -> Int { return strParseIntOr(self, fallback) }
-    public fn parseI64(self) -> Option<I64> { return strParseI64(self) }
-    public fn parseI64(self, radix: Int) -> Option<I64> { return strParseI64Radix(self, radix) }
-    public fn parseU64(self) -> Option<U64> { return strParseU64(self) }
-    public fn parseU64(self, radix: Int) -> Option<U64> { return strParseU64Radix(self, radix) }
-    public fn parseFloat(self) -> Option<Float> { return strParseFloat(self) }
-    public fn parseBool(self) -> Option<Bool> { return strParseBool(self) }
+    public fn parseI8(self) -> I8? { return strParseI8Radix(self, 10) }
+    public fn parseI8(self, radix: Int) -> I8? { return strParseI8Radix(self, radix) }
+    public fn parseI16(self) -> I16? { return strParseI16Radix(self, 10) }
+    public fn parseI16(self, radix: Int) -> I16? { return strParseI16Radix(self, radix) }
+    public fn parseI64(self) -> I64? { return strParseI64(self) }
+    public fn parseI64(self, radix: Int) -> I64? { return strParseI64Radix(self, radix) }
+    public fn parseIsize(self) -> Isize? { return strParseIsizeRadix(self, 10) }
+    public fn parseIsize(self, radix: Int) -> Isize? { return strParseIsizeRadix(self, radix) }
+    public fn parseU8(self) -> U8? { return strParseU8Radix(self, 10) }
+    public fn parseU8(self, radix: Int) -> U8? { return strParseU8Radix(self, radix) }
+    public fn parseU16(self) -> U16? { return strParseU16Radix(self, 10) }
+    public fn parseU16(self, radix: Int) -> U16? { return strParseU16Radix(self, radix) }
+    public fn parseU32(self) -> U32? { return strParseU32Radix(self, 10) }
+    public fn parseU32(self, radix: Int) -> U32? { return strParseU32Radix(self, radix) }
+    public fn parseU64(self) -> U64? { return strParseU64(self) }
+    public fn parseU64(self, radix: Int) -> U64? { return strParseU64Radix(self, radix) }
+    public fn parseUsize(self) -> Usize? { return strParseUsizeRadix(self, 10) }
+    public fn parseUsize(self, radix: Int) -> Usize? { return strParseUsizeRadix(self, radix) }
+    public fn parseFloat(self) -> Float? { return strParseFloat(self) }
+    public fn parseBool(self) -> Bool? { return strParseBool(self) }
 }
 
 // A `Char` is a byte. These are the `char*` free functions above under the names
@@ -2872,8 +2949,8 @@ impl Char {
     public fn toString(self) -> String { return strFromChar(self) }
 }
 
-// `toString` on the numeric types, so that building text out of a number reads
-// the same way whatever the number is. The overload set is by exact type, as
+// `toString` on every numeric type, so that building text out of a number reads
+// the same way whatever the number is -- and what `x as String` lowers to. The overload set is by exact type, as
 // every overload set here is: there is no implicit numeric promotion, so
 // `count.toString()` picks the `Int` body and nothing else.
 impl Int {
@@ -2884,6 +2961,41 @@ impl Int {
 impl I64 {
     public fn toString(self) -> String { return strFromI64(self) }
     public fn toString(self, radix: Int) -> String { return strFromI64Radix(self, radix) }
+}
+
+impl I8 {
+    public fn toString(self) -> String { return strFromInt(self as Int) }
+    public fn toString(self, radix: Int) -> String { return strFromIntRadix(self as Int, radix) }
+}
+
+impl I16 {
+    public fn toString(self) -> String { return strFromInt(self as Int) }
+    public fn toString(self, radix: Int) -> String { return strFromIntRadix(self as Int, radix) }
+}
+
+impl Isize {
+    public fn toString(self) -> String { return strFromI64(self as I64) }
+    public fn toString(self, radix: Int) -> String { return strFromI64Radix(self as I64, radix) }
+}
+
+impl U8 {
+    public fn toString(self) -> String { return strFromUnsigned(self as U64) }
+    public fn toString(self, radix: Int) -> String { return strFromU64Radix(self as U64, radix) }
+}
+
+impl U16 {
+    public fn toString(self) -> String { return strFromUnsigned(self as U64) }
+    public fn toString(self, radix: Int) -> String { return strFromU64Radix(self as U64, radix) }
+}
+
+impl U32 {
+    public fn toString(self) -> String { return strFromUnsigned(self as U64) }
+    public fn toString(self, radix: Int) -> String { return strFromU64Radix(self as U64, radix) }
+}
+
+impl Usize {
+    public fn toString(self) -> String { return strFromUnsigned(self as U64) }
+    public fn toString(self, radix: Int) -> String { return strFromU64Radix(self as U64, radix) }
 }
 
 impl U64 {

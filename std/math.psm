@@ -228,6 +228,7 @@ impl I8 {
     public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
     public fn rotateLeft(self, n: Int) -> I8 { return __builtin_rotate_left(self, n) }
     public fn rotateRight(self, n: Int) -> I8 { return __builtin_rotate_right(self, n) }
+    public fn toFloat(self) -> Float { return self as Float }
 }
 
 impl I16 {
@@ -239,6 +240,7 @@ impl I16 {
     public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
     public fn rotateLeft(self, n: Int) -> I16 { return __builtin_rotate_left(self, n) }
     public fn rotateRight(self, n: Int) -> I16 { return __builtin_rotate_right(self, n) }
+    public fn toFloat(self) -> Float { return self as Float }
 }
 
 impl U8 {
@@ -250,6 +252,7 @@ impl U8 {
     public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
     public fn rotateLeft(self, n: Int) -> U8 { return __builtin_rotate_left(self, n) }
     public fn rotateRight(self, n: Int) -> U8 { return __builtin_rotate_right(self, n) }
+    public fn toFloat(self) -> Float { return self as Float }
 }
 
 impl U16 {
@@ -261,6 +264,7 @@ impl U16 {
     public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
     public fn rotateLeft(self, n: Int) -> U16 { return __builtin_rotate_left(self, n) }
     public fn rotateRight(self, n: Int) -> U16 { return __builtin_rotate_right(self, n) }
+    public fn toFloat(self) -> Float { return self as Float }
 }
 
 impl U32 {
@@ -272,6 +276,7 @@ impl U32 {
     public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
     public fn rotateLeft(self, n: Int) -> U32 { return __builtin_rotate_left(self, n) }
     public fn rotateRight(self, n: Int) -> U32 { return __builtin_rotate_right(self, n) }
+    public fn toFloat(self) -> Float { return self as Float }
 }
 
 impl U64 {
@@ -283,6 +288,17 @@ impl U64 {
     public fn trailingZeros(self) -> Int { return __builtin_trailing_zeros(self) }
     public fn rotateLeft(self, n: Int) -> U64 { return __builtin_rotate_left(self, n) }
     public fn rotateRight(self, n: Int) -> U64 { return __builtin_rotate_right(self, n) }
+    public fn toFloat(self) -> Float { return self as Float }
+}
+
+// The two pointer-width integers carry no limits here -- their width is the
+// target's -- but convert like every other number.
+impl Isize {
+    public fn toFloat(self) -> Float { return self as Float }
+}
+
+impl Usize {
+    public fn toFloat(self) -> Float { return self as Float }
 }
 
 // ---------------------------------------------------------------------------

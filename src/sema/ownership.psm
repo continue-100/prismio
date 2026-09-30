@@ -458,7 +458,7 @@ internal fn semaCheckExternContracts(extNode: ASTNode) {
                                                diagQuote(param.s1), " is ", annotation.s1))
                     diag_note("it suppresses the NUL-terminated copy a String view would otherwise be given; no other type is copied there")
                 } else if (name.equals("retain_in")) {
-                    let target = optionOr(semaContractArgument(encoded).parseInt(), 0)
+                    let target = semaContractArgument(encoded).parseInt().unwrapOr(0)
                     if (target < 0 or target >= arity) {
                         diag_error_at_code("P4104", param.file, param.line, param.col, __builtin_string_len(param.s1),
                             "`retain_in` names argument ".concat(semaContractArgument(encoded),

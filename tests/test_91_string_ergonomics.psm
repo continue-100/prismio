@@ -127,8 +127,8 @@ fn main() -> Int {
     let crlf = "a\r\nb\n".lines()
     if (crlf.length != 2) { return fail("lines strips CR and trailing NL") }
     if (s.countIf(|c: Char| c.isUpper) != 2) { return fail("countIf") }
-    if (optionOr("3.5".parseFloat(), 0.0) != 3.5) { return fail("parseFloat") }
-    if (optionOr("TRUE".parseBool(), false) == false) { return fail("parseBool") }
+    if ("3.5".parseFloat().unwrapOr(0.0) != 3.5) { return fail("parseFloat") }
+    if ("TRUE".parseBool().unwrapOr(false) == false) { return fail("parseBool") }
 
     let n = 255
     let text = n.toString()

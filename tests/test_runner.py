@@ -7089,6 +7089,7 @@ def run_aif_verify_test():
         # not pass the LLVM verifier before.
         "test_238_scalar_optionals": 0,
         "test_242_optional_std": 0,
+        "test_243_as_string": 0,
         "test_24_drop": 0,
         "test_25_conventions": 0,
         # Both were 1 -- `escapes() -> Point` and `escapes() -> Wide`, each a T2

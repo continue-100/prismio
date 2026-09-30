@@ -167,8 +167,8 @@ public fn typeIntLiteralFits(text: String, t: TypeInfo) -> Bool {
     if (negative or text.startsWith("+")) { at = 1 }
 
     let parsed = typeIntLiteralMagnitude(text, at)
-    if (optionIsNone(parsed)) { return false }
-    let magnitude = optionOr(parsed, 0 as U64)
+    if (parsed == none) { return false }
+    let magnitude = expect(parsed)
 
     if (unsigned) {
         if (bits == 64) { return true }
@@ -182,7 +182,7 @@ public fn typeIntLiteralFits(text: String, t: TypeInfo) -> Bool {
 // literal keeps the spelling it was written with, so this reads the base off the
 // prefix exactly as the backend does -- and a leading zero is not octal in
 // either place.
-private fn typeIntLiteralMagnitude(text: String, at: Int) -> Option<U64> {
+private fn typeIntLiteralMagnitude(text: String, at: Int) -> U64? {
     let mut start = at
     let mut radix = 10
     if (text.byteAt(start) == 48 and __builtin_string_len(text) > start + 1) {
@@ -203,8 +203,8 @@ public fn typeIntLiteralCount(text: String) -> Int {
     if (text.startsWith("-") or text.startsWith("+")) { return -1 }
     if (typeIntLiteralFits(text, typeInt()) == false) { return -1 }
     let parsed = typeIntLiteralMagnitude(text, 0)
-    if (optionIsNone(parsed)) { return -1 }
-    let count = optionOr(parsed, 0 as U64) as Int
+    if (parsed == none) { return -1 }
+    let count = expect(parsed) as Int
     if (count < 1) { return -1 }
     return count
 }

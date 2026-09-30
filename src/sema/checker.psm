@@ -1027,6 +1027,20 @@ private fn semaCastExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
         }
     }
 
+    // `x as String` is the text `x.toString()` gives, and is lowered to that
+    // call: an owned String the caller releases, from the same std.string
+    // overload -- so the cast and the method cannot disagree about a digit.
+    if (toT.kind == TypeKind.STRING and semaHasTextForm(fromT)) {
+        if (semaStringSugarAvailable(expr, "toString", "`as String`") == false) {
+            nodeSetType(expr, toT)
+            return toT
+        }
+        source.next = ptr_null()
+        semaBecomeCall(expr, "toString", node_to_ptr(source))
+        semaBindToStandardString(expr)
+        return semaExpr(module, expr)
+    }
+
     let fromScalar = fromT.kind == TypeKind.INT or fromT.kind == TypeKind.FLOAT
                       or fromT.kind == TypeKind.CHAR or fromT.kind == TypeKind.BOOL
                       or fromT.kind == TypeKind.ENUM
@@ -1051,6 +1065,12 @@ private fn semaCastExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
 
     nodeSetType(expr, toT)
     return toT
+}
+
+// The types `as String` converts: every number, Bool, Char and String itself.
+private fn semaHasTextForm(t: TypeInfo) -> Bool {
+    return t.kind == TypeKind.INT or t.kind == TypeKind.FLOAT or t.kind == TypeKind.BOOL
+        or t.kind == TypeKind.CHAR or t.kind == TypeKind.STRING
 }
 
 private fn semaUnaryExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
@@ -2896,7 +2916,7 @@ private fn semaForStep(module: ASTNode, stepNode: ASTNode) {
 
     let mut notPositive = stepNode.kind == NodeKind.LITERAL_EXPR
         and stepNode.i1 == TokenType.NUMBER_LITERAL
-        and optionOr(stepNode.s1.parseInt(), 1) <= 0
+        and stepNode.s1.parseInt().unwrapOr(1) <= 0
     if (stepNode.kind == NodeKind.UNARY_EXPR and stepNode.s1.equals("-")) {
         let operand = ptr_to_node(stepNode.child1)
         notPositive = operand.kind == NodeKind.LITERAL_EXPR

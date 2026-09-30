@@ -265,34 +265,14 @@ fn main() -> Int {
     }
 
     let parsedPositive = "123".parseInt()
-    match (parsedPositive) {
-        Option<Int>.Some(v) => {
-            if (v != 123) { return fail("strParseInt should parse a positive integer") }
-        }
-        Option<Int>.None => { return fail("strParseInt should accept \"123\"") }
-    }
-    drop(parsedPositive)
+    if (parsedPositive == none) { return fail("strParseInt should accept \"123\"") }
+    if (expect(parsedPositive) != 123) { return fail("strParseInt should parse a positive integer") }
     let parsedNegative = "-7".parseInt()
-    match (parsedNegative) {
-        Option<Int>.Some(v) => {
-            if (v != 0 - 7) { return fail("strParseInt should parse a negative integer") }
-        }
-        Option<Int>.None => { return fail("strParseInt should accept \"-7\"") }
-    }
-    drop(parsedNegative)
+    if (parsedNegative == none) { return fail("strParseInt should accept \"-7\"") }
+    if (expect(parsedNegative) != 0 - 7) { return fail("strParseInt should parse a negative integer") }
     // Parsing must distinguish malformed input from the valid integer zero.
-    let parsedGarbage = "12x".parseInt()
-    match (parsedGarbage) {
-        Option<Int>.Some(v) => { return fail("strParseInt should reject trailing garbage") }
-        Option<Int>.None => { }
-    }
-    drop(parsedGarbage)
-    let parsedEmpty = "".parseInt()
-    match (parsedEmpty) {
-        Option<Int>.Some(v) => { return fail("strParseInt should reject the empty string") }
-        Option<Int>.None => { }
-    }
-    drop(parsedEmpty)
+    if ("12x".parseInt() != none) { return fail("strParseInt should reject trailing garbage") }
+    if ("".parseInt() != none) { return fail("strParseInt should reject the empty string") }
 
     let repeated = "ab".repeat(3)
     if (repeated.equals("ababab") == false) {

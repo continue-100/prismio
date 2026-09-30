@@ -43,7 +43,7 @@ fn main() -> Int {
         return fail("int_to_str should format integers")
     }
 
-    if (optionOr("123".parseInt(), 0) != 123) {
+    if ("123".parseInt().unwrapOr(0) != 123) {
         return fail("str_to_int should parse decimal integers")
     }
 

@@ -42,7 +42,7 @@ private fn aifDeclaredContract(name: String, index: Int) -> Int {
     if (text.equals("out")) { return AIF_FFI_OUT }
 
     if (text.startsWith("retain_in:")) {
-        let k = optionOr(text.substring(10, __builtin_string_len(text) - 10).parseInt(), 0)
+        let k = text.substring(10, __builtin_string_len(text) - 10).parseInt().unwrapOr(0)
         return AIF_FFI_RETAIN_IN_BASE + k
     }
 

@@ -137,7 +137,7 @@ private fn parseForceLayout(flag: String) -> Bool {
     // str_to_int answers 0 for a non-numeric string, which is also the value a
     // hot count can never legally take -- field 0 is pinned hot, so every real
     // candidate keeps at least one field. One check covers both.
-    let hot = optionOr(hotText.parseInt(), 0)
+    let hot = hotText.parseInt().unwrapOr(0)
     if (hot < 1) { return false }
     aif_layout_force(typeName, hot)
     return true
@@ -333,7 +333,7 @@ private fn cliAif() -> Int {
             // of 200 rounds, and an unreachable path is where a bug lives
             // undisturbed. This makes it reachable, which is what
             // tests/test_43 uses to check that widening only ever raises.
-            aifBudgetArg = optionOr(flag.substring(9, __builtin_string_len(flag) - 9).parseInt(), 0)
+            aifBudgetArg = flag.substring(9, __builtin_string_len(flag) - 9).parseInt().unwrapOr(0)
             if (aifBudgetArg < 1) {
                 diag_error_code("P1030", "--budget= must be at least 1 round")
                 return 1
@@ -534,7 +534,7 @@ fn main() -> Int {
         } else if (arg.startsWith("-O") and __builtin_string_len(arg) == 3) {
             // -O0..-O3. Runs LLVM's standard pipeline over the module before it
             // is written; without it the output keeps a load/store per binding.
-            let level = optionOr(arg.substring(2, 1).parseInt(), 0)
+            let level = arg.substring(2, 1).parseInt().unwrapOr(0)
             if (level < 0 or level > 3) {
                 diag_error_code("P1041", "unknown optimization level ".concat(diagQuote(arg)))
                 return 1

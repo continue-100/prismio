@@ -1,16 +1,16 @@
 # Graph Report - prismio  (2026-09-30)
 
 ## Corpus Check
-- 310 files · ~707,120 words
+- 310 files · ~707,343 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4380 nodes · 7933 edges · 311 communities (302 shown, 9 thin omitted)
+- 4380 nodes · 7933 edges · 310 communities (301 shown, 9 thin omitted)
 - Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 570 edges (avg confidence: 0.77)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `759f5eb8`
+- Built from commit: `9f5f79e7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -92,6 +92,7 @@
 - verify_separation.sh
 - Engine
 - package.sh script
+- Tier 2 — required by specified AIF features
 - bootstrap.ps1
 - die
 - verify_separation.ps1
@@ -229,7 +230,6 @@
 - Worker-ready implementation tasks
 - Gap 4: channel runtime ignores endpoint topology
 - Concepts
-- read_file
 - LLVM IR and final assembly audit
 - Gap 6: functional-update reuse is not represented
 - Gap 7: temporary allocation extents are still coarse
@@ -350,11 +350,11 @@
 - **Shared fail(message) test-harness helper pattern across feature tests** — tests_test_01_variables_fail, tests_test_02_if_else_fail, tests_test_03_while_loops_fail, tests_test_04_structs_fail, tests_test_05_enums_fail, tests_test_06_recursion_fail, tests_test_07_booleans_fail, tests_test_08_mutability_fail, tests_test_09_strings_fail, tests_test_10_expressions_fail, tests_test_11_returns_fail, tests_test_12_imports_fail, tests_test_13_globals_fail [INFERRED 0.95]
 - **Prismio Ownership System (Move/Drop/Borrow) Demonstration** — tests_test_23_move_main, tests_test_24_drop_main, tests_test_25_conventions_main, tests_test_26_borrow_reuse_main [INFERRED 0.85]
 
-## Communities (311 total, 9 thin omitted)
+## Communities (310 total, 9 thin omitted)
 
 ### Community 0 - "malloc"
 Cohesion: 0.02
-Nodes (53): aif_bracketable_region_call_sites(), aif_call_edge(), aif_call_opaque(), aif_check_pins(), aif_con_arg(), aif_con_bind(), aif_con_borrow(), aif_con_escape_caller() (+45 more)
+Nodes (48): aif_call_edge(), aif_call_opaque(), aif_check_pins(), aif_con_arg(), aif_con_bind(), aif_con_borrow(), aif_con_escape_caller(), aif_con_escape_global() (+40 more)
 
 ### Community 1 - "fn compile_source(path, output_file, run_after_build) -> Int"
 Cohesion: 0.18
@@ -373,8 +373,8 @@ Cohesion: 0.04
 Nodes (44): RtProfField, RtProfType, list_get(), list_get_inline(), list_get_inline_scalar(), list_set_inline_scalar(), list_set_unstamped(), list_slice_get() (+36 more)
 
 ### Community 5 - "lang_runtime.c"
-Cohesion: 0.08
-Nodes (46): CallEdge, bits_test(), Bits, aif_arena_high_water(), aif_arena_range_first(), aif_arena_range_last(), aif_arena_unsized_sites(), aif_auto_arena_at_node() (+38 more)
+Cohesion: 0.07
+Nodes (52): CallEdge, aif_arena_blockers(), aif_arena_high_water(), aif_arena_range_first(), aif_arena_range_last(), aif_arena_unsized_sites(), aif_auto_arena_at_node(), aif_bracket_callee() (+44 more)
 
 ### Community 7 - "Borrow Checking"
 Cohesion: 0.08
@@ -389,16 +389,16 @@ Cohesion: 0.09
 Nodes (27): Arithmetic Operators, Global Variables, Mutability (mut bindings), Operator Precedence / Expression Evaluation, Variable Declarations, bump_global(amount) function, fail(message) function (test_01_variables), main() function (test_01_variables) (+19 more)
 
 ### Community 10 - "g2_bench_arena.c"
-Cohesion: 0.14
-Nodes (36): LLVMBasicBlockRef, block_done(), block_for(), element_from_memory(), element_memory_type(), element_to_memory(), flat_element_address(), ir_br_numbered() (+28 more)
+Cohesion: 0.15
+Nodes (34): LLVMBasicBlockRef, block_done(), block_for(), element_to_memory(), flat_element_address(), ir_br_numbered(), ir_call_indirect_ptr(), ir_cond_br_numbered() (+26 more)
 
 ### Community 11 - "bench.py"
 Cohesion: 0.08
-Nodes (62): byte_gep(), coerce_for(), global_named(), intern_value(), ir_alloca(), ir_array_copy_into(), ir_array_copy_key(), ir_array_load() (+54 more)
+Nodes (62): byte_gep(), coerce_for(), intern_value(), ir_alloc_cycle(), ir_alloca(), ir_array_copy_into(), ir_array_copy_key(), ir_array_load() (+54 more)
 
 ### Community 12 - "ir_intern"
-Cohesion: 0.07
-Nodes (53): NodeArgs, aif_arena_at_node(), aif_call_arg_outlives_call(), aif_cycle_at_node(), aif_elem_owner_at_node(), aif_elem_type_at_node(), aif_field_is_counted(), aif_field_is_cyclic() (+45 more)
+Cohesion: 0.12
+Nodes (29): NodeArgs, aif_arena_at_node(), aif_call_arg_outlives_call(), aif_cycle_at_node(), aif_elem_owner_at_node(), aif_elem_type_at_node(), aif_field_is_counted(), aif_frees_at_scope_node() (+21 more)
 
 ### Community 13 - "setup_llvm.py"
 Cohesion: 0.08
@@ -437,8 +437,8 @@ Cohesion: 0.08
 Nodes (17): AIF Evidence, Before quoting any number, Judgement, Measured, Projected, not measured, 1 · How it was found, 2 · The defect, 3 · The fix, and why only one of the three (+9 more)
 
 ### Community 22 - "llvm-api-backend.c"
-Cohesion: 0.13
-Nodes (42): Deriv, aif_oom(), bits_clear(), bits_count_at_least_two(), bits_ensure(), bits_free(), bits_is_empty(), bits_or() (+34 more)
+Cohesion: 0.12
+Nodes (44): Deriv, aif_oom(), bits_clear(), bits_count_at_least_two(), bits_ensure(), bits_free(), bits_is_empty(), bits_or() (+36 more)
 
 ### Community 23 - "Enum Types"
 Cohesion: 0.24
@@ -497,8 +497,8 @@ Cohesion: 0.40
 Nodes (6): Struct (Custom Data Type) Declarations, struct Parser, struct Token, struct Point, struct Point, struct Item
 
 ### Community 37 - "aif_tier_of"
-Cohesion: 0.07
-Nodes (34): band_sum(), blake3_chunk(), BoundedQueue, cap_, closed_, mu_, not_empty_, not_full_ (+26 more)
+Cohesion: 0.16
+Nodes (12): BoundedQueue, cap_, closed_, mu_, not_empty_, not_full_, queue_, channel_pipeline() (+4 more)
 
 ### Community 38 - "main() function (test_07_booleans)"
 Cohesion: 0.50
@@ -605,8 +605,8 @@ Cohesion: 0.22
 Nodes (21): bench_next_random(), Key, cost_ns(), displacement(), keys_ids(), keys_sort_strings(), main(), mix_a() (+13 more)
 
 ### Community 64 - "Cross-language results — Prismio vs Rust vs Swift"
-Cohesion: 0.13
-Nodes (20): base_type(), bracket_masks(), elem_key(), ffi_arena_cannot_serve(), main(), measure_masks(), SPEC 5.2.1: per function, may a caller's `region` bracket a call to it?      The, The counts the differential compares against `prismio aif --summary`.      **`re (+12 more)
+Cohesion: 0.12
+Nodes (21): base_type(), bracket_masks(), elem_key(), ffi_arena_cannot_serve(), main(), measure_masks(), SPEC 5.2.1: per function, may a caller's `region` bracket a call to it?      The, The counts the differential compares against `prismio aif --summary`.      **`re (+13 more)
 
 ### Community 65 - "g4_tuned.rs"
 Cohesion: 0.12
@@ -617,8 +617,8 @@ Cohesion: 0.10
 Nodes (21): 1 · AIF core — genuinely ours, 2 · AIF's stake in language features it does not own, 3 · Compiler requirements AIF genuinely has, 4 · Measurement, 5 · Not AIF — recorded, then handed over, 6 · Over-built — defer or cut, A3. Realised context counts *(measurement)*, A4. Arena high-water marks *(measurement)* (+13 more)
 
 ### Community 67 - "g1_arena.rs"
-Cohesion: 0.15
-Nodes (9): Engine, Does this expression contain `join <name>`?          Stops at any statement kind, The statement list under a block child slot, or [] when absent., Some path through this statement leaves the scope without joining.          `in_, Every path through this statement joins., Every path through this chain joins before control leaves it.          The escap, Mark every `let t = spawn ...` in this chain that is joined before the         c, What the extern declaration said, or None to fall through.          A declared c (+1 more)
+Cohesion: 0.12
+Nodes (10): Engine, Where a value assigned to `name` has to stay alive until., Does this expression contain `join <name>`?          Stops at any statement kind, The statement list under a block child slot, or [] when absent., Some path through this statement leaves the scope without joining.          `in_, Every path through this statement joins., Every path through this chain joins before control leaves it.          The escap, Mark every `let t = spawn ...` in this chain that is joined before the         c (+2 more)
 
 ### Community 70 - "g2_cull_probe.c"
 Cohesion: 0.10
@@ -637,16 +637,20 @@ Cohesion: 0.17
 Nodes (33): adopt(), build_zstd(), download(), exe(), extract(), is_bitcode(), llvm_config(), log() (+25 more)
 
 ### Community 74 - "verify_separation.sh"
-Cohesion: 0.17
-Nodes (19): binary_search_work(), dijkstra_shortest_path(), lz4_compress(), sort_strings(), bench_next_random(), bytecode_interpreter(), monte_carlo(), flat_bitset() (+11 more)
+Cohesion: 0.11
+Nodes (35): binary_search_work(), dijkstra_shortest_path(), lz4_compress(), sort_strings(), bench_next_random(), band_sum(), blake3_chunk(), bytecode_interpreter() (+27 more)
 
 ### Community 75 - "Engine"
 Cohesion: 0.17
 Nodes (12): 1 · For 0.1, 2 · Where it stands, 3 · Design, 4 · Phases, 5 · Alternatives considered and set aside, 6 · Acceptance, before calling channels production-ready, 7 · Decisions still needed, Channels: what 0.1 needs, and the production design after it (+4 more)
 
 ### Community 76 - "package.sh script"
-Cohesion: 0.27
-Nodes (12): LLVMTypeRef, array_base(), array_copy_bytes(), array_slot(), existing_global_of_type(), ir_array_alloca(), ir_array_alloca_zeroed(), ir_array_copy() (+4 more)
+Cohesion: 0.21
+Nodes (15): LLVMTypeRef, array_base(), array_copy_bytes(), array_slot(), element_from_memory(), element_memory_type(), existing_global_of_type(), global_named() (+7 more)
+
+### Community 77 - "Tier 2 — required by specified AIF features"
+Cohesion: 0.23
+Nodes (7): 1 · Result, 2 · The boundary is cheap because the API is handle-based, 3 · Most of the sealing loss is recoverable with contracts, 4 · A prototype bug worth recording, 5 · Compiler bug found: `List<Int>` miscompiles, 6 · What this does not show, AIF — Engine/Game Boundary Results (A2)
 
 ### Community 78 - "bootstrap.ps1"
 Cohesion: 0.14
@@ -765,8 +769,8 @@ Cohesion: 0.15
 Nodes (13): 0 · The diagnosis, and the one thing everybody had backwards, 1 · Close the runtime seam — built, with one deployment decision left, 2 · Reuse analysis — useful only where the program has its trigger shape, 3 · Regions: go non-lexical and polymorphic, 4 · Views and slices — bounded views and mutable data views shipped, 5 · The allocator — measured and closed for the current workload, 6 · The ranked plan, 7 · Measured dead ends — do not re-derive these (+5 more)
 
 ### Community 107 - "4 · Transfer rules"
-Cohesion: 0.14
-Nodes (18): aif_arena_blockers(), aif_bracket_callee(), aif_bracket_count(), aif_bracket_scope(), aif_bracket_served(), aif_fn_calls_in_region(), aif_nearest_region_name(), aif_region_call_sites() (+10 more)
+Cohesion: 0.11
+Nodes (27): ctz64(), aif_field_is_cyclic(), aif_field_release(), aif_fn_lookup(), aif_fn_may_return_param(), aif_fn_may_return_view_of_param(), aif_param_reusable(), aif_type_acyclic() (+19 more)
 
 ### Community 108 - "5 · The fixed-point algorithm"
 Cohesion: 0.15
@@ -865,8 +869,8 @@ Cohesion: 0.25
 Nodes (11): NameList, ir_declare_named_type(), ir_is_borrowed(), ir_is_global_name(), ir_is_moved(), ir_mark_borrowed(), ir_mark_moved(), ir_named_type_kind() (+3 more)
 
 ### Community 132 - "g1_idiomatic.rs"
-Cohesion: 0.10
-Nodes (22): Nominal, aif_layout_cand_bytes(), aif_layout_field(), aif_layout_rank(), aif_layout_split_select(), aif_layout_veto_reason(), aif_reset(), candidate_with_hot() (+14 more)
+Cohesion: 0.08
+Nodes (34): Nominal, bits_test(), Bits, aif_compute_type_acyclic(), aif_layout_cand_bytes(), aif_layout_cand_field_hot(), aif_layout_field(), aif_layout_rank() (+26 more)
 
 ### Community 133 - "g2_arena.rs"
 Cohesion: 0.20
@@ -909,8 +913,8 @@ Cohesion: 0.12
 Nodes (16): A constant shared across the seam has one spelling everywhere, A returned `String` must be freeable on every path, Adding or removing a runtime source, Allocations returned to Prismio go through `rt_base_alloc`, Before you commit, C code style, Comments, Done (+8 more)
 
 ### Community 143 - "v0.1 concurrency — the blocking typed `Channel<T>`, and g9's fifth arm"
-Cohesion: 0.27
-Nodes (3): Where a value assigned to `name` has to stay alive until., Scope forest. Each function's body block is a root; join is the LCA,     which e, Scopes
+Cohesion: 0.33
+Nodes (6): Particle, life, vx, vy, x, y
 
 ### Community 144 - "13. Performance"
 Cohesion: 0.20
@@ -1153,8 +1157,8 @@ Cohesion: 0.36
 Nodes (8): JitProcessSymbols, LLVMErrorRef, LLVMOrcLLJITRef, compiler_pending_arguments(), ir_jit_run_file(), jit_failed(), jit_failed_unresolved(), jit_process_symbols()
 
 ### Community 204 - "13. Performance"
-Cohesion: 0.10
-Nodes (30): ir_get_struct_field_count(), ir_get_struct_field_type_at(), ir_is_struct_type_name(), attach_cold(), attach_cold_rc(), get_or_declare_alloc_fn(), ir_alloc_cycle(), ir_alloc_object() (+22 more)
+Cohesion: 0.11
+Nodes (29): ir_get_struct_field_count(), ir_get_struct_field_type_at(), ir_is_struct_type_name(), attach_cold(), attach_cold_rc(), get_or_declare_alloc_fn(), ir_alloc_object(), ir_alloc_rc() (+21 more)
 
 ### Community 205 - "Getting Started"
 Cohesion: 0.17
@@ -1195,10 +1199,6 @@ Nodes (7): 2.1 `E` — escape, 2.2 `A` — aliasing, 2.3 `T` — thread affinity
 ### Community 214 - "Concepts"
 Cohesion: 0.10
 Nodes (18): 1 · `tools/release_gate.py`, 2 · Benchmark matrix, The v0.1 gate and benchmark matrix on the branch head, 2026-09-25, Checking one file of a program, Current boundary, JSON diagnostics, Prismio IDE protocol, POST_INSTALL.txt (install success message) (+10 more)
-
-### Community 215 - "read_file"
-Cohesion: 0.29
-Nodes (7): 1 · Result, 2 · The boundary is cheap because the API is handle-based, 3 · Most of the sealing loss is recoverable with contracts, 4 · A prototype bug worth recording, 5 · Compiler bug found: `List<Int>` miscompiles, 6 · What this does not show, AIF — Engine/Game Boundary Results (A2)
 
 ### Community 216 - "LLVM IR and final assembly audit"
 Cohesion: 0.43
@@ -1261,7 +1261,7 @@ Cohesion: 0.33
 Nodes (6): 16. A practical review checklist, Architecture, Code, Comments, Correctness, Performance
 
 ### Community 231 - "Performance: what is open, and how to measure it"
-Cohesion: 0.20
+Cohesion: 0.18
 Nodes (8): 1 · For 0.1, 2 · Current position, 3.1 · Compiler levers, 3.2 · Platform, not performance, 3 · Later, 4 · Closed, with evidence, 5 · How this work is done, Performance: what is open, and how to measure it
 
 ### Community 232 - "aif_records"
@@ -1269,7 +1269,7 @@ Cohesion: 0.33
 Nodes (6): 5. Ownership, handles, and globals, Globals holding handles need no initializer, Handles are `Ptr`, Strings and structs are affine, Test pointer absence with pointer helpers, The old string-punning invariant is retired
 
 ### Community 233 - "2 · Later"
-Cohesion: 0.20
+Cohesion: 0.22
 Nodes (9): 1 · For 0.1: no known way to corrupt memory in a program that compiles, 2.1 · Observability first, 2.2 · Correctness of the runtime model, 2.3 · Middle IR and interprocedural facts, 2.4 · Representation, 2.5 · Only if telemetry asks for them, 2 · Later, 3 · What the deep dive established that still holds (+1 more)
 
 ### Community 234 - "M4.1 — first-class `Slice<T>`"
@@ -1281,7 +1281,7 @@ Cohesion: 0.33
 Nodes (5): 1 · The shapes, 2 · Why, 3 · What moved, 4 · Pinned, Three ownership shapes that freed memory that was not live
 
 ### Community 236 - "arena_emit_range"
-Cohesion: 0.33
+Cohesion: 0.40
 Nodes (4): elem_spelling_resolved(), Bind a tainted base's element keys together, both ways.          A base with eve, Whether this spelling names one container rather than every instance of a     ba, vs_ref()
 
 ### Community 237 - "list_set"
@@ -1509,8 +1509,8 @@ Cohesion: 0.29
 Nodes (6): Landing, Properties are declared: `prop`, Still open, The rule before, The rule now, Which std functions are properties
 
 ### Community 311 - ".new_site"
-Cohesion: 0.22
-Nodes (5): ann_leaf_name(), Model, The type an annotation refers to: `[T]` and `List<T>` hang T off c1,     and the, Tarjan-free SCC via iterative Kosaraju on the type reference graph         (INFE, Site
+Cohesion: 0.18
+Nodes (6): ann_leaf_name(), Model, The type an annotation refers to: `[T]` and `List<T>` hang T off c1,     and the, Does a value of this type participate in the memory model at all?, Tarjan-free SCC via iterative Kosaraju on the type reference graph         (INFE, Site
 
 ### Community 313 - "The relational tier, byte-sized Bool elements, and three gaps read from disassembly"
 Cohesion: 0.33

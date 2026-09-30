@@ -27,10 +27,10 @@ reference's `T?` is unchanged: a nullable pointer, where `none` is null.
 |---|---|---|
 | 0 | [Cast bugs](#0-cast-bugs) | done 2026-09-30 |
 | 1 | [Scalar optionals: `T?` by value](#1-scalar-optionals) | done 2026-09-30 |
-| 2 | [`as String`](#2-as-string) | todo |
+| 2 | [`as String`](#2-as-string) | done 2026-09-30 |
 | 3 | [Checked number conversions: `x as T?`](#3-checked-number-conversions) | todo |
 | 4 | [Text to value: `s as T` and `s as T?`](#4-text-to-value) | todo |
-| 5 | [std fill-out: every width has `toString`, `toFloat`, `parse`](#5-std-fill-out) | todo |
+| 5 | [std fill-out: every width has `toString`, `toFloat`, `parse`](#5-std-fill-out) | done 2026-09-30 |
 | 6 | [Enum and `Int` interchange](#6-enum-and-int) | todo (known issue) |
 | 7 | [Docs, both apps](#7-docs) | todo |
 | 8 | [IntelliJ plugin](#8-intellij-plugin) | todo |
@@ -137,6 +137,12 @@ Original list, for reference:
 Every number type, `Bool`, `Char` and `String` convert with `as String`, as
 `x.toString()` does -- the same text, and an allocation the caller owns.
 
+**Done 2026-09-30.** Sema rewrites the cast into `toString(x)` bound to
+std.string, as `a + b` becomes `concat`, so the two cannot disagree; without
+`import std.string` it is an error saying so (neg_244). `String` gained a
+`toString` (an owned copy). An enum is refused, except that a variant still
+types as `Int` (task 6). test_243.
+
 ### 3. Checked number conversions
 
 `x as T?` between any two number types. `none` when the value does not fit:
@@ -155,6 +161,14 @@ compile time, an error when the text does not parse. Otherwise an error naming
 `toString`, `toString(radix)`, `toFloat` and `parse*` on `I8`, `I16`, `U8`,
 `U16`, `U32`, `Usize` and `Isize`, which today have none. These are also what
 tasks 2-4 lower to.
+
+**Done 2026-09-30, and `parse*` changed shape.** Every `parse` now answers a
+scalar `T?` rather than `Option<T>` (decided with the user): no allocation per
+parse, and `s as Int?` (task 4) is `s.parseInt()`. `parseI8`, `parseI16`,
+`parseIsize`, `parseU8`, `parseU16`, `parseU32` and `parseUsize` are new, each
+with a radix overload, range-checked by narrowing the 64-bit parse. The 11
+`optionOr(x.parseInt(), d)` sites in `src/` are `x.parseInt().unwrapOr(d)`. The
+docs pages that show the `Option` form are task 7.
 
 ### 6. Enum and `Int`
 

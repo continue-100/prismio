@@ -1477,7 +1477,7 @@ private fn aifEmitCause(site: Int, sourcePath: String, converged: Bool,
 // stable symbol from a manifest diff. Returns 1 when it found one.
 public fn aifExplain(selector: String, sourcePath: String, converged: Bool) -> Int {
     aifPrepareOrder()
-    let numeric = optionOr(selector.parseInt(), -1)
+    let numeric = selector.parseInt().unwrapOr(-1)
     if (numeric > 0) {
         let selected = aifHumanSiteAtId(sourcePath, numeric)
         if (selected >= 0) {

@@ -98,7 +98,7 @@ fn main() -> Int {
     // `--verify` so a future leak here means something.
     let parts = "a,b,c".split(',')
     if (parts.length != 3) { return fail("String.split") }
-    if (optionOr("42".parseInt(), 0) != 42) { return fail("String.parseInt") }
+    if ("42".parseInt().unwrapOr(0) != 42) { return fail("String.parseInt") }
     // Bound for the same reason, and this one is worth naming: the intermediate
     // of a *chain* is an owned temporary passed straight into the next call, and
     // KNOWN_ISSUES.md's "argument-position release is withheld when the enclosing call

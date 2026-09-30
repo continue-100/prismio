@@ -112,7 +112,7 @@ private fn parseRegionStatement(p: Parser) -> ASTNode {
         if (cap.type != TokenType.NUMBER_LITERAL) {
             p.fatal("expected a byte budget, found ".concat(parserDescribe(cap)))
         }
-        regionNode.i1 = optionOr(cap.value.parseInt(), 0)
+        regionNode.i1 = cap.value.parseInt().unwrapOr(0)
         p.advance()
         p.expectVal(TokenType.SEPARATOR, ")", "region budget")
     }

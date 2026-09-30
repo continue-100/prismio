@@ -311,8 +311,8 @@ private fn prismioRequirementMet(required: String) -> Bool {
     for i in 0..<3 {
         let mut want = 0
         let mut got = 0
-        if (i < wanted.length) { want = optionOr(wanted[i].parseInt(), 0) }
-        if (i < have.length) { got = optionOr(have[i].parseInt(), 0) }
+        if (i < wanted.length) { want = wanted[i].parseInt().unwrapOr(0) }
+        if (i < have.length) { got = have[i].parseInt().unwrapOr(0) }
         if (want > got) { return false }
         if (want < got) { return true }
     }

@@ -1,0 +1,77 @@
+// `x as String` for every number, Bool, Char and String -- the text
+// `x.toString()` gives, since the cast lowers to that call -- and `toString`,
+// `toFloat` and a range-checked `parse` on the widths that had none
+// (docs/CONVERSIONS_PLAN.md, tasks 2 and 5). Every `parse` answers a `T?` by
+// value. The harness runs this under `--verify` and requires 0 leaked.
+
+import std.io
+import std.string
+import std.math
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let n = 42
+    if ("n = " + n as String != "n = 42") { return fail("Int as String") }
+    if (2.5 as String != "2.5" or true as String != "true" or 'x' as String != "x") {
+        return fail("Float, Bool or Char as String")
+    }
+    if ((200 as U8) as String != "200" or (-7 as I8) as String != "-7"
+            or (5000000000 as I64) as String != "5000000000") {
+        return fail("U8, I8 or I64 as String")
+    }
+    let s = "same"
+    let copy = s as String
+    if (copy != "same" or s != "same") { return fail("String as String is a copy") }
+    let mut digits = 0
+    for i in 0..<1000 { digits = digits + (i as String).length }
+    if (digits != 2890) { return fail("as String in a loop") }
+
+    let a: I8 = -5
+    let b: I16 = 300
+    let c: U8 = 255
+    let d: U16 = 65535
+    let e: U32 = 4000000000
+    let f = 7 as Usize
+    let g = -7 as Isize
+    if (a.toString() != "-5" or b.toString(16) != "12c" or c.toString(2) != "11111111"
+            or d.toString() != "65535" or e.toString() != "4000000000"
+            or f.toString() != "7" or g.toString() != "-7") {
+        return fail("toString on I8, I16, U8, U16, U32, Usize or Isize")
+    }
+    if (c.toFloat() != 255.0 or e.toFloat() != 4000000000.0 or g.toFloat() != -7.0
+            or a.toFloat() != -5.0 or f.toFloat() != 7.0) {
+        return fail("toFloat")
+    }
+    if ("255".parseU8().unwrapOr(0 as U8) != 255 as U8 or "256".parseU8() != none
+            or "-1".parseU8() != none) {
+        return fail("parseU8")
+    }
+    if ("-128".parseI8().unwrapOr(0 as I8) != -128 as I8 or "-129".parseI8() != none
+            or "7f".parseI8(16).unwrapOr(0 as I8) != 127 as I8) {
+        return fail("parseI8")
+    }
+    if ("-32768".parseI16().unwrapOr(0 as I16) != -32768 as I16 or "32768".parseI16() != none
+            or "65535".parseU16().unwrapOr(0 as U16) != 65535 as U16 or "65536".parseU16() != none) {
+        return fail("parseI16 or parseU16")
+    }
+    if ("4294967295".parseU32().unwrapOr(0 as U32) != 4294967295 as U32
+            or "4294967296".parseU32() != none) {
+        return fail("parseU32")
+    }
+    if ("12".parseUsize().unwrapOr(0 as Usize) != 12 as Usize
+            or "-12".parseIsize().unwrapOr(0 as Isize) != -12 as Isize or "x".parseUsize() != none) {
+        return fail("parseUsize or parseIsize")
+    }
+    if ("yes".parseBool() != none or "TRUE".parseBool().unwrapOr(false) == false
+            or "0.25".parseFloat().unwrapOr(0.0) != 0.25) {
+        return fail("parseBool or parseFloat")
+    }
+
+    println("PASS: as String")
+    return 0
+}
