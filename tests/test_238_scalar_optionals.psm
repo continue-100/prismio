@@ -1,0 +1,155 @@
+// A scalar's `T?`: a present flag beside the value, copied like `T` and never
+// allocated (docs/CONVERSIONS_PLAN.md, task 1). The harness runs this under
+// `--verify` and requires 0 leaked; run_scalar_optional_test also reads `half`'s
+// IR for a `malloc`, and runs scalar_optional_expect_probe for the panic.
+//
+//   * Every scalar kind: integer widths, Float, Bool, Char, a fieldless enum.
+//   * A plain value where a `T?` is expected -- `let`, assignment, `return`, an
+//     argument, a struct field -- and `none`, and `default`.
+//   * `== none`, and two optionals compared by value.
+//   * In a container. Up to 32 bits of payload an element is one integer twice
+//     the payload's width (optCarrierKey); `Float?` and `I64?` are 16-byte rows.
+//     `Vec<Int?>` did not pass LLVM's verifier until 2026-09-30.
+//   * As a Map value, and two Maps with different optional value types: every
+//     `T?` mangled to `Invalid`, so the second Map got the first one's methods.
+
+import std.io
+import std.map
+
+enum Color { Red, Green, Blue }
+
+struct Reading {
+    id: Int,
+    value: Float?
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn half(n: Int) -> Int? {
+    if (n % 2 != 0) { return none }
+    return n / 2
+}
+
+fn describe(x: Int?) -> Int {
+    if (x == none) { return 0 - 1 }
+    return expect(x)
+}
+
+fn firstOr<T>(v: T?, d: T) -> T { return v.unwrapOr(d) }
+fn wrap<T>(v: T) -> T? { return v }
+
+fn main() -> Int {
+    // Values
+    let a: Int? = half(8)
+    let b = half(7)
+    if (describe(a) != 4 or describe(b) != 0 - 1) { return fail("a returned Int?") }
+    if (describe(5) != 5 or describe(none) != 0 - 1) { return fail("an Int? argument") }
+    let c = a
+    if (a != c or a == b or a == none or b != none) { return fail("comparing Int?") }
+    let mut m: Int? = none
+    if (m.unwrapOr(42) != 42) { return fail("unwrapOr of none") }
+    m = 9
+    if (m.unwrapOr(42) != 9 or expect(m) != 9) { return fail("assigning an Int to an Int?") }
+    let small: U8? = 200
+    if (small.unwrapOr(0 as U8) != 200 as U8) { return fail("U8?") }
+    let wide: I64? = 5000000000 as I64
+    if (wide.unwrapOr(0 as I64) != 5000000000 as I64) { return fail("I64?") }
+    let f: Float? = 2.5
+    let flag: Bool? = true
+    let ch: Char? = 'x'
+    let col: Color? = Color.Blue
+    if (f.unwrapOr(0.0) != 2.5 or flag.unwrapOr(false) != true or ch.unwrapOr('?') != 'x'
+            or col.unwrapOr(Color.Red) != Color.Blue) {
+        return fail("Float?, Bool?, Char? or an enum's T?")
+    }
+    let r = Reading { id: 1, value: 3.5 }
+    let r2 = Reading { id: 2, value: none }
+    if (r.value.unwrapOr(0.0) != 3.5 or r2.value != none) { return fail("a Float? field") }
+    let d: Int? = default
+    if (d != none) { return fail("default of an Int? is none") }
+    let w: Int? = wrap(11)
+    if (w.unwrapOr(0) != 11 or firstOr(w, 0) != 11 or firstOr<Int>(none, 3) != 3) {
+        return fail("a generic T?")
+    }
+
+    // Vec, one integer per element
+    let mut xs: Vec<Int?> = []
+    for i in 0..<1000 { xs.push(half(i)) }
+    let mut total = 0
+    let mut absent = 0
+    for x in xs {
+        if (x == none) { absent = absent + 1 } else { total = total + expect(x) }
+    }
+    if (total != 124750 or absent != 500) { return fail("Vec<Int?> push and iterate") }
+    for i in 0..<xs.length {
+        if (xs[i] == none) { xs[i] = 0 - 1 }
+    }
+    let mut negative = 0
+    for i in 0..<xs.length { if (xs[i].unwrapOr(0) < 0) { negative = negative + 1 } }
+    if (negative != 500) { return fail("Vec<Int?> set by index") }
+    xs.insert(0, none)
+    if (xs[0] != none or xs[1].unwrapOr(9) != 0 or xs.length != 1001) {
+        return fail("Vec<Int?> insert")
+    }
+    let window = xs[1..<4]
+    if (window[1].unwrapOr(9) != 0 - 1 or window[2].unwrapOr(9) != 1) { return fail("a slice of Int?") }
+    let filled = Vec<Int?>.filled(4, 9)
+    let empty = Vec<Int?>.filled(3, none)
+    if (filled[3].unwrapOr(0) != 9 or empty[2] != none) { return fail("Vec<Int?>.filled") }
+    let arr: [Int?] = [5, none, 7]
+    if (arr[2].unwrapOr(0) != 7 or arr[1] != none) { return fail("an [Int?] literal") }
+
+    let mut bs: Vec<Bool?> = []
+    bs.push(false)
+    bs.push(none)
+    let mut us: Vec<U8?> = []
+    us.push(255 as U8)
+    us.push(none)
+    let mut cs: Vec<Char?> = []
+    cs.push('a')
+    cs.push(none)
+    if (bs[0].unwrapOr(true) != false or bs[1] != none or us[0].unwrapOr(0 as U8) != 255 as U8
+            or us[1] != none or cs[0].unwrapOr('?') != 'a' or cs[1] != none) {
+        return fail("Vec of Bool?, U8? or Char?")
+    }
+
+    // Vec, a 16-byte row per element
+    let mut fs: Vec<Float?> = []
+    for i in 0..<100 { if (i % 2 == 0) { fs.push(i as Float) } else { fs.push(none) } }
+    let mut fsum = 0.0
+    for i in 0..<fs.length { fsum = fsum + fs[i].unwrapOr(0.5) }
+    if (fsum != 2475.0) { return fail("Vec<Float?>") }
+    fs[1] = 7.0
+    fs.insert(0, none)
+    if (fs[0] != none or fs[2].unwrapOr(0.0) != 7.0) { return fail("Vec<Float?> set and insert") }
+    let mut ls: Vec<I64?> = []
+    for i in 0..<30 { if (i % 3 == 0) { ls.push(none) } else { ls.push(i as I64 * 10000000000) } }
+    let mut big: I64 = 0
+    for v in ls { big = big + v.unwrapOr(0 as I64) }
+    if (big != 3000000000000 as I64) { return fail("Vec<I64?>") }
+
+    // Map values
+    let mut counts: Map<Int, Int?> = { 1: 10, 2: none }
+    counts.set(3, 30)
+    counts.set(4, none)
+    if (counts.at(1).unwrapOr(0) != 10 or counts.at(2) != none or counts.at(3).unwrapOr(0) != 30
+            or counts.getOr(4, 5) != none or counts.getOr(9, 5).unwrapOr(0) != 5) {
+        return fail("Map<Int, Int?>")
+    }
+    let mut weights: Map<Int, Float?> = {}
+    weights.set(1, 2.5)
+    weights.set(2, none)
+    let mut bytes: Map<Int, U8?> = {}
+    bytes.set(1, 7 as U8)
+    if (weights.at(1).unwrapOr(0.0) != 2.5 or weights.at(2) != none
+            or bytes.at(1).unwrapOr(0 as U8) != 7 as U8) {
+        return fail("two Maps with different optional value types")
+    }
+
+    println("PASS: scalar optionals")
+    return 0
+}

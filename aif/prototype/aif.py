@@ -197,6 +197,10 @@ FFI_CONTRACTS = {
     'chan_send':      {0: 'borrow', 1: 'consume'},
     'chan_new':       {0: 'borrow'},
     'chan_recv':      {0: 'borrow'},
+    # A plain-data channel copies through its ring: the send only reads the
+    # message, and the receive fills storage the caller allocated.
+    'chan_send_copy': {0: 'borrow', 1: 'borrow'},
+    'chan_recv_copy': {0: 'borrow'},
     'chan_share':     {0: 'borrow'},
     'chan_close':     {0: 'borrow'},
     'chan_len':       {0: 'borrow'},
@@ -227,6 +231,8 @@ FFI_ALLOCATES_THROUGH_ARENA_HINT = {
     'str_concat', 'str_substring', 'str_slice', 'str_with_capacity', 'str_clone',
     'str_clone_n', 'str_own', 'str_from_double', 'str_from_double_fixed',
     'int_to_str', 'list_new', 'list_new_with_capacity', 'list_new_filled', 'soa', 'aos',
+    # Codegen allocates the received value by its placement; see contracts.psm.
+    'chan_recv_copy',
 }
 
 
@@ -332,6 +338,7 @@ FFI_RETURNS_PRODUCE = {
     '__builtin_string_concat_inline6', '__builtin_string_from_int',
     'int_to_str',
     'read_file', 'get_directory', 'join_path',
+    'executable_directory', 'prismio_executable_directory', 'command_quote_arg',
     # A child's output, allocated on this side. Its empty and error paths
     # allocate too, for str_substring's reason.
     'proc_read_all',
@@ -340,6 +347,7 @@ FFI_RETURNS_PRODUCE = {
     # thread instead of in libc. See ffi_arena_cannot_serve for what it shares
     # with read_file that the runtime's string producers do not.
     'chan_recv',
+    'chan_recv_copy',
 }
 
 # A builtin is the one kind of runtime function this table is load-bearing for.
@@ -699,6 +707,13 @@ class Engine:
                 self.walk(b, sym, root)
 
     def new_site(self, ty, fn, scope, node):
+        # REQUIREMENTS 4, src/aif/model.psm's aifSiteType: a site typed `T?`
+        # allocates a `T`. The compiler has stripped the `?` since `chan_recv`;
+        # this side did not, which left a received `Job?` an `opaque` site that
+        # could never be T0 -- invisible while `foreign` kept both sides off T0,
+        # and a disagreement once `chan_recv_copy` lifted it.
+        if ty and len(ty) > 1 and ty.endswith('?'):
+            ty = ty[:-1]
         s = Site(len(self.m.sites), self.m.site_kind(ty), ty, fn, scope, node,
                  len(self.m.structs.get(ty, [])))
         self.m.sites.append(s)

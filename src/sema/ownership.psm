@@ -186,6 +186,58 @@ internal fn semaMarkSliceBinding(name: String, value: ASTNode, isDeclaration: Bo
 
 // Type-check a value against an expected type, allowing a bare integer literal to
 // take on any sized integer type (so `let x: U8 = 200` and `f(200)` type-check).
+// A value where a scalar's `T?` is wanted. `none` takes the optional's type, and
+// codegen's zero of `{ i1, T }` is the absent value. A `T` is checked as a `T`
+// -- so `let b: U8? = 200` types the literal as U8 -- and then wrapped in a cast
+// to `T?`, which codegen lowers to `{ true, value }`. An optional already, or a
+// value wrapped on an earlier visit, is only checked.
+private fn semaCheckScalarOptional(module: ASTNode, valNode: ASTNode, expected: TypeInfo,
+                                   context: String) -> TypeInfo {
+    if (valNode.kind == NodeKind.NONE_LITERAL_EXPR) {
+        nodeSetType(valNode, expected)
+        return expected
+    }
+    let actual = semaExpr(module, valNode)
+    if (actual.kind == TypeKind.OPTIONAL) {
+        semaExpectAssignable(valNode, context, expected, actual)
+        return actual
+    }
+    let present = semaCheckValue(module, valNode, typeOptionalInner(expected), context)
+    if (typeIsValid(present) == false) { return present }
+    semaWrapPresent(valNode, expected)
+    return expected
+}
+
+// Turns `valNode` into `valNode as T?` in place: the parent's pointer is the only
+// one there is, so the value moves into a fresh child. A cast with no written
+// type (child2) is this one, and semaCastExpr answers it from the node's type.
+private fn semaWrapPresent(valNode: ASTNode, optT: TypeInfo) {
+    let value = createNode(valNode.kind)
+    value.s1 = valNode.s1
+    value.s2 = valNode.s2
+    value.i1 = valNode.i1
+    value.i2 = valNode.i2
+    value.i3 = valNode.i3
+    value.child1 = valNode.child1
+    value.child2 = valNode.child2
+    value.child3 = valNode.child3
+    value.typeInfo = valNode.typeInfo
+    value.genericInfo = valNode.genericInfo
+    nodeSpanFrom(value, valNode)
+
+    valNode.kind = NodeKind.CAST_EXPR
+    valNode.s1 = ""
+    valNode.s2 = ""
+    valNode.i1 = 0
+    valNode.i2 = 0
+    valNode.i3 = 0
+    valNode.child1 = node_to_ptr(value)
+    valNode.child2 = ptr_null()
+    valNode.child3 = ptr_null()
+    valNode.genericInfo = ptr_null()
+    nodeSetType(valNode, optT)
+}
+
 internal fn semaCheckValue(module: ASTNode, valNode: ASTNode, expected: TypeInfo, context: String) -> TypeInfo {
     // `{ k: v }` becomes a call, or `{}` a `default`, before either is checked --
     // so the `default` below sees `{}` as it sees one that was written.
@@ -199,6 +251,9 @@ internal fn semaCheckValue(module: ASTNode, valNode: ASTNode, expected: TypeInfo
             nodeSetType(valNode, typeInvalid())
             return typeInvalid()
         }
+    }
+    if (typeIsValueOptional(expected)) {
+        return semaCheckScalarOptional(module, valNode, expected, context)
     }
     enumQualifyFromExpected(module, valNode, expected)
     if (typeIsValid(expected) and expected.kind == TypeKind.INT and semaIsIntLiteral(valNode)) {

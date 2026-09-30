@@ -117,16 +117,23 @@ fn main() -> Int {
         return umsTestFail("toolchain must be the stable first manifest block")
     }
 
-    // The launcher executes the host, so it may only name build state: under
-    // .prismio/, relative, with no `..`.
+    // Any host path is accepted -- a sub-project may name its parent's host --
+    // and only a host under the project's own `.prismio/` is one `clean` removes.
     let hostOutside = umsLoadText(
         "toolchain { host = \"bin/prismio\" } project { name = \"p\" version = \"0.1.0\" prismio = \"0.1\" } targets { executable(\"p\") { entry = \"src/main.psm\" } }",
         "memory:host-outside", ".", "debug")
     let hostEscapes = umsLoadText(
         "toolchain { host = \".prismio/../../x\" } project { name = \"p\" version = \"0.1.0\" prismio = \"0.1\" } targets { executable(\"p\") { entry = \"src/main.psm\" } }",
         "memory:host-escapes", ".", "debug")
-    if (hostOutside.valid or hostEscapes.valid or umsHostPathValid(".prismio/build/debug/prismio") == false) {
-        return umsTestFail("toolchain.host must name a path under .prismio/ with no `..`")
+    if (hostOutside.valid == false or hostEscapes.valid == false) {
+        return umsTestFail("toolchain.host outside .prismio/ should be accepted")
+    }
+    if (umsHostIsProjectBuildOutput(".prismio/build/debug/prismio") == false or
+        umsHostIsProjectBuildOutput("../.prismio/build/debug/prismio") or
+        umsHostIsProjectBuildOutput(".prismio/../../x") or
+        umsHostIsProjectBuildOutput("/opt/prismio/bin/prismio") or
+        umsHostIsProjectBuildOutput("bin/prismio")) {
+        return umsTestFail("only a host under the project's own .prismio/ is its build output")
     }
 
     let badNative = umsLoadText(
@@ -169,7 +176,7 @@ fn main() -> Int {
     // directories and a leading `-` is a flag.
     if (umsValidName("..") or umsValidName(".") or umsValidName("-x") or
         umsValidName("app-1.2") == false) {
-        return umsTestFail("names should start with a letter or a digit")
+        return umsTestFail("names should start with a letter, a digit or `_`")
     }
 
     let legacyCompiler = umsLoadText(

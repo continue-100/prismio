@@ -65,18 +65,16 @@ struct UmsToolchainConfiguration {
     host: String
 }
 
-// `toolchain.host` names an executable the launcher runs on every command, so it
-// is confined to the project's own build state: relative, no `..` component, and
-// under `.prismio/`. That directory is build output a checkout does not carry,
-// which is half of why a cloned repository cannot choose a program for
-// `prismio` to start; the host stamp beside a promoted host is the other half.
-// Public because the launcher's prefix reader applies the same rule before it
-// trusts the path, and a second copy would be a second answer.
-public fn umsHostPathValid(path: String) -> Bool {
+// Whether `toolchain.host` names this project's own build output: relative, under
+// `.prismio/`, with no `..` component. It is not a condition on the host -- a
+// sub-project may run its parent's, as `sandbox/` does with
+// `../.prismio/build/debug/prismio` -- because what stops a cloned repository
+// choosing a program for `prismio` to start is the `.trusted` stamp beside a
+// host this machine promoted, not where the host lives. It decides what `clean`
+// may delete: only a host the project owns, never a parent's compiler.
+public fn umsHostIsProjectBuildOutput(path: String) -> Bool {
     let length = __builtin_string_len(path)
-    if (length == 0) { return false }
-    if (path.charAt(0) == '/' or path.charAt(0) == '\\') { return false }
-    if (length > 1 and path.charAt(1) == ':') { return false }
+    if (length == 0 or umsAbsolutePath(path)) { return false }
     if (path.startsWith(".prismio/") == false and path.startsWith(".prismio\\") == false) {
         return false
     }
@@ -90,6 +88,13 @@ public fn umsHostPathValid(path: String) -> Bool {
         }
     }
     return true
+}
+
+public fn umsAbsolutePath(value: String) -> Bool {
+    let length = __builtin_string_len(value)
+    if (length == 0) { return false }
+    if (value.charAt(0) == '/' or value.charAt(0) == '\\') { return true }
+    return length > 1 and value.charAt(1) == ':'
 }
 
 struct UmsProjectModel {

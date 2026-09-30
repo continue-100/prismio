@@ -1,0 +1,15 @@
+// run_scalar_optional_test: `expect` on an absent scalar `T?` panics with the
+// message and `--> file:line:col` and exits 101. There is no pointer for
+// prismio_expect to test, so this is a branch codegen emits itself.
+import std.io
+
+fn lookup(present: Bool) -> Int? {
+    if (present) { return 7 }
+    return none
+}
+
+fn main() -> Int {
+    println(expect(lookup(true)))
+    println(expect(lookup(false)))
+    return 0
+}

@@ -196,6 +196,11 @@ private fn aifRuntimeContract(name: String, index: Int) -> Int {
         if (index == 1) { return AIF_FFI_CONSUME }
         return AIF_FFI_BORROW
     }
+    // A plain-data channel (sema's semaChannelCopies) copies the message into
+    // its ring, so the send only reads it: the value stays this frame's, may be
+    // a stack slot, and is released where it would have been without the send.
+    if (name.equals("chan_send_copy")) { return AIF_FFI_BORROW }
+    if (name.equals("chan_recv_copy")) { return AIF_FFI_BORROW }
     if (name.equals("chan_new")) { return AIF_FFI_BORROW }
     if (name.equals("chan_recv")) { return AIF_FFI_BORROW }
     if (name.equals("chan_share")) { return AIF_FFI_BORROW }
@@ -389,6 +394,10 @@ internal fn aifFfiArenaCannotServe(name: String) -> Bool {
 // for its own reason (it reallocates after the site returns).
 private fn aifFfiAllocatesThroughArenaHint(name: String) -> Bool {
     if (name.startsWith("__builtin_string_")) { return true }
+    // Not an allocation the runtime makes at all: codegen allocates the
+    // received value's storage by the site's placement -- a frame slot, an
+    // arena chunk or the heap -- and the runtime copies the message into it.
+    if (name.equals("chan_recv_copy")) { return true }
     if (name.equals("str_concat")) { return true }
     if (name.equals("str_substring")) { return true }
     if (name.equals("str_slice")) { return true }
@@ -413,6 +422,8 @@ internal fn aifFfiProduces(name: String) -> Bool {
     // on another thread instead of in libc. Without this the received value has
     // no site, nothing releases it, and every message leaks.
     if (name.equals("chan_recv")) { return true }
+    // The same value, in storage this frame allocated (see above).
+    if (name.equals("chan_recv_copy")) { return true }
     if (name.equals("list_new")) { return true }
     if (name.equals("list_new_with_capacity")) { return true }
     if (name.equals("list_new_filled")) { return true }
@@ -441,6 +452,12 @@ internal fn aifFfiProduces(name: String) -> Bool {
     if (name.equals("read_file")) { return true }
     if (name.equals("get_directory")) { return true }
     if (name.equals("join_path")) { return true }
+    // The same seam, rt_base_alloc, on every path -- executable_directory's
+    // fallback "." included -- and they were missing, so a program that called
+    // them got an opaque result and leaked it (test_19_runtime_split).
+    if (name.equals("executable_directory")) { return true }
+    if (name.equals("prismio_executable_directory")) { return true }
+    if (name.equals("command_quote_arg")) { return true }
     // Everything a child wrote, allocated here rather than by the child. The
     // empty and the error paths allocate too -- a literal would make the whole
     // function's result unowned, which is str_substring's rule.

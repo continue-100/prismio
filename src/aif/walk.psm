@@ -87,9 +87,11 @@ private fn aifSitesOf(nodePtr: Ptr, fnId: Int, scope: Int) -> Int {
         // static, immortal, zero cost -- so it has no place on a ladder that
         // ranks ways of reclaiming heap memory. Counted so the exclusion is
         // visible in the manifest rather than silent.
+        // Untracked, but not a hazard: codegen tags its pair borrowed, so any
+        // release it reaches is a no-op (aif_vs_mark_literal).
         if (ty.equals("String")) {
             aifLiteralStrings = aifLiteralStrings + 1
-            return aifVsUntracked()
+            return aifVsLiteral()
         }
         return aifVsEmpty()
     }
@@ -368,7 +370,17 @@ private fn aifCallSites(callPtr: Ptr, fnId: Int, scope: Int) -> Int {
                 // `drop` sets that flag too, and only a transfer means somebody
                 // else performs the free.
                 aif_con_no_stack(av)
-                aif_con_transferred(av)
+                // **Except a channel's send, which frees nothing.** The message
+                // is freed by a receiver, through its own receive site, or --
+                // refused by a closed channel -- by this frame's own release on
+                // that path (generateUndeliveredRelease). The binding it was
+                // sent from is kept off the drop list by the retained note
+                // above, and the escape below keeps every scope release off it.
+                // `transferred` would add nothing true, and it is per site:
+                // every `concat` result shares one site in std, so sending one
+                // String stopped every String in the program being released
+                // through a struct field.
+                if (plain.equals("chan_send") == false) { aif_con_transferred(av) }
                 aif_con_escape_caller(av)
             } else {
                 // FFI 5.1: the callee may read and write during the call but does
@@ -778,6 +790,15 @@ private fn aifWalk(nodePtr: Ptr, fnId: Int, scope: Int) {
     }
 
     if (n.kind == NodeKind.RETURN_STATEMENT) {
+        // `return none` hands back no value at all, which is not the same as a
+        // value with no site behind it: binding its empty set marked the
+        // function as returning something untracked (fn_returns_partial), and
+        // every caller of `find() -> Node?` declined to own the Node the other
+        // return makes -- one leak per call. A null is released by nothing, and
+        // every release tests for it.
+        if (nodeExists(n.child1) and ptr_to_node(n.child1).kind == NodeKind.NONE_LITERAL_EXPR) {
+            return
+        }
         if (nodeExists(n.child1)) {
             let v = aifSitesOf(n.child1, fnId, scope)
             aif_con_bind(aif_key_ret(fnId), v)

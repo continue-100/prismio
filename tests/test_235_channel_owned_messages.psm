@@ -1,0 +1,116 @@
+// Messages that own something travel through a channel as one pointer, and this
+// is that path's ledger: every message is released exactly once, whether a
+// receiver took it or a send to a closed channel refused it.
+//
+//   * A send to a closed channel answers false and releases the message it was
+//     given -- a struct through its generated release (its String with it), a
+//     String's buffer, a Vec with its elements. It used to leak all three: the
+//     message had been moved into the call and nobody owned it after.
+//   * A received Vec is released as a Vec. A `Vec<Int>?` binding used to be
+//     freed with the plain deallocator, which took the header and leaked the
+//     element block.
+//   * A short String crosses as a buffer of its own. It used to cross as the
+//     call's NUL-terminated scratch -- one stack slot shared by every send -- so
+//     every message read as the last one and each receive freed a stack address.
+//
+// The harness (channel_copies) runs this under `--verify` and requires a clean
+// ledger; the checks below are what a reader can see.
+
+import std.io
+import std.string
+
+struct Note {
+    text: String
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn closedSendsRelease() -> Int {
+    let notes = Channel<Note>(2)
+    let texts = Channel<String>(2)
+    let lists = Channel<Vec<Int>>(2)
+    notes.close()
+    texts.close()
+    lists.close()
+    let mut refused = 0
+    for i in 0..<20 {
+        if (notes.send(Note { text: "a note long enough for the heap ".concat(i.toString()) }) == false) {
+            refused = refused + 1
+        }
+        if (texts.send("a text long enough for the heap ".concat(i.toString())) == false) {
+            refused = refused + 1
+        }
+        if (texts.send("s".concat(i.toString())) == false) { refused = refused + 1 }
+        let mut items: Vec<Int> = []
+        items.push(i)
+        items.push(i * 2)
+        if (lists.send(items) == false) { refused = refused + 1 }
+    }
+    notes.free()
+    texts.free()
+    lists.free()
+    if (refused != 80) { return fail("a send to a closed channel answered true") }
+    return 0
+}
+
+fn shortStringsArriveIntact() -> Int {
+    let c = Channel<String>(16)
+    for i in 0..<10 {
+        c.send("s".concat(i.toString()))
+    }
+    c.close()
+    let mut expected = 0
+    for text in c {
+        if (text.equals("s".concat(expected.toString())) == false) {
+            return fail("a short String arrived as another message")
+        }
+        expected = expected + 1
+    }
+    c.free()
+    if (expected != 10) { return fail("short Strings were lost") }
+    return 0
+}
+
+fn receivedVecsRelease() -> Int {
+    let c = Channel<Vec<Int>>(16)
+    for i in 0..<10 {
+        let mut outgoing: Vec<Int> = []
+        outgoing.push(i)
+        outgoing.push(i + 100)
+        c.send(outgoing)
+    }
+    c.close()
+    let mut sum = 0
+    for received in c {
+        sum = sum + received[0] + received[1]
+    }
+    c.free()
+    if (sum != 45 + 1045) { return fail("a received Vec was altered") }
+    return 0
+}
+
+fn receivedNotesRelease() -> Int {
+    let c = Channel<Note>(16)
+    for i in 0..<10 {
+        c.send(Note { text: "note ".concat(i.toString()) })
+    }
+    c.close()
+    let mut length = 0
+    for note in c { length = length + note.text.length }
+    c.free()
+    if (length != 60) { return fail("received Notes were altered") }
+    return 0
+}
+
+fn main() -> Int {
+    if (closedSendsRelease() != 0) { return 1 }
+    if (shortStringsArriveIntact() != 0) { return 1 }
+    if (receivedVecsRelease() != 0) { return 1 }
+    if (receivedNotesRelease() != 0) { return 1 }
+    println("PASS: channel owned messages")
+    return 0
+}

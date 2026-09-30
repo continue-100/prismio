@@ -1,0 +1,53 @@
+// Which overload a call reaches when a `T` and its `T?` both could take it.
+//
+//   * A concrete overload written for exactly the argument's types beats a
+//     generic template: `pick(5)` beside `fn pick(x: Int)` and `fn pick<T>(x: T)`
+//     instantiated `pick<Int>`, so the `Int` overload could never be called.
+//   * An argument taken as it is beats one wrapped into a `T?`: `show(n)` with
+//     `n: Int` beside `show(Int)` and `show(Int?)` was an ambiguous call.
+//   * `impl Trait for Int?`, and `impl<T: Trait> Trait for T?` beside
+//     `impl Trait for Int` -- two impls, not an overlap.
+
+import std.io
+
+trait Dup {
+    fn dup(self) -> Self
+}
+
+impl Dup for Int { fn dup(self) -> Self { return self } }
+impl<T: Dup> Dup for T? { fn dup(self) -> Self { return self } }
+
+trait Name {
+    fn name(self) -> Int
+}
+
+impl Name for U8? { fn name(self) -> Int { return 8 } }
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn pick(x: Int) -> Int { return 1 }
+fn pick<T>(x: T) -> Int { return 2 }
+
+fn wrapped(x: Int) -> Int { return 1 }
+fn wrapped(x: Int?) -> Int { return 2 }
+
+fn twice<T: Dup>(x: T) -> T { return x.dup() }
+
+fn main() -> Int {
+    if (pick(5) != 1) { return fail("pick(Int) should take an Int") }
+    if (pick(true) != 2) { return fail("pick<T> should take a Bool") }
+    let n = 4
+    let maybe: Int? = 4
+    if (wrapped(n) != 1) { return fail("an Int should reach wrapped(Int)") }
+    if (wrapped(maybe) != 2) { return fail("an Int? should reach wrapped(Int?)") }
+    if (wrapped(none) != 2) { return fail("none should reach wrapped(Int?)") }
+    if (twice(maybe).unwrapOr(0) != 4 or twice(3) != 3) { return fail("Dup for T? and Int") }
+    let small: U8? = 1 as U8
+    if (small.name() != 8) { return fail("impl Name for U8?") }
+    println("PASS: overload exactness")
+    return 0
+}

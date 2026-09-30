@@ -394,6 +394,10 @@ public extern fn ir_const_cstring(text: String) -> Int
 public extern fn ir_undef(type: String) -> Int
 public extern fn ir_insert_value(aggType: String, agg: String, value: String, valueType: String, index: Int) -> Int
 public extern fn ir_extract_value(aggType: String, agg: String, index: Int) -> Int
+public extern fn ir_select(type: String, condition: String, whenTrue: String, whenFalse: String) -> Int
+// A scalar `T?` to and from the integer a container keeps it as (optCarrierKey).
+public extern fn ir_opt_pack(optKey: String, value: String, carrierKey: String) -> Int
+public extern fn ir_opt_unpack(carrierKey: String, bits: String, optKey: String) -> Int
 public extern fn ir_const_str(globalName: String, length: Int) -> Int
 
 // The German-string pair, read and written.

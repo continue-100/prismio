@@ -159,13 +159,16 @@ private fn semaAnnotationInner(module: ASTNode, tn: ASTNode) -> TypeInfo {
         // everything, so a `Channel<Job>` annotation would accept a
         // `Channel<Result>`.
         //
-        // **The element must be a reference**, the same rule as `T?`: one `void*`
-        // travels per message and `chan_recv` answers `T?`. A `Channel<Int>` used
-        // to be accepted and sent an `i32` where the runtime reads a pointer.
+        // **The element must be a reference**: one `void*` travels per message
+        // and `chan_recv` answers its `T?` as a null pointer. A `Channel<Int>`
+        // used to be accepted and sent an `i32` where the runtime reads a
+        // pointer. Not "can be optional", which a scalar can since its `T?`
+        // became a value -- and that is not a pointer either.
         if (tn.s1.equals("Channel")) {
             if (nodeExists(tn.child1)) {
                 let elem = semaAnnotationType(module, ptr_to_node(tn.child1))
-                if (typeIsValid(elem) and typeCanBeOptional(elem) == false) {
+                if (typeIsValid(elem) and (typeCanBeOptional(elem) == false
+                        or typeIsScalarOptionalInner(elem))) {
                     semaErrorAt(tn, "a channel carries references, and ".concat(typeDisplay(elem),
                         " is not one; send a struct with one field of it"))
                     return typeChannel(typeInvalid())

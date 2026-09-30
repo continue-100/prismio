@@ -453,6 +453,12 @@ internal fn aifLayoutVetoListElements(module: ASTNode) {
 // would turn one source field into a separate allocation behind a link, which
 // is neither a flat row nor safe to byte-copy. Veto exactly the struct named by
 // an explicit `soa` boundary before the layout selector runs.
+//
+// A plain-data channel's message is byte-copied too, through the runtime's
+// ring (chan_send_copy, chan_recv_copy), and a split one would carry the
+// sender's cold link to another thread: two owners of one cold block. The
+// receive's ir_copy_struct would refuse it; the send's memcpy is in C and
+// could not.
 internal fn aifLayoutVetoDataViews(nodePtr: Ptr) {
     if (nodeIsNull(nodePtr)) { return }
     let node = ptr_to_node(nodePtr)
@@ -464,6 +470,13 @@ internal fn aifLayoutVetoDataViews(nodePtr: Ptr) {
             if (sourceT.kind == TypeKind.LIST and nodeExists(sourceT.child)) {
                 let elemT = ptr_to_type(sourceT.child)
                 if (elemT.kind == TypeKind.STRUCT) { aif_layout_no_split(elemT.name) }
+            }
+        }
+        if (callee.s1.equals("chan_send_copy") or callee.s1.equals("chan_recv_copy")) {
+            let chanT = nodeGetType(ptr_to_node(node.child2))
+            if (typeIsChannel(chanT)) {
+                let msgT = typeChannelElem(chanT)
+                if (msgT.kind == TypeKind.STRUCT) { aif_layout_no_split(msgT.name) }
             }
         }
     }

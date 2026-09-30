@@ -133,7 +133,7 @@ private fn emitUmsToolchainLibraries(hostPath: String, compilerPath: String) -> 
 // replaces and `toolchain.host` names a file rather than a target.
 public fn isUmsHostTarget(workspace: UmsWorkspace, target: UmsTarget) -> Bool {
     if (__builtin_string_len(workspace.project.toolchain.host) == 0) { return false }
-    let host = umsExecutablePath(join_path(workspace.project.root, workspace.project.toolchain.host))
+    let host = umsHostExecutable(workspace.project.root, workspace.project.toolchain.host)
     return target.outputPath.equals(host)
 }
 
@@ -333,6 +333,9 @@ public fn dispatchToUmsHost() -> Int {
     // The hosted process intentionally leaves its running compiler alone. The
     // launcher owns the two operations that require that process to have exited:
     // promoting a successful self-build and deleting the host during `clean`.
+    // A host outside the project's `.prismio/` -- a parent project's, say -- is
+    // not this project's build output, and `clean` leaves it where it is.
+    if (cleaning and umsProjectOwnsHost(".") == false) { return 0 }
     if (cleaning) {
         if (file_exists(host) == 1 and delete_file(host) != 0) {
             diag_error_code("P1056", "could not remove the project compiler after clean")

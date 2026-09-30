@@ -504,7 +504,7 @@ public fn mapValueAt<K: Key + Copy, V>(m: Map<K, V>, index: Int) -> V {
 //
 //     let stock: Map<String, Int> = { "apple": 3, "pear": 5 }
 //     let empty: Map<String, Int>        // an empty Map, as `= {}` is
-impl<K: Key + Copy, V> Map<K, V> {
+impl < K: Key + Copy, V > Map<K, V> {
     // `Map<K, V>()` is this (src/sema/checker.psm, semaTypeCall).
     public fn new() -> Map<K, V> { return mapNew<K, V>() }
 

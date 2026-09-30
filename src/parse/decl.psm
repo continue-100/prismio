@@ -1274,8 +1274,10 @@ private fn implTargetContainsParam(annotationPtr: Ptr, name: String) -> Bool {
 private fn parseImplCheckTarget(p: Parser, implNode: ASTNode) {
     let header = ptr_to_node(implNode.child3)
     let target = ptr_to_node(header.child1)
-    if (target.i1 == 1 or target.i3 == 1) {
-        p.fatal("an `impl` target must be a named, non-optional type")
+    // `impl Copy for Int?` is allowed: a scalar's `T?` is a value type of its
+    // own, and std gives it `Copy`, `Eq` and `Display` this way.
+    if (target.i1 == 1) {
+        p.fatal("an `impl` target must be a named type, not an array")
     }
     // An inherent `impl T` has no trait to give the methods a home and would put
     // a method on every type at once. A *trait* impl over a bare parameter is a

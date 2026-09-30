@@ -327,6 +327,15 @@ private fn semaVecFilledCallee(module: ASTNode, expr: ASTNode, elem: TypeInfo) -
             or elem.kind == TypeKind.BOOL or elem.kind == TypeKind.CHAR) {
         return "list_new_filled"
     }
+    // A scalar `T?` is one integer in the row when its payload is 32 bits or
+    // less (optCarrierKey in src/ir/types.psm), and the runtime fills integers.
+    // A 64-bit payload is 16 bytes, past the i64 the fill takes.
+    if (typeIsValueOptional(elem)) {
+        let payload = typeIrKey(typeOptionalInner(elem))
+        if (payload.equals("i64") == false and payload.equals("double") == false) {
+            return "list_new_filled"
+        }
+    }
     if (monoHasTemplate(module, "vecFilled", NodeKind.FUNCTION)) { return "vecFilled" }
     semaErrorAt(expr, "`Vec<".concat(typeDisplay(elem), ">.filled` needs `import std.vec`"))
     diag_note("a scalar element needs no import; any other is copied per element by std.vec")

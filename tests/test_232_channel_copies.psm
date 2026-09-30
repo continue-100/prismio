@@ -1,0 +1,244 @@
+// Plain-data channels: a message whose every field is a scalar is copied through
+// the channel's ring (chan_send_copy / chan_recv_copy) rather than boxed on the
+// heap by the sender and freed by the receiver on another thread.
+//
+// What this checks, each as an answer rather than a sentence:
+//
+//   * one-field and many-field plain structs cross threads intact (checksums
+//     against the same arithmetic run serially);
+//   * a sent plain value stays the sender's -- a copy is not a move;
+//   * `send` on a closed channel answers false, and `receive` answers `none`;
+//   * closing wakes a receiver blocked on an empty channel;
+//   * a message that owns a String still travels as a pointer, and arrives;
+//   * a received value pushed into a Vec (heap storage, not a frame slot) and
+//     one kept across iterations of the receiving loop are each its own value,
+//     never the next receive's scratch.
+//
+// The harness (channel_copies) builds this with `--verify` and requires a clean
+// ledger, and reads the IR for which entry point each channel used.
+
+import std.io
+import std.string
+import std.time
+
+struct Tick {
+    value: Int
+}
+
+struct Sample {
+    id: I64,
+    reading: Float,
+    ok: Bool,
+    grade: Char,
+    small: U8
+}
+
+struct Note {
+    text: String
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn next(seed: Int) -> Int {
+    return (seed * 1103 + 12345) % 65521
+}
+
+// A two-stage pipeline of one-field messages, as channel_pipeline has.
+fn double(input: Channel<Tick>, output: Channel<Tick>) -> Int {
+    let mut count = 0
+    for tick in input {
+        output.send(Tick { value: tick.value * 2 + 1 })
+        count = count + 1
+    }
+    output.close()
+    return count
+}
+
+fn produceTicks(output: Channel<Tick>) -> Int {
+    let mut seed = 7
+    for _ in 0..<5000 {
+        seed = next(seed)
+        output.send(Tick { value: seed })
+    }
+    output.close()
+    return 5000
+}
+
+fn tickPipeline() -> Int {
+    let first = Channel<Tick>(16)
+    let second = Channel<Tick>(16)
+    let producer = spawn produceTicks(first.share())
+    let middle = spawn double(first.share(), second.share())
+
+    let mut sum = 0
+    for tick in second {
+        sum = (sum * 31 + tick.value) % 1000003
+    }
+    let _p = join producer
+    let handled = join middle
+    first.free()
+    second.free()
+
+    let mut want = 0
+    let mut seed = 7
+    for _ in 0..<5000 {
+        seed = next(seed)
+        want = (want * 31 + seed * 2 + 1) % 1000003
+    }
+    if (handled != 5000) { return fail("the middle stage did not see every tick") }
+    if (sum != want) { return fail("one-field messages were altered crossing threads") }
+    return 0
+}
+
+fn produceSamples(output: Channel<Sample>) -> Int {
+    for i in 0..<300 {
+        output.send(Sample {
+            id: (i as I64) * 4000000000,
+            reading: (i as Float) * 0.5,
+            ok: i % 3 == 0,
+            grade: 'a',
+            small: (i % 200) as U8
+        })
+    }
+    output.close()
+    return 300
+}
+
+fn samplePipeline() -> Int {
+    let samples = Channel<Sample>(8)
+    let producer = spawn produceSamples(samples.share())
+    let mut i = 0
+    for s in samples {
+        if (s.id != (i as I64) * 4000000000) { return fail("an I64 field was altered") }
+        if (s.reading != (i as Float) * 0.5) { return fail("a Float field was altered") }
+        if (s.ok != (i % 3 == 0)) { return fail("a Bool field was altered") }
+        if (s.grade != 'a') { return fail("a Char field was altered") }
+        if (s.small != (i % 200) as U8) { return fail("a U8 field was altered") }
+        i = i + 1
+    }
+    let _p = join producer
+    samples.free()
+    if (i != 300) { return fail("a many-field message was lost") }
+    return 0
+}
+
+// A copy is not a move: the sender still owns, and may still read, what it sent.
+fn sentValueStaysUsable() -> Int {
+    let c = Channel<Tick>(2)
+    let tick = Tick { value: 41 }
+    if (c.send(tick) == false) { return fail("a send to an open channel was dropped") }
+    let after = tick.value + 1
+    c.close()
+    if (c.send(tick)) { return fail("a send to a closed channel answered true") }
+    if (c.length != 1) { return fail("a dropped send changed the queue") }
+    let taken = c.receive()
+    if (taken == none) { return fail("the queued message was lost at close") }
+    if (expect(taken).value != 41) { return fail("the queued message was altered") }
+    if (c.receive() != none) { return fail("a drained closed channel did not answer none") }
+    c.free()
+    if (after != 42) { return fail("the sent value changed under its sender") }
+    return 0
+}
+
+fn waitForNothing(c: Channel<Tick>) -> Int {
+    let mut got = 0
+    for _tick in c { got = got + 1 }
+    return got
+}
+
+// The receiver blocks on an empty channel; the close is what releases it.
+fn closeWakesReceiver() -> Int {
+    let c = Channel<Tick>(4)
+    let waiter = spawn waitForNothing(c.share())
+    sleep(Duration.fromMillis(20))
+    c.close()
+    let got = join waiter
+    c.free()
+    if (got != 0) { return fail("a receiver woken by close saw a message nobody sent") }
+    return 0
+}
+
+fn produceNotes(output: Channel<Note>) -> Int {
+    for i in 0..<50 {
+        output.send(Note { text: "note number ".concat(i.toString()) })
+    }
+    output.close()
+    return 50
+}
+
+// Owns a String, so it is not plain data: the pointer path, unchanged.
+fn notesStayBoxed() -> Int {
+    let notes = Channel<Note>(4)
+    let producer = spawn produceNotes(notes.share())
+    let mut total = 0
+    for note in notes {
+        total = total + note.text.length
+    }
+    let _p = join producer
+    notes.free()
+    // "note number " is 12 bytes; 0..9 add one digit each, 10..49 two.
+    if (total != 50 * 12 + 10 + 40 * 2) { return fail("owned messages were altered") }
+    return 0
+}
+
+fn produceCount(output: Channel<Tick>) -> Int {
+    for i in 0..<100 { output.send(Tick { value: i }) }
+    output.close()
+    return 100
+}
+
+// The value outlives the loop's iteration, so it cannot be the receive's frame
+// slot: each element must be its own allocation, and each released once.
+fn receivedIntoVec() -> Int {
+    let c = Channel<Tick>(8)
+    let producer = spawn produceCount(c.share())
+    let mut kept: Vec<Tick> = []
+    for tick in c { kept.push(tick) }
+    let _p = join producer
+    c.free()
+    let mut sum = 0
+    for tick in kept { sum = sum + tick.value }
+    if (kept.length != 100) { return fail("a received value was lost on the way into a Vec") }
+    if (sum != 4950) { return fail("received values in a Vec share storage") }
+    return 0
+}
+
+// The first message, held while the loop receives ninety-nine more. If it were
+// the receive's scratch slot it would read 99 at the end.
+fn keptAcrossIterations() -> Int {
+    let c = Channel<Tick>(8)
+    let producer = spawn produceCount(c.share())
+    let mut first: Tick? = none
+    let mut last = 0 - 1
+    let mut ordered = true
+    loop {
+        let taken = c.receive()
+        if (taken == none) { break }
+        let tick = expect(taken)
+        if (tick.value != last + 1) { ordered = false }
+        last = tick.value
+        if (first == none) { first = tick }
+    }
+    let _p = join producer
+    c.free()
+    if (first == none) { return fail("nothing was received") }
+    if (expect(first).value != 0) { return fail("a kept message was overwritten by a later receive") }
+    if (ordered == false) { return fail("messages arrived out of order") }
+    return 0
+}
+
+fn main() -> Int {
+    if (tickPipeline() != 0) { return 1 }
+    if (samplePipeline() != 0) { return 1 }
+    if (sentValueStaysUsable() != 0) { return 1 }
+    if (closeWakesReceiver() != 0) { return 1 }
+    if (notesStayBoxed() != 0) { return 1 }
+    if (receivedIntoVec() != 0) { return 1 }
+    if (keptAcrossIterations() != 0) { return 1 }
+    println("PASS: channel copies")
+    return 0
+}

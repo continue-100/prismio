@@ -30,6 +30,16 @@
 #endif
 #include <windows.h>
 #endif
+// PRISMIO_VERIFY_TRACE's leak report: backtrace() where the C library has one
+// (Apple, glibc -- not musl, not Windows), and dladdr on Apple, whose symbol
+// names come from the dynamic table only. stdio.h above defines __GLIBC__.
+#if defined(__APPLE__) || defined(__GLIBC__)
+#define AIF_CAN_TRACE 1
+#include <execinfo.h>
+#endif
+#if defined(__APPLE__)
+#include <dlfcn.h>
+#endif
 // For the threading primitives the `--verify` ledger locks with, and for the
 // rt_base_alloc/rt_free seam this file's allocations sit on.
 #include "prismio_runtime.h"
@@ -938,6 +948,9 @@ static char* str_append_grow(char* base, size_t left, uint64_t word, size_t need
                              const char** parts, int count) {
     int base_is_inline = (word & UINT64_C(0x80000000)) != 0;
     int base_is_geometric = !base_is_inline && (word & UINT64_C(0x200000000)) != 0;
+    // A literal base is `.rodata`: neither reallocated nor grown in place, but
+    // copied out as an inline base is (STR_WORD_BORROWED, bit 34).
+    if (!base_is_inline && (word & UINT64_C(0x400000000)) != 0) base_is_inline = 1;
     if (base_is_geometric && str_append_bit_ceil(left + 1) >= needed) return base;
 
     uintptr_t base_addr = (uintptr_t)base;
@@ -1082,7 +1095,9 @@ char* str_own(const char* data, long long word) {
     // by length. The inline case reaches here with `data` pointing at the
     // caller's scratch, which is NUL-terminated but about to go out of scope, so
     // it needs the copy just as much.
-    if (!(word & 0x180000000LL)) return (char*)data;
+    // Bit 34 is the borrowed class -- a literal's `.rodata` -- which is
+    // terminated but not this caller's to hand over, so it is copied too.
+    if (!(word & 0x580000000LL)) return (char*)data;
     int len = (int)(word & 0x7FFFFFFFLL);
     char* result = (char*)rt_alloc((size_t)len + 1);
     memcpy(result, data, (size_t)len);
@@ -1368,12 +1383,51 @@ void prismio_memory_thread_cleanup(void) {
 // path; keep the public declaration visible in ordinary runtime builds too.
 void aif_verify_release(void* p);
 
+// `PRISMIO_VERIFY_TRACE=1` records where each allocation was made, and a leak
+// report then prints it: the serial alone says "the 116th object", which is a
+// site only after counting sites. Off by default -- a backtrace per allocation
+// is the most expensive thing a verify build would do.
+#define AIF_TRACE_DEPTH 8
+
 typedef struct AifLive {
     struct AifLive* next;
     void* p;
     size_t size;
     long serial;        // allocation order, so a leak report names something
+    int depth;          // frames in `trace`, 0 unless PRISMIO_VERIFY_TRACE is set
+    void* trace[AIF_TRACE_DEPTH];
 } AifLive;
+
+#if defined(AIF_CAN_TRACE)
+static int aif_trace_on = -1;
+static int aif_trace_enabled(void) {
+    if (aif_trace_on < 0) aif_trace_on = getenv("PRISMIO_VERIFY_TRACE") != NULL;
+    return aif_trace_on;
+}
+#endif
+
+// Each frame as an offset from its image's load address, which is what
+// `atos -o <exe> -l 0x100000000 <0x100000000 + offset>` (or `addr2line -e`)
+// turns back into a function -- a local symbol has no dynamic-table name for
+// dladdr to report, and nearly every Prismio function is local after linking.
+static void aif_trace_print(const AifLive* n) {
+#if defined(__APPLE__)
+    for (int i = 0; i < n->depth; i++) {
+        Dl_info info;
+        if (dladdr(n->trace[i], &info) && info.dli_fbase) {
+            const char* image = info.dli_fname ? strrchr(info.dli_fname, '/') : NULL;
+            fprintf(stderr, "    at %s+0x%lx\n", image ? image + 1 : "?",
+                    (unsigned long)((uintptr_t)n->trace[i] - (uintptr_t)info.dli_fbase));
+        } else {
+            fprintf(stderr, "    at %p\n", n->trace[i]);
+        }
+    }
+#elif defined(AIF_CAN_TRACE)
+    if (n->depth > 0) backtrace_symbols_fd((void* const*)n->trace, n->depth, 2);
+#else
+    (void)n;
+#endif
+}
 
 static AifLive* aif_live[AIF_VERIFY_BUCKETS];
 static long aif_allocs, aif_releases, aif_violations;
@@ -1432,6 +1486,7 @@ void aif_verify_report(void) {
             if (leaked < 20) {
                 fprintf(stderr, "aif-verify: leaked #%ld (%lu bytes)\n",
                         n->serial, (unsigned long)n->size);
+                aif_trace_print(n);
             }
             leaked++;
         }
@@ -1487,6 +1542,10 @@ void* aif_verify_alloc(size_t size) {
         n->p = p;
         n->size = size;
         n->serial = aif_allocs;
+        n->depth = 0;
+#if defined(AIF_CAN_TRACE)
+        if (aif_trace_enabled()) n->depth = backtrace(n->trace, AIF_TRACE_DEPTH);
+#endif
         unsigned b = aif_live_hash(p);
         n->next = aif_live[b];
         aif_live[b] = n;
@@ -2752,6 +2811,8 @@ typedef struct {
 // a function because the curated bodies below may reference no `static`.
 #define STR_WORD_INLINE 0x80000000LL
 #define STR_WORD_VIEW   0x100000000LL
+#define STR_WORD_GEOMETRIC 0x200000000LL  // owned, capacity grew geometrically
+#define STR_WORD_BORROWED 0x400000000LL   // a literal: terminated, not owned
 #define STR_WORD_LENGTH 0x7FFFFFFFLL
 #define STR_WORD_IS_VIEW(w) (((w) & STR_WORD_INLINE) == 0 && ((w) & STR_WORD_VIEW) != 0)
 
@@ -2865,7 +2926,7 @@ void list_set_str(void* lp, int index, void* raw, long long word) {
     if (index < 0 || index >= l->len) return;
     StrPair* slot = (StrPair*)l->data + index;
     if (l->elem_own != AIF_ELEM_NONE && !l->arena && slot->data != (const char*)raw
-            && !(slot->word & (STR_WORD_INLINE | STR_WORD_VIEW))) {
+            && !(slot->word & (STR_WORD_INLINE | STR_WORD_VIEW | STR_WORD_BORROWED))) {
         list_set_str_slow(lp, index, raw, word);
         return;
     }
@@ -2920,7 +2981,7 @@ static void list_discard_slot(RtList* l, int index, int now) {
     if (l->elem_size) {
         if (l->elem_own != AIF_ELEM_STRING || l->elem_size != (int)sizeof(StrPair)) return;
         StrPair pair = ((StrPair*)l->data)[index];
-        if (pair.word & (STR_WORD_INLINE | STR_WORD_VIEW)) return;
+        if (pair.word & (STR_WORD_INLINE | STR_WORD_VIEW | STR_WORD_BORROWED)) return;
         owned = (void*)pair.data;
     } else {
         owned = l->data[index];
@@ -3201,7 +3262,7 @@ void list_release(void* lp) {
         if (l->elem_own == AIF_ELEM_STRING && l->elem_size == (int)sizeof(StrPair) && l->data) {
             StrPair* pairs = (StrPair*)l->data;
             for (int i = l->len - 1; i >= 0; i--) {
-                if (!(pairs[i].word & (STR_WORD_INLINE | STR_WORD_VIEW))) {
+                if (!(pairs[i].word & (STR_WORD_INLINE | STR_WORD_VIEW | STR_WORD_BORROWED))) {
                     rt_free((void*)pairs[i].data);
                 }
             }

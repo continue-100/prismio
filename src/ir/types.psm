@@ -327,6 +327,8 @@ internal fn getExprType(expr: ASTNode) -> String {
 // bits of payload rather than a number to convert, so it bitcasts first -- an
 // `fptosi` here would round 0.5 to 0 and store that.
 private fn scalarBitsOf(t: String) -> Int {
+    let carrier = optCarrierKey(t)
+    if (carrier.equals("") == false) { return scalarBitsOf(carrier) }
     if (t.equals("i1")) { return 1 }
     if (t.equals("i8")) { return 8 }
     if (t.equals("i16")) { return 16 }
@@ -356,8 +358,66 @@ internal fn scalarInlineBytes(t: String) -> Int {
     return bits / 8
 }
 
+// A `String` stored where a `String?` is declared. The optional is a bare
+// pointer to a NUL-terminated block it may be released through, so it takes the
+// pair the way a container slot does (scalarToSlot, `str_own`): an owned long
+// String moves in, and an inline, view or literal one is copied to the heap.
+// Storing the pair's first field instead left an inline String's optional
+// pointing at a stack scratch slot, which dangles once the optional outlives
+// the frame, and a `-> String?` returning a String did not compile at all.
+internal fn storeAsDeclared(value: String, valueKey: String, declaredKey: String) -> String {
+    if (isFatStringKey(valueKey) and declaredKey.equals("ptr")) {
+        return scalarToSlot("struct:prismio.str", value)
+    }
+    return value
+}
+
+// The integer a scalar `T?` is kept as in a container, twice its payload's
+// width: the value in the high half and the present flag in the low one
+// (ir_opt_pack). "" for anything else, and for a 64-bit payload -- `Float?`,
+// `I64?` -- which has no integer wide enough on the runtime's i64 carrier and is
+// kept as its `{ i1, T }` bytes instead (optIsWide).
+internal fn optCarrierKey(t: String) -> String {
+    if (t.startsWith("opt:") == false) { return "" }
+    let payload = scalarBitsOf(t.substring(4, __builtin_string_len(t) - 4))
+    if (payload == 0 or payload > 32) { return "" }
+    if (payload <= 8) { return "i16" }
+    if (payload == 16) { return "i32" }
+    return "i64"
+}
+
+// A scalar `T?` whose payload is 64 bits. A container keeps it inline as the
+// struct's own 16 bytes, reached by address the way a flat struct element is:
+// written from a spilled copy and loaded back out.
+internal fn optIsWide(t: String) -> Bool {
+    return t.startsWith("opt:") and optCarrierKey(t).equals("")
+}
+
+// The bytes of a wide optional's row: `{ i1, T }` with T 8-byte aligned.
+internal fn optWideBytes() -> Int { return 16 }
+
+internal fn scalarSpillToSlot(storeType: String, value: String) -> String {
+    let slot = "elem.".concat(irElemSpillCounter.toString())
+    irElemSpillCounter = irElemSpillCounter + 1
+    ir_alloca(storeType, slot)
+    ir_store(storeType, value, slot)
+    // `%name` is how resolve_value in the backend names an alloca as a *value*:
+    // it looks the bare name up among the params and then the allocas. Handing
+    // it the undecorated name instead falls through to const_from_text, which
+    // fails the build with "non-null pointer constant".
+    return "%".concat(slot)
+}
+
 internal fn scalarToSlot(storeType: String, value: String) -> String {
     if (storeType.equals("ptr")) { return value }
+    let carrier = optCarrierKey(storeType)
+    if (carrier.equals("") == false) {
+        return scalarToSlot(carrier, ir_get_temp_name(ir_opt_pack(storeType, value, carrier)))
+    }
+    // The address of a copy, for an entry point that copies `elem_size` bytes
+    // from it -- which is only right for a list that is inline, as a list of
+    // one always is (inlineElemSizeOfList).
+    if (optIsWide(storeType)) { return scalarSpillToSlot(storeType, value) }
     // A String in a container slot is its pointer. The length is not stored --
     // it is recovered on the way out, from the NUL the buffer always carries
     // (FFI 7.1), which is one `strlen` per read against a word per element in
@@ -393,6 +453,12 @@ internal fn scalarToSlot(storeType: String, value: String) -> String {
 
 internal fn slotToScalar(storeType: String, value: String) -> String {
     if (storeType.equals("ptr")) { return value }
+    let carrier = optCarrierKey(storeType)
+    if (carrier.equals("") == false) {
+        let word = slotToScalar(carrier, value)
+        return ir_get_temp_name(ir_opt_unpack(carrier, word, storeType))
+    }
+    if (optIsWide(storeType)) { return ir_get_temp_name(ir_load_ptr(storeType, value)) }
     let pi = irPtrIntType()
 
     if (storeType.equals("double")) {
@@ -439,6 +505,39 @@ internal fn dropReleaseType(slot: String, declType: String) -> String {
     let from = at + __builtin_string_len(key)
     let rest = irOptionalDropTypes.substring(from, __builtin_string_len(irOptionalDropTypes) - from)
     return rest.substring(0, rest.indexOf(";"))
+}
+
+// How an owned value of type `t` is released: a Vec through list_release, a
+// struct that owns fields through its generated release, anything else --
+// a struct of scalars, a String's buffer -- with the plain deallocator.
+//
+// A channel's two ends are the callers that need it by type rather than by
+// expression: a received `T?` (bindingDropKind) and a message a send to a
+// closed channel did not deliver (generateUndeliveredRelease). The two must
+// agree, because the second is releasing the value the first would have.
+internal fn valueDropKind(t: TypeInfo) -> Int {
+    if (t.kind == TypeKind.LIST) { return IR_DROP_LIST }
+    if (t.kind == TypeKind.DATAVIEW) { return IR_DROP_DATAVIEW }
+    let key = typeIrKey(t)
+    if (isStructTypeKey(key) and isValueStructKey(key) == false
+            and aif_type_releases(structTypeName(key)) == 1) {
+        return IR_DROP_TYPED
+    }
+    return IR_DROP_OBJECT
+}
+
+// dropKindOf for a value a binding owns, which may be a `T?`: a received
+// message, `c.receive()`, is the one producer of an owned optional. An optional
+// is a nullable pointer to its value, so it releases as the value would, and
+// every one of those releases tests null first. A typed release is named from
+// the struct the binding records (noteOptionalDropType), since the optional's
+// IR key is `ptr`. dropKindOf answered OBJECT for every optional, which freed
+// the shell of each received `Note { text: String }` and leaked the String, and
+// freed a received Vec's header and leaked its elements.
+internal fn bindingDropKind(expr: ASTNode) -> Int {
+    let t = nodeGetType(expr)
+    if (t.kind != TypeKind.OPTIONAL) { return dropKindOf(expr) }
+    return valueDropKind(typeOptionalInner(t))
 }
 
 internal fn dropKindOf(expr: ASTNode) -> Int {

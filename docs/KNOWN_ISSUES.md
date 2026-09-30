@@ -22,6 +22,57 @@ corpus sweep is 8 sources and 7 runnable, down from 33 and 30.
 
 ## Ownership
 
+### The 2026-09-30 `--verify` sweep
+
+Every runnable program in `tests/` and `aif/corpus/` (233) was built with
+`--verify` and run; `PRISMIO_VERIFY_TRACE=1` now makes the ledger print where
+each leaked block was allocated (see `aif_trace_print` in
+`runtime/lang_runtime.c`; symbolise with `atos -o <exe> -l 0x100000000`, or
+`--verify -g` for source lines). **No program had a violation.** 202 were clean
+before the sweep's fixes and 210 after; test_236 pins the fixed shapes at 0.
+
+**Fixed:**
+
+- **A field read from a call's result** (`Config.default().retries`,
+  `fresh().inner.count`, `total(makeGrid(1).cells, 4)`) leaked the result.
+  A scalar read releases it after the load; a field passed to a call with a
+  scalar result releases it after the call (`memberChainRoot`).
+- **`return none` made a function's other returns unowned**
+  (`fn_returns_partial`): every `find() -> Node?` caller leaked the Node.
+- **A String literal in a field, a Vec or a return turned off that place's
+  release program-wide**, to avoid freeing `.rodata` -- `Process()`'s
+  `program: ""` leaked every program name assigned after it. A literal's pair
+  now carries a **borrowed** tag (bit 34; bit 33 is the append path's geometric
+  flag, bit 32 VIEW, bit 31 INLINE), every release skips it, and `str_own`
+  copies it. AIF keeps a `hazard` bit for what a release cannot tell apart
+  (`alias` extern statics, module globals); a literal is untracked but not a
+  hazard.
+- **`String` where `String?` is declared** was a stack pointer for an inline
+  String (a binding, a field, an assignment), and did not compile at all as an
+  argument or a return. Stores own it (`storeAsDeclared`, `str_own`); an
+  argument borrows it (the FFI borrow lowering).
+- **`__builtin_string_len` of a returned String** (`direct().length`) leaked it.
+- **`executable_directory`, `prismio_executable_directory` and
+  `command_quote_arg`** allocate through `rt_base_alloc` but had no `produce`
+  contract, so their results were opaque and leaked (test_19).
+
+**Still leaking** (all leaks, no violations), by cause:
+
+| Tests | Cause |
+|---|---|
+| 185, 186, 162, 53 | A view that outlives its base's binding keeps the base unreleased (the safe direction, pinned in run_aif_verify_test). The fix is copy-on-escape: materialise the view when it leaves the base's scope. |
+| 205 | `let t = a; return t` and an inner `let a = a` (pinned). Needs binding-level move tracking in codegen's drop list. |
+| 171 (1) | `Outer.inner` holds heap Inners and, elsewhere, a stack Inner in a stack Outer; the field's release cannot serve both, so it declines. Needs holder-aware field dispositions. |
+| 166, 167, 127 (1 each) | A `strClone` whose holder field or Vec is declined by the same holder/site conflation. |
+| 173 | `match (v.pop())`: the matched `Option` temporary is never released. |
+| 191 | Nine `concat` results through `Option` methods, and `Process()`'s `arguments` Vec. |
+| 100_reuse_token | Nothing in `main` is released (reuse tokens and a collected cycle). |
+| 58 (100) | Region fallbacks: values that escape their `region` are heap-allocated and not released (pinned). |
+| 69 | A task's String result (`str_own` on the task side) and its struct. |
+| 44, 51 | Pinned single leaks, each explained in run_aif_verify_test. |
+| any | AIF keys locals by (function, name), so a sent `v` and a received `v` in one function share a value set (see Concurrency). |
+
+
 **Copies of a Map's keys pushed into a returned Vec leak.** `for i in
 0..<mapLen(m) { out.push(mapKeyAt(m, i).clone()) }; return out` (or `copyOf`
 in place of `clone`) leaks every copy: 990 of 1,173 over ten calls on a
@@ -1089,12 +1140,42 @@ runtime reads a pointer. The element type must now be one `T?` allows
 producer that fills a channel before its consumer is spawned. It is now a panic
 naming the reason, exit 101.
 
-**A send on a closed channel leaks the message.** `chan_send` answers 0, and the
-value, already moved, is neither delivered nor freed. Returning it to the
-sender is CHANNELS_PLAN Phase 0.
+**Fixed 2026-09-30: a send on a closed channel leaked a message that owns
+something.** `c.send(v)` answers false and now releases the moved value on that
+path, with `valueDropKind` -- the release a receiver of the same `T?` uses, so
+the two cannot disagree (`generateUndeliveredRelease`). Handing it back to the
+sender instead is still CHANNELS_PLAN Phase 0. Three pointer-path defects were
+fixed with it (test_235, 160 / 160 / 0):
+
+- **Short Strings sent through a channel were a stack address.** A consumed
+  String went through the call's NUL-terminated scratch -- one stack slot, the
+  same for every send -- so ten short messages all arrived as the last, and each
+  receive freed the stack. Now `scalarToSlot`'s owned buffer, as a Vec element.
+- **A received Vec leaked its element block**: `Vec<Int>?` was freed as a plain
+  object.
+- **Sending a String stopped String fields being released program-wide.**
+  `chan_send`'s consume marked the message's site `transferred`, and every
+  `concat` result shares one site in std. A channel frees nothing, so it no
+  longer marks it (`src/aif/walk.psm`).
+
+**A received value leaks when its name was also sent from.** AIF keys a local
+by function and name (`aif_key_var`), so `let v = ...; c.send(v)` and a later
+`for v in c` in the same function share one value set; the received value takes
+the send's escape and is never released (20 of 21 in a probe). A leak, not a
+double free. Renaming either binding avoids it; the fix is per-declaration
+binding keys, in the engine and the oracle together.
+
+**Fixed 2026-09-30: a received message leaked the fields it owned.** A binding
+of an owned `T?` -- `let taken = c.receive()` on a `Channel<Note>` with a
+`String` field -- was released with the plain deallocator, because `dropKindOf`
+read the optional's `ptr` key: the shell was freed and the String leaked, 50 of
+101 allocations in test_232's `notesStayBoxed`. `bindingDropKind`
+(`src/ir/types.psm`) sees through the optional to the struct's generated
+release, which tests null first.
 
 **Nothing checks the destruction order.** `chan_share` hands back the same
-pointer, and `chan_free` assumes no one is blocked on the channel. Close, join
+pointer, and `chan_free` assumes no one is blocked on the channel (`share()` and
+`free()` in source). Close, join
 every task that was given a share, then free ([channel rule 4](https://developers.prismio.org/runtime/tasks-and-channels#the-four-channel-rules)). Counted
 endpoints are Phase 1.
 

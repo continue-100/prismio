@@ -26,7 +26,7 @@ public extern fn compiler_program_on_path(name: String borrow) -> Int
 // list: every name it tests before calling runUmsProjectCommand is here, and
 // this is the list the P1039 note and the P1062 check both read. The hidden
 // `--internal-host-abi` and the flags need no entry, because a command name must
-// start with a letter or a digit (UMS2601); a name ending `.psm` is caught below,
+// start with a letter, a digit or `_` (UMS2601); a name ending `.psm` is caught below,
 // since `prismio x.psm` builds that file.
 public fn prismioBuiltinCommands() -> Vec<String> {
     let mut names: Vec<String> = []

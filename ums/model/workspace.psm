@@ -121,17 +121,23 @@ private fn umsBootstrapPrefixLength(source: String) -> Int {
     return 0
 }
 
+// `toolchain.host` as written, and the directory it is relative to.
+struct UmsHostDeclaration {
+    root: String,
+    text: String
+}
+
 // The installed compiler calls this before it parses any command. It deliberately
 // reads only the first `toolchain { host = "..." }` block: all remaining syntax
 // belongs to the selected host, which may implement a newer UMS.
-public fn umsProjectHost(startDirectory: String) -> String {
+private fn umsReadHostDeclaration(startDirectory: String) -> UmsHostDeclaration {
     let mut diagnostics = umsDiagnostics()
     let manifestPath = umsDiscoverManifest(startDirectory, diagnostics)
-    if (__builtin_string_len(manifestPath) == 0) { return "" }
+    if (__builtin_string_len(manifestPath) == 0) { return UmsHostDeclaration { root: "", text: "" } }
 
     let source = read_file(manifestPath)
     let prefixLength = umsBootstrapPrefixLength(source)
-    if (prefixLength == 0) { return "" }
+    if (prefixLength == 0) { return UmsHostDeclaration { root: "", text: "" } }
 
     let root = get_directory(manifestPath)
     let prefix = source.substring(0, prefixLength)
@@ -145,21 +151,35 @@ public fn umsProjectHost(startDirectory: String) -> String {
             let mut childIndex = 0
             while (childIndex < block.children.length) {
                 let property = document.statements[block.children[childIndex]]
-                // The same rule lowering applies (UMS2405), because this is the
-                // reader that decides what the launcher executes, and it runs
-                // before -- and instead of -- a full parse.
                 if (property.kind == UmsAstStatementKind.ASSIGNMENT and
                     property.name.equals("host") and
-                    property.value.kind == UmsAstValueKind.STRING and
-                    umsHostPathValid(property.value.text)) {
-                    return umsExecutablePath(join_path(root, property.value.text))
+                    property.value.kind == UmsAstValueKind.STRING) {
+                    return UmsHostDeclaration { root: root.clone(), text: property.value.text.clone() }
                 }
                 childIndex = childIndex + 1
             }
         }
         i = i + 1
     }
-    return ""
+    return UmsHostDeclaration { root: root, text: "" }
+}
+
+// `toolchain.host` as the file the launcher runs: relative to the manifest's
+// directory unless written absolute.
+public fn umsHostExecutable(root: String, host: String) -> String {
+    if (umsAbsolutePath(host)) { return umsExecutablePath(host) }
+    return umsExecutablePath(join_path(root, host))
+}
+
+public fn umsProjectHost(startDirectory: String) -> String {
+    let declared = umsReadHostDeclaration(startDirectory)
+    if (__builtin_string_len(declared.text) == 0) { return "" }
+    return umsHostExecutable(declared.root, declared.text)
+}
+
+// Whether `clean` may delete the host: see umsHostIsProjectBuildOutput.
+public fn umsProjectOwnsHost(startDirectory: String) -> Bool {
+    return umsHostIsProjectBuildOutput(umsReadHostDeclaration(startDirectory).text)
 }
 
 // The workspace's target accessors. Public because `src/main.psm` walks them:

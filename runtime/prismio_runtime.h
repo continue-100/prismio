@@ -188,6 +188,8 @@ void  prismio_memory_thread_cleanup(void);
 void* chan_new(int capacity);
 int   chan_send(void* handle, void* msg);
 void* chan_recv(void* handle);
+int   chan_send_copy(void* handle, const void* src, int size);
+int   chan_recv_copy(void* handle, void* dst, int size);
 void* chan_share(void* handle);
 void  chan_close(void* handle);
 int   chan_len(void* handle);

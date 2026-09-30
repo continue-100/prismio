@@ -286,6 +286,12 @@ static LLVMTypeRef type_from_key(const char *t) {
         if (!rest || *rest != ':' || n <= 0) backend_fail("malformed array key", t);
         return LLVMArrayType2(type_from_key(rest + 1), (uint64_t)n);
     }
+    // `opt:K`, a scalar's `T?`: the present flag and the value, by value. A
+    // literal struct, so every `Int?` in a module is the one uniqued type.
+    if (strncmp(t, "opt:", 4) == 0) {
+        LLVMTypeRef fields[2] = { LLVMInt1TypeInContext(g_ctx), type_from_key(t + 4) };
+        return LLVMStructTypeInContext(g_ctx, fields, 2, 0);
+    }
     backend_fail("unknown type key", t);
     return NULL;
 }
@@ -557,10 +563,30 @@ static LLVMValueRef resolve_value(const char *s, const char *type_key) {
 // the FFI boundary.
 #define PRISMIO_STR_VIEW_TAG 0x100000000ULL
 
+// Bit 33 is taken: the append path marks an owned long string whose capacity
+// grew geometrically (`fatWithLengthFlag(..., 8589934592)` in src/ir/expr.psm,
+// `base_is_geometric` in runtime/lang_runtime.c). Owned, so not in UNOWNED.
+#define PRISMIO_STR_GEOMETRIC_TAG 0x200000000ULL
+
+// The fourth class: **borrowed**, a NUL-terminated long string this pair does
+// not own -- a literal's `.rodata`, or a module-level String's initialiser.
+// Bit 34, and like VIEW only meaningful when INLINE is clear. It reads exactly as an owned
+// long string does (a pointer to terminated bytes, passed to C as it is); it
+// differs only in that nothing releases it, and `str_own` copies it rather than
+// adopting it into a container slot that would.
+//
+// It is what lets a literal sit where owned Strings also sit. A struct field, a
+// Vec, a returned String can each hold either, and without the tag their
+// release could not tell them apart: AIF had to refuse the release whenever a
+// literal could reach it (key_may_be_untracked), which leaked every owned
+// String stored there -- `Process()`'s `program: ""` turned off the release of
+// every program name assigned after it.
+#define PRISMIO_STR_BORROWED_TAG 0x400000000ULL
+
 // Neither an owned heap block nor anything the deallocator can take: INLINE
-// dominates, so testing both bits at once is correct even though bit 32 is data
-// when INLINE is set.
-#define PRISMIO_STR_UNOWNED (PRISMIO_STR_INLINE_TAG | PRISMIO_STR_VIEW_TAG)
+// dominates, so testing every bit at once is correct even though bits 32 to 34
+// are data when INLINE is set.
+#define PRISMIO_STR_UNOWNED (PRISMIO_STR_INLINE_TAG | PRISMIO_STR_VIEW_TAG | PRISMIO_STR_BORROWED_TAG)
 
 // A fresh 16-byte scratch slot in the entry block.
 //
@@ -1997,7 +2023,9 @@ static void ir_release_call(const char *value, const char *fn_name) {
 
     LLVMValueRef raw = resolve_uncoerced(value);
     LLVMValueRef arg;
-    if (is_prismio_str(raw) && !LLVMIsConstant(raw)) {
+    // A constant pair is a literal: static storage, never a heap block.
+    if (is_prismio_str(raw) && LLVMIsConstant(raw)) return;
+    if (is_prismio_str(raw)) {
         LLVMValueRef word = LLVMBuildExtractValue(g_builder, raw, 1, "");
         LLVMValueRef tag = LLVMBuildAnd(g_builder, word,
                                         LLVMConstInt(i64, PRISMIO_STR_UNOWNED, 0), "");
@@ -2197,6 +2225,7 @@ static int type_key_is_flat(const char *key, int depth) {
         const char *elem = strchr(key + 4, ':');
         return elem ? type_key_is_flat(elem + 1, depth + 1) : 0;
     }
+    if (strncmp(key, "opt:", 4) == 0) return type_key_is_flat(key + 4, depth + 1);
     return strcmp(key, "i1") == 0 || strcmp(key, "i8") == 0 || strcmp(key, "i16") == 0
         || strcmp(key, "i32") == 0 || strcmp(key, "i64") == 0
         || strcmp(key, "float") == 0 || strcmp(key, "double") == 0;
@@ -4239,6 +4268,62 @@ int ir_extract_value(const char *agg_type, const char *agg, int index) {
     return intern_value(LLVMBuildExtractValue(g_builder, a, (unsigned)index, ""));
 }
 
+// `cond ? a : b` with no branch: a scalar `T?`'s `unwrapOr` is one of these on
+// the present flag.
+int ir_select(const char *type, const char *cond, const char *a, const char *b) {
+    return intern_value(LLVMBuildSelect(g_builder, resolve_value(cond, "i1"),
+                                        resolve_value(a, type), resolve_value(b, type), ""));
+}
+
+// A scalar `T?` as it is kept in a container: one integer, the value in the high
+// half and the present flag in the low one. The frontend chooses the carrier
+// width (optCarrierKey in src/ir/types.psm); the layout is written down only here.
+//
+// **An integer, not the `{ i1, T }` bytes.** Every container path moves a scalar
+// as an integer of the element's width -- through the runtime's i64 carrier,
+// stored by width, punned into a boxed slot -- and a struct has no width to store
+// by and no bits to widen: `zext { i1, i32 } to i64` is what `Vec<Int?>` emitted.
+// The flag in the low half is what makes a zeroed row, and so a zero-filled
+// block, read as `none`.
+static LLVMTypeRef opt_payload_int_type(LLVMTypeRef payload) {
+    if (LLVMGetTypeKind(payload) == LLVMIntegerTypeKind) return payload;
+    if (LLVMGetTypeKind(payload) == LLVMFloatTypeKind) return LLVMInt32TypeInContext(g_ctx);
+    return LLVMInt64TypeInContext(g_ctx);
+}
+
+int ir_opt_pack(const char *opt_key, const char *value, const char *carrier_key) {
+    LLVMTypeRef carrier = type_from_key(carrier_key);
+    if (block_done()) return intern_value(LLVMConstNull(carrier));
+    LLVMTypeRef payload = type_from_key(opt_key + 4);
+    LLVMValueRef opt = resolve_value(value, opt_key);
+    LLVMValueRef present = LLVMBuildExtractValue(g_builder, opt, 0, "");
+    LLVMValueRef v = LLVMBuildExtractValue(g_builder, opt, 1, "");
+    LLVMTypeRef payload_int = opt_payload_int_type(payload);
+    if (payload_int != payload) v = LLVMBuildBitCast(g_builder, v, payload_int, "");
+    unsigned half = LLVMGetIntTypeWidth(carrier) / 2;
+    LLVMValueRef high = LLVMBuildShl(g_builder, LLVMBuildZExt(g_builder, v, carrier, ""),
+                                     LLVMConstInt(carrier, half, 0), "");
+    return intern_value(LLVMBuildOr(g_builder, high,
+                                    LLVMBuildZExt(g_builder, present, carrier, ""), ""));
+}
+
+int ir_opt_unpack(const char *carrier_key, const char *bits, const char *opt_key) {
+    LLVMTypeRef optty = type_from_key(opt_key);
+    if (block_done()) return intern_value(LLVMConstNull(optty));
+    LLVMTypeRef carrier = type_from_key(carrier_key);
+    LLVMTypeRef payload = type_from_key(opt_key + 4);
+    LLVMTypeRef payload_int = opt_payload_int_type(payload);
+    LLVMValueRef word = resolve_value(bits, carrier_key);
+    unsigned half = LLVMGetIntTypeWidth(carrier) / 2;
+    LLVMValueRef present = LLVMBuildTrunc(g_builder, word, LLVMInt1TypeInContext(g_ctx), "");
+    LLVMValueRef v = LLVMBuildTrunc(
+        g_builder, LLVMBuildLShr(g_builder, word, LLVMConstInt(carrier, half, 0), ""),
+        payload_int, "");
+    if (payload_int != payload) v = LLVMBuildBitCast(g_builder, v, payload, "");
+    LLVMValueRef opt = LLVMBuildInsertValue(g_builder, LLVMGetUndef(optty), present, 0, "");
+    return intern_value(LLVMBuildInsertValue(g_builder, opt, v, 1, ""));
+}
+
 // One byte of a String, read from wherever that string keeps its bytes.
 //
 // **Never through `str_data_ptr`**, and that is the difference between this
@@ -5163,7 +5248,8 @@ int ir_const_str(const char *global_name, int length) {
     if (!g) backend_fail("unknown string global", global_name);
     LLVMValueRef fields[2];
     fields[0] = g;
-    fields[1] = LLVMConstInt(LLVMInt64TypeInContext(g_ctx), (unsigned long long)length, 0);
+    fields[1] = LLVMConstInt(LLVMInt64TypeInContext(g_ctx),
+                             (unsigned long long)length | PRISMIO_STR_BORROWED_TAG, 0);
     return intern_value(LLVMConstNamedStruct(named_struct("prismio.str"), fields, 2));
 }
 
@@ -5183,7 +5269,10 @@ void ir_global_str_var(const char *name, const char *str_global, int length) {
     } else {
         fields[0] = LLVMConstNull(LLVMPointerTypeInContext(g_ctx, 0));
     }
-    fields[1] = LLVMConstInt(LLVMInt64TypeInContext(g_ctx), (unsigned long long)length, 0);
+    // The initialiser is static storage: borrowed, like the literal it is.
+    unsigned long long word = (unsigned long long)length;
+    if (str_global && *str_global) word |= PRISMIO_STR_BORROWED_TAG;
+    fields[1] = LLVMConstInt(LLVMInt64TypeInContext(g_ctx), word, 0);
     LLVMSetInitializer(g, LLVMConstNamedStruct(ty, fields, 2));
 }
 
@@ -5600,6 +5689,42 @@ static LLVMMetadataRef di_slice_type(void) {
         LLVMDIFlagZero, NULL, members, 3, 0, NULL, "", 0));
 }
 
+static LLVMMetadataRef di_type_for(const char *key, const char *name);
+
+// A scalar's `T?` as the debugger sees it: `present` and `value`, named from the
+// source type when the frontend sent one (`Int?`).
+static LLVMMetadataRef di_value_optional_type(const char *key, const char *name) {
+    LLVMMetadataRef hit = di_cached(key);
+    if (hit) return hit;
+    if (!g_di_layout) return NULL;
+
+    LLVMTypeRef ty = type_from_key(key);
+    LLVMMetadataRef fty[2] = {
+        di_basic("Bool", 8, PRISMIO_DW_ATE_boolean),
+        di_type_for(key + 4, NULL)
+    };
+    if (!fty[1]) return NULL;
+    const char *fname[2] = { "present", "value" };
+
+    LLVMMetadataRef members[2];
+    for (unsigned i = 0; i < 2; i++) {
+        LLVMTypeRef field = LLVMStructGetTypeAtIndex(ty, i);
+        members[i] = LLVMDIBuilderCreateMemberType(
+            g_di, g_di_cu, fname[i], strlen(fname[i]), NULL, 0,
+            LLVMABISizeOfType(g_di_layout, field) * 8,
+            LLVMABIAlignmentOfType(g_di_layout, field) * 8,
+            LLVMOffsetOfElement(g_di_layout, ty, i) * 8,
+            LLVMDIFlagZero, fty[i]);
+    }
+
+    const char *label = (name && *name) ? name : "Optional";
+    return di_cache(key, LLVMDIBuilderCreateStructType(
+        g_di, g_di_cu, label, strlen(label), NULL, 0,
+        LLVMABISizeOfType(g_di_layout, ty) * 8,
+        LLVMABIAlignmentOfType(g_di_layout, ty) * 8,
+        LLVMDIFlagZero, NULL, members, 2, 0, NULL, "", 0));
+}
+
 static LLVMMetadataRef di_data_element_type(void) {
     LLVMMetadataRef hit = di_cached("$data_element");
     if (hit) return hit;
@@ -5678,6 +5803,8 @@ static LLVMMetadataRef di_type_for(const char *key, const char *name) {
             g_di, LLVMABISizeOfType(g_di_layout, arr) * 8,
             LLVMABIAlignmentOfType(g_di_layout, arr) * 8, elem, &range, 1));
     }
+
+    if (strncmp(key, "opt:", 4) == 0) return di_value_optional_type(key, name);
 
     if (strcmp(key, "ptr") == 0) {
         // A Prismio String is a NUL-terminated char* -- str_concat, str_equals

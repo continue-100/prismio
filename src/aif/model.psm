@@ -393,6 +393,7 @@ internal extern fn aif_vs_is_empty(vs: Int) -> Int
 internal extern fn aif_vs_view_of(vs: Int, collection: Int)
 // The value may be no site at all. See key_may_be_untracked.
 internal extern fn aif_vs_mark_untracked(vs: Int)
+internal extern fn aif_vs_mark_literal(vs: Int)
 
 internal extern fn aif_key_var(fnId: Int, name: String) -> Int
 internal extern fn aif_var_note_scope(fnId: Int, name: String, scope: Int)
@@ -552,13 +553,21 @@ internal fn aifVsEmpty() -> Int {
     return 0 - 1
 }
 
-// Empty, and saying so: a string literal or static storage. It resolves to no
-// site like aifVsEmpty, and a field that may be handed one is released by
-// nobody -- the generated release would otherwise free the literal. Allocated,
-// unlike aifVsEmpty, because the flag has to live somewhere.
+// Empty, and saying so: static storage a release cannot tell from an allocation
+// -- what an `alias` extern hands back, a module global's value. It resolves to
+// no site like aifVsEmpty, and a field that may be handed one is released by
+// nobody. Allocated, unlike aifVsEmpty, because the flag has to live somewhere.
+// A string literal is aifVsLiteral: its pair says what it is.
 internal fn aifVsUntracked() -> Int {
     let vs = aif_vs_new()
     aif_vs_mark_untracked(vs)
+    return vs
+}
+
+// A string literal's value set: no site, untracked, and not a hazard.
+internal fn aifVsLiteral() -> Int {
+    let vs = aif_vs_new()
+    aif_vs_mark_literal(vs)
     return vs
 }
 

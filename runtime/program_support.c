@@ -1598,11 +1598,18 @@ void prismio_task_release(void* handle) {
     if (handle) free(handle);
 }
 
+// `bytes` is the in-place ring a plain-data channel uses instead of `slots`:
+// `cap` messages of `elem_size` bytes, allocated by whichever of the first
+// chan_send_copy or chan_recv_copy runs first. A channel is one or the other
+// for its whole life -- sema decides from the element type -- so the two rings
+// share `head` and `len` and never hold messages at once.
 typedef struct {
     PRISMIO_MUTEX_T lock;
     PRISMIO_COND_T not_empty;
     PRISMIO_COND_T not_full;
     void** slots;
+    unsigned char* bytes;
+    int elem_size;
     int cap, head, len;
     int closed;
 } PrismioChan;
@@ -1662,6 +1669,71 @@ void* chan_recv(void* handle) {
     return msg;
 }
 
+// The plain-data channel: the message is copied into the ring and out again,
+// so neither side allocates. `chan_send(c, Msg { val: x })` on a
+// `Channel<Msg>` of scalars was a heap box made by the sender and freed by the
+// receiver, on another thread -- two of each per message through a two-stage
+// pipeline, and the whole of channel_pipeline's gap to C++, which moves the
+// value (docs/CHANNELS_PLAN.md). Sema routes a channel here when every field of
+// its element type is a scalar (chan_send_copy, chan_recv_copy); a message that
+// owns anything still travels as a pointer.
+//
+// Called with the lock held. 0 when the ring cannot be allocated, which the
+// callers report the way a closed channel is reported.
+static int chan_bytes_ready(PrismioChan* c, int size) {
+    if (c->bytes) return 1;
+    if (size < 1) size = 1;
+    c->bytes = (unsigned char*)calloc((size_t)c->cap, (size_t)size);
+    if (!c->bytes) return 0;
+    c->elem_size = size;
+    return 1;
+}
+
+// 1 delivered, 0 dropped because the channel was closed -- chan_send's
+// contract. The source stays the sender's: this copies it.
+int chan_send_copy(void* handle, const void* src, int size) {
+    PrismioChan* c = (PrismioChan*)handle;
+    if (!c) return 0;
+    PRISMIO_MUTEX_LOCK(&c->lock);
+    while (c->len == c->cap && !c->closed) {
+        PRISMIO_COND_WAIT(&c->not_full, &c->lock);
+    }
+    if (c->closed || !chan_bytes_ready(c, size)) {
+        PRISMIO_MUTEX_UNLOCK(&c->lock);
+        return 0;
+    }
+    int tail = c->head + c->len;
+    if (tail >= c->cap) tail -= c->cap;
+    memcpy(c->bytes + (size_t)tail * (size_t)c->elem_size, src, (size_t)c->elem_size);
+    c->len++;
+    PRISMIO_COND_SIGNAL(&c->not_empty);
+    PRISMIO_MUTEX_UNLOCK(&c->lock);
+    return 1;
+}
+
+// 1 with a message copied into `dst`, 0 once the channel is closed and
+// drained. A status rather than a pointer, so the destination is the caller's:
+// the compiler hands it the value's own storage, which the analysis places on
+// the stack when the value stays in the frame.
+int chan_recv_copy(void* handle, void* dst, int size) {
+    PrismioChan* c = (PrismioChan*)handle;
+    if (!c) return 0;
+    PRISMIO_MUTEX_LOCK(&c->lock);
+    while (c->len == 0 && !c->closed) {
+        PRISMIO_COND_WAIT(&c->not_empty, &c->lock);
+    }
+    if (c->len == 0 || !chan_bytes_ready(c, size)) {
+        PRISMIO_MUTEX_UNLOCK(&c->lock);
+        return 0;
+    }
+    memcpy(dst, c->bytes + (size_t)c->head * (size_t)c->elem_size, (size_t)c->elem_size);
+    if (++c->head == c->cap) c->head = 0;
+    c->len--;
+    PRISMIO_COND_SIGNAL(&c->not_full);
+    PRISMIO_MUTEX_UNLOCK(&c->lock);
+    return 1;
+}
+
 // Wakes every blocked party. Both waits above re-test `closed`, so a broadcast
 // is enough and no waiter can be left holding the old predicate.
 void chan_close(void* handle) {
@@ -1717,6 +1789,7 @@ void chan_free(void* handle) {
     PRISMIO_COND_DESTROY(&c->not_empty);
     PRISMIO_COND_DESTROY(&c->not_full);
     free(c->slots);
+    free(c->bytes);
     free(c);
 }
 

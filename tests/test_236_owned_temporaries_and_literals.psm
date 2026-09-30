@@ -1,0 +1,105 @@
+// Values nothing named, and literals sitting where owned Strings sit. Each case
+// below leaked, dangled or did not compile until 2026-09-30; the harness
+// (run_aif_verify_test) runs this under `--verify` and requires 0 leaked.
+//
+//   * A field read from a call's result: `make().count`, through fields
+//     (`make().inner.count`), and passed on (`total(make().cells)`).
+//   * `find() -> Node?` with a `return none` path: the caller owns the Node.
+//   * A String literal in a struct field that also holds owned Strings: the
+//     literal's pair is tagged borrowed, so the field's release skips it and
+//     still frees the owned ones.
+//   * A String stored where a `String?` is declared -- a binding, a field, an
+//     argument, a return -- is a block of its own, not the stack scratch an
+//     inline String was, and a `String?` parameter and return compile.
+//   * The length of a String a call returned.
+
+import std.io
+import std.string
+
+struct Inner {
+    count: Int
+}
+
+struct Holder {
+    inner: Inner,
+    count: Int
+}
+
+struct Named {
+    name: String
+}
+
+struct Maybe {
+    label: String?
+}
+
+struct Node {
+    id: Int
+}
+
+fn make(n: Int) -> Holder {
+    return Holder { inner: Inner { count: n * 2 }, count: n }
+}
+
+fn find(hit: Bool) -> Node? {
+    if (hit) { return Node { id: 7 } }
+    return none
+}
+
+fn named(owned: Bool, n: Int) -> Named {
+    if (owned) { return Named { name: "owned name number ".concat(n.toString()) } }
+    return Named { name: "a literal name long enough for the heap" }
+}
+
+fn label(n: Int) -> String? {
+    if (n < 0) { return none }
+    return "l".concat(n.toString())
+}
+
+fn lengthOf(s: String?) -> Int {
+    if (s == none) { return 0 }
+    return expect(s).length
+}
+
+fn spelled(n: Int) -> String {
+    return "a spelled-out number: ".concat(n.toString())
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let mut total = 0
+    for i in 0..<10 {
+        total = total + make(i).count + make(i).inner.count
+    }
+    if (total != 135) { return fail("fields read from call results") }
+
+    let found = find(true)
+    let missing = find(false)
+    if (found == none or missing != none) { return fail("an optional return") }
+    if (expect(found).id != 7) { return fail("the returned Node") }
+
+    let mut letters = 0
+    for i in 0..<10 {
+        letters = letters + named(i % 2 == 0, i).name.length
+    }
+    if (letters != 5 * 19 + 5 * 39) { return fail("literal and owned names in one field") }
+
+    let short: String? = "hi".concat("!")
+    let box = Maybe { label: "x".concat("y") }
+    let mut seen = lengthOf(short) + lengthOf(box.label) + lengthOf("an argument")
+    for i in 0..<5 {
+        seen = seen + lengthOf(label(i))
+    }
+    if (label(0 - 1) != none) { return fail("a String? return of none") }
+    if (seen != 3 + 2 + 11 + 10) { return fail("String where String? is declared") }
+
+    if (spelled(42).length != 24) { return fail("the length of a returned String") }
+
+    println("PASS: owned temporaries and literals")
+    return 0
+}

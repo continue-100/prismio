@@ -158,9 +158,6 @@ impl UmsProjectModel {
                 } else if (__builtin_string_len(property.value.text) == 0) {
                     self.lowerError(diagnostics, property, "UMS2404",
                                   "toolchain.host cannot be empty")
-                } else if (umsHostPathValid(property.value.text) == false) {
-                    self.lowerError(diagnostics, property, "UMS2405",
-                                  "toolchain.host must be a path under .prismio/, with no `..`")
                 } else {
                     self.toolchain.host = property.value.text.clone()
                 }

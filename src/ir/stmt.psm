@@ -517,6 +517,8 @@ private fn generateVariableDecl(stmt: ASTNode) {
             initVal = generateOwnedStringLiteral(initVal, stmt.child2)
         }
 
+        initVal = storeAsDeclared(initVal, storageType(getExprType(ptr_to_node(stmt.child2))),
+                                  storeType.clone())
         ir_store(storeType, initVal, slot)
 
         // Resolve the German-string representation once, here, where the
@@ -571,7 +573,7 @@ private fn generateVariableDecl(stmt: ASTNode) {
             // because one site backs every `concat` in the program and
             // answering it there suppressed the release of every other
             // binding too -- see aif_frees_at_scope_node.
-            ir_mark_droppable(varName, dropKindOf(ptr_to_node(stmt.child2)))
+            markOwnedBinding(varName, ptr_to_node(stmt.child2))
         } else if (aif_frees_unless_returned_node(stmt.child2, varName) == 1
             and nodeGetType(stmt).kind != TypeKind.ARRAY
             and chainBindingCount(irFunctionBody, varName) == 1
@@ -583,14 +585,14 @@ private fn generateVariableDecl(stmt: ASTNode) {
             // generateReturn. Bound once, because the engine's binding key is
             // per name and `let a = a` in an inner block would make two
             // bindings one.
-            ir_mark_droppable(varName, dropKindOf(ptr_to_node(stmt.child2)))
+            markOwnedBinding(varName, ptr_to_node(stmt.child2))
         } else if (accumulates and chainReturnsName(irFunctionBody, varName) == false) {
             // The last value an accumulator holds needs an owner too, and the
             // assignments only ever release what they displace. A returned
             // binding hands that one to the caller -- the same reason the
             // branch above declines a returned value -- so this is every
             // other case.
-            ir_mark_droppable(varName, dropKindOf(ptr_to_node(stmt.child2)))
+            markOwnedBinding(varName, ptr_to_node(stmt.child2))
         } else if (frameStructOwnsFields(stmt.child2)
             and chainAssignsName(irFunctionBody, varName) == false
             and chainDropsName(irFunctionBody, varName) == false) {
@@ -696,7 +698,8 @@ private fn generateAssignment(stmt: ASTNode) {
             ir_store_global(storeType, val, varName)
         } else {
             if (releasesOld and consumedOld == false) {
-                generateDisplacedRelease(old, val, dropKindOf(ptr_to_node(stmt.child2)), varType)
+                generateDisplacedRelease(old, val, bindingDropKind(ptr_to_node(stmt.child2)),
+                                         dropReleaseType(ir_get_var_slot(varName), varType))
             }
             // An array whose length is known keeps its own storage: `d = c`
             // copies c's elements in rather than re-pointing d at c's.
@@ -706,6 +709,8 @@ private fn generateAssignment(stmt: ASTNode) {
                 let elemType = storageType(typeIrKey(ptr_to_type(targetT.child)))
                 ir_array_copy_into(elemType, targetT.length, dst, val)
             } else {
+                val = storeAsDeclared(val, storageType(getExprType(ptr_to_node(stmt.child2))),
+                                      storeType.clone())
                 ir_store(storeType, val, ir_get_var_slot(varName))
             }
         }
@@ -766,7 +771,9 @@ private fn generateAssignment(stmt: ASTNode) {
         let structName = structTypeName(objectType)
         let fieldIndex = ir_get_struct_field_index(structName, targetNode.s1)
         let fieldType = fieldStorageType(ir_get_struct_field_type(structName, targetNode.s1))
-        let val = generateExpression(ptr_to_node(stmt.child2))
+        let val = storeAsDeclared(generateExpression(ptr_to_node(stmt.child2)),
+                                  storageType(getExprType(ptr_to_node(stmt.child2))),
+                                  fieldType.clone())
         if (frameFieldAssignmentNeedsOwner(objectNode, structName)) {
             spillOwnedFieldTemporary(ptr_to_node(stmt.child2), val)
         }
@@ -822,6 +829,12 @@ private fn generateReturn(stmt: ASTNode) {
     if (nodeExists(stmt.child1)) {
         let mut retVal = generateExpression(ptr_to_node(stmt.child1))
         let mut retType = storageType(getExprType(ptr_to_node(stmt.child1)))
+        // `-> String?` returning a String: the declared type is the ABI.
+        if (nodeExists(irFunctionDecl) and isFatStringKey(retType)
+                and storageType(getDeclaredReturnType(ptr_to_node(irFunctionDecl), ptr_to_node(irFunctionDecl).child3)).equals("ptr")) {
+            retVal = storeAsDeclared(retVal, retType.clone(), "ptr")
+            retType = "ptr"
+        }
         // `-> Array<T, N>`: the elements leave by value, loaded out of a frame
         // that is about to go.
         if (nodeExists(irFunctionDecl)) {
@@ -1635,6 +1648,14 @@ private fn generateTaskRelease(value: String) {
     ir_call_begin()
     ir_call_arg("ptr", value)
     ir_call_end("void", "prismio_task_release")
+}
+
+// Marks a binding droppable as the value its initialiser produced, including a
+// `T?` of a struct that owns fields (bindingDropKind).
+private fn markOwnedBinding(varName: String, init: ASTNode) {
+    let kind = bindingDropKind(init)
+    ir_mark_droppable(varName, kind)
+    if (kind == IR_DROP_TYPED) { noteOptionalDropType(varName, init) }
 }
 
 private fn generateDisplacedRelease(old: String, val: String, kind: Int, declType: String) {

@@ -1,0 +1,8 @@
+// expect-error: this channel's message type is not known
+// expect-error: annotate the binding
+// `Channel(8)` with neither type arguments nor an annotation is a channel of
+// nothing; the error names both ways to say what it carries.
+fn main() -> Int {
+    let c = Channel(8)
+    return 0
+}

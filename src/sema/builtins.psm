@@ -101,6 +101,10 @@ internal fn semaBuiltinCallType(name: String, argPtr: Ptr) -> TypeInfo {
         }
         return typeInvalid()
     }
+    if (name.equals("unwrapOr") and nodeExists(argPtr)) {
+        let uo = nodeGetType(ptr_to_node(argPtr))
+        if (typeIsValueOptional(uo)) { return typeOptionalInner(uo) }
+    }
 
     // v0.1 concurrency. The seven blocking channel operations. Their element
     // type comes from the endpoint argument, exactly as `list_get`'s comes from
@@ -117,7 +121,7 @@ internal fn semaBuiltinCallType(name: String, argPtr: Ptr) -> TypeInfo {
     // `T?`, and that is the whole of receive-after-close: a drained closed
     // channel answers `none`, so a receiving loop ends without a sentinel value
     // and without a second call to ask whether it should have received.
-    if (name.equals("chan_recv")) {
+    if (name.equals("chan_recv") or name.equals("chan_recv_copy")) {
         if (nodeExists(argPtr)) {
             let ct = nodeGetType(ptr_to_node(argPtr))
             if (typeIsChannel(ct)) { return typeOptional(typeChannelElem(ct)) }
@@ -127,7 +131,7 @@ internal fn semaBuiltinCallType(name: String, argPtr: Ptr) -> TypeInfo {
     // 1 delivered, 0 dropped because the channel was already closed. `Int`
     // rather than `Bool` because the C returns `int` and the declaration is
     // emitted from this type; see the contract note in semaCheckBuiltinCall.
-    if (name.equals("chan_send")) { return typeInt() }
+    if (name.equals("chan_send") or name.equals("chan_send_copy")) { return typeInt() }
     if (name.equals("chan_len")) { return typeInt() }
     if (name.equals("chan_close")) { return typeVoid() }
     if (name.equals("chan_free")) { return typeVoid() }
@@ -205,6 +209,40 @@ private fn semaRemovalVerdict(list: ASTNode) -> Int {
     return 1
 }
 
+// Whether a channel carries its messages by value (chan_send_copy,
+// chan_recv_copy in runtime/program_support.c): a struct whose every field is a
+// scalar. Such a message owns nothing, so a byte copy is the whole of moving it
+// and neither side needs a heap box. A field that is a String, a list, another
+// struct or an enum is a reference, and that channel keeps the pointer ring.
+private fn semaChannelCopies(module: ASTNode, ct: TypeInfo) -> Bool {
+    let elem = typeChannelElem(ct)
+    if (elem.kind != TypeKind.STRUCT) { return false }
+    let count = ir_decl_count(elem.name)
+    let mut found = false
+    for i in 0..<count {
+        let decl = ptr_to_node(ir_decl_at(elem.name, i))
+        if (decl.kind != NodeKind.STRUCT_DECL) { continue }
+        if (nodeExists(decl.genericInfo)) { return false }
+        found = true
+        let mut fieldPtr = decl.child1
+        while (nodeExists(fieldPtr)) {
+            let field = ptr_to_node(fieldPtr)
+            let ft = semaAnnotationType(module, ptr_to_node(field.child1))
+            if (ft.kind != TypeKind.INT and ft.kind != TypeKind.FLOAT
+                    and ft.kind != TypeKind.BOOL and ft.kind != TypeKind.CHAR) {
+                return false
+            }
+            fieldPtr = field.next
+        }
+    }
+    return found
+}
+
+private fn semaIsScalarOptionalArg(module: ASTNode, argPtr: Ptr) -> Bool {
+    if (nodeExists(argPtr) == false) { return false }
+    return typeIsValueOptional(semaExpr(module, ptr_to_node(argPtr)))
+}
+
 internal fn semaCheckBuiltinCall(module: ASTNode, call: ASTNode, name: String, argPtr: Ptr) -> Bool {
     if (semaCheckFailureBuiltin(module, call, name, argPtr)) { return true }
 
@@ -238,6 +276,17 @@ internal fn semaCheckBuiltinCall(module: ASTNode, call: ASTNode, name: String, a
         if (nodeIsNull(ot.child)) {
             semaErrorAt(a0, "expect needs to know what it is unwrapping; `none` on its own has no type")
         }
+        return true
+    }
+
+    // A scalar's `T?` with a fallback: `o.unwrapOr(0)`. Claimed only for a
+    // value optional, so `Option<T>`'s own `unwrapOr` and a user function of
+    // that name resolve as they always did.
+    if (name.equals("unwrapOr") and semaIsScalarOptionalArg(module, argPtr)) {
+        if (semaCheckArity(call, name, argPtr, 2) == false) { return true }
+        let o = ptr_to_node(argPtr)
+        let inner = typeOptionalInner(nodeGetType(o))
+        semaCheckValue(module, ptr_to_node(o.next), inner, "unwrapOr fallback")
         return true
     }
 
@@ -547,12 +596,15 @@ internal fn semaCheckBuiltinCall(module: ASTNode, call: ASTNode, name: String, a
     // every task the endpoint was shared with. The join is the synchronisation
     // edge that makes the free safe, which is the same edge that keeps the
     // element counts non-atomic.
+    // The `chan_*` names are what the methods lower onto; a program that
+    // writes one is told the method (src/sema/channel.psm).
+    if (semaChannelRefuseRuntimeName(call, name)) { return true }
     if (name.equals("chan_new")) {
         if (semaCheckArity(call, name, argPtr, 1) == false) { return true }
         semaCheckValue(module, ptr_to_node(argPtr), typeInt(), "chan_new capacity")
         return true
     }
-    if (name.equals("chan_send")) {
+    if (name.equals("chan_send") or name.equals("chan_send_copy")) {
         if (semaCheckArity(call, name, argPtr, 2) == false) { return true }
         let a0 = ptr_to_node(argPtr)
         let ct = semaExpr(module, a0)
@@ -562,6 +614,13 @@ internal fn semaCheckBuiltinCall(module: ASTNode, call: ASTNode, name: String, a
         }
         let valueNode = ptr_to_node(a0.next)
         semaCheckValue(module, valueNode, typeChannelElem(ct), "chan_send value")
+        // A plain-data message is copied into the channel's ring, so it stays
+        // the sender's: not consumed, released where the sender's scope ends
+        // (and never allocated, when it does not outlive the frame).
+        if (name.equals("chan_send_copy") or semaChannelCopies(module, ct)) {
+            ptr_to_node(call.child1).s1 = "chan_send_copy"
+            return true
+        }
         // A closed channel drops the message, and a dropped message is the one
         // value nothing can release -- the sender has moved it and the receiver
         // never saw it. That is why the contract is "close only after every
@@ -569,13 +628,15 @@ internal fn semaCheckBuiltinCall(module: ASTNode, call: ASTNode, name: String, a
         semaConsumeOperand(valueNode)
         return true
     }
-    if (name.equals("chan_recv")) {
+    if (name.equals("chan_recv") or name.equals("chan_recv_copy")) {
         if (semaCheckArity(call, name, argPtr, 1) == false) { return true }
         let a0 = ptr_to_node(argPtr)
         let ct = semaExpr(module, a0)
         if (typeIsChannel(ct) == false) {
             semaErrorAt(a0, "chan_recv expects a Channel, found ".concat(typeDisplay(ct)))
+            return true
         }
+        if (semaChannelCopies(module, ct)) { ptr_to_node(call.child1).s1 = "chan_recv_copy" }
         return true
     }
     if (name.equals("chan_share") or name.equals("chan_close")

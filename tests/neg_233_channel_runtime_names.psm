@@ -1,0 +1,15 @@
+// expect-error: `chan_send` is the runtime's name, not Prismio's
+// expect-error: write `c.send(value)`
+// The `chan_*` functions are what `c.send(v)` and its siblings lower onto
+// (src/sema/channel.psm). A program that names one is told the method it
+// means, rather than reaching past the surface the ownership rules live on.
+struct Tick {
+    value: Int
+}
+
+fn main() -> Int {
+    let c = Channel<Tick>(2)
+    chan_send(c, Tick { value: 1 })
+    c.free()
+    return 0
+}

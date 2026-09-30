@@ -41,6 +41,13 @@ internal fn semaMangleType(t: TypeInfo) -> String {
         }
         return "DataView_Invalid"
     }
+    // Without this every `T?` mangled to `Invalid`, so `Map<Int, Float?>` and
+    // `Map<Int, U8?>` named one instantiation and the second got the first's
+    // methods -- `set` with the wrong value type, which read as no `set` at all.
+    if (t.kind == TypeKind.OPTIONAL) {
+        if (nodeExists(t.child)) { return "Opt_".concat(semaMangleType(ptr_to_type(t.child))) }
+        return "Opt_None"
+    }
     return "Invalid"
 }
 
@@ -314,6 +321,26 @@ private fn semaDefaultLiteralScore(module: ASTNode, fnNode: ASTNode, argPtr: Ptr
         param = paramNode.next
     }
     return score
+}
+
+// The arguments that reach their parameter without being wrapped into an
+// optional. Equal for every candidate when none takes a `T?`, so it reorders
+// only the overload sets that mix a `T` with its `T?`.
+private fn semaUnwrappedArgumentCount(module: ASTNode, fnNode: ASTNode, argPtr: Ptr) -> Int {
+    let mut count = 0
+    let mut arg = argPtr
+    let mut param = fnNode.child1
+    while (nodeExists(arg) and nodeExists(param)) {
+        let argNode = ptr_to_node(arg)
+        let paramNode = ptr_to_node(param)
+        let paramT = semaAnnotationType(module, ptr_to_node(paramNode.child1))
+        if (paramT.kind != TypeKind.OPTIONAL or semaExpr(module, argNode).kind == TypeKind.OPTIONAL) {
+            count = count + 1
+        }
+        arg = argNode.next
+        param = paramNode.next
+    }
+    return count
 }
 
 // True when the module contains a real `fn` body for `name`, as opposed to only an
@@ -662,7 +689,11 @@ internal fn semaFindFunctionOverload(module: ASTNode, call: ASTNode, name: Strin
                 // The module preference outranks the literal one: which
                 // *definition* a call means is settled before how well its
                 // untyped literals fit that definition's parameters.
-                let literalScore = semaModulePreference(call, stmt) * 1000
+                // Then an argument taken as it is outranks one wrapped into a
+                // `T?`: `show(n)` with `n: Int` beside `show(self: Int)` and
+                // `show(self: Int?)` is the first, not a tie.
+                let literalScore = semaModulePreference(call, stmt) * 100000
+                                   + semaUnwrappedArgumentCount(module, stmt, argPtr) * 100
                                    + semaDefaultLiteralScore(module, stmt, argPtr)
                 if (literalScore > bestLiteralScore) {
                     bestPtr = stmtPtr

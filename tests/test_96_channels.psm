@@ -4,7 +4,16 @@
 // ownership contract and no wrapper: RUNTIME.md (now developers.prismio.org/
 // runtime/tasks-and-channels) listed `chan_new` and its six
 // siblings under "not yet wrapped ... `extern fn` at your own risk". This is
-// that contract, and each rule below is a check rather than a sentence.
+// that contract, and each rule below is a check rather than a sentence. The
+// surface is methods now -- `Channel<T>(n)`, `c.send(v)`, `c.receive()`,
+// `c.share()`, `c.close()`, `c.length`, `c.free()` -- lowered onto those same
+// `chan_*` entry points, which a program may no longer name
+// (src/sema/channel.psm).
+//
+// `Job` and `Answer` are all-Int, so both channels here are plain-data ones:
+// each message is copied through the ring and the received value lives on the
+// receiver's frame. test_232_channel_copies covers that path directly, and a
+// message that owns something (the pointer path) too.
 //
 // **What this is not.** There is no executor, no future and no `await`. A send
 // blocks while the channel is full and a receive blocks until a message arrives
@@ -46,45 +55,46 @@ fn step(seed: Int, steps: Int) -> Int {
 fn worker(jobs: Channel<Job>, answers: Channel<Answer>) -> Int {
     let mut handled = 0
     loop {
-        let taken = chan_recv(jobs)
+        let taken = jobs.receive()
         if (taken == none) { break }
         let job = expect(taken)
-        chan_send(answers, Answer { value: step(job.seed, job.steps) })
+        answers.send(Answer { value: step(job.seed, job.steps) })
         handled = handled + 1
     }
     return handled
 }
 
-// Rule 1, ownership of a sent value: `chan_send` moves. The negative half is
-// `neg_56_channel_send_moves.psm`, which names the value again and is rejected.
-// The positive half is here -- every message this sends is received, used and
-// released, which `--verify` sees as a balanced ledger.
+// Rule 1, ownership of a sent value: a send moves a message that owns anything,
+// and copies one that is plain data. The negative half is
+// `neg_56_channel_send_moves.psm`, whose message owns a String and is named
+// again after the send. The positive half is here -- every message this sends
+// is received, used and released, which `--verify` sees as a balanced ledger.
 //
-// Rule 2, shared endpoint lifetime: `chan_share` is the syntactically visible
+// Rule 2, shared endpoint lifetime: `share()` is the syntactically visible
 // duplication. It hands back the same endpoint, so the worker and this function
-// are talking through one channel and not two, and only the endpoint `chan_new`
-// returned is freed.
+// are talking through one channel and not two, and only the endpoint
+// `Channel<T>(n)` returned is freed.
 fn pool_round_trip() -> Int {
-    let jobs: Channel<Job> = chan_new(8)
-    let answers: Channel<Answer> = chan_new(8)
+    let jobs = Channel<Job>(8)
+    let answers = Channel<Answer>(8)
 
-    let w0 = spawn worker(chan_share(jobs), chan_share(answers))
-    let w1 = spawn worker(chan_share(jobs), chan_share(answers))
+    let w0 = spawn worker(jobs.share(), answers.share())
+    let w1 = spawn worker(jobs.share(), answers.share())
 
     let mut sent = 0
     while (sent < 6) {
-        chan_send(jobs, Job { seed: sent * 7919 + 1, steps: 64 })
+        jobs.send(Job { seed: sent * 7919 + 1, steps: 64 })
         sent = sent + 1
     }
     // Rule 4, destruction: close, then join, then free. The close is what lets
     // the workers' receive loops end; the join is the synchronisation edge that
     // makes the free safe.
-    chan_close(jobs)
+    jobs.close()
 
     let mut total = 0
     let mut got = 0
     while (got < 6) {
-        let taken = chan_recv(answers)
+        let taken = answers.receive()
         if (taken == none) { break }
         let answer = expect(taken)
         total = total + answer.value
@@ -93,9 +103,9 @@ fn pool_round_trip() -> Int {
 
     let h0 = join w0
     let h1 = join w1
-    chan_close(answers)
-    chan_free(jobs)
-    chan_free(answers)
+    answers.close()
+    jobs.free()
+    answers.free()
 
     if (h0 + h1 != 6) { return fail("the two workers did not handle six jobs between them") }
     if (got != 6) { return fail("six sends did not produce six answers") }
@@ -115,16 +125,16 @@ fn serial_round_trip() -> Int {
 }
 
 fn capacity_and_length() -> Int {
-    let c: Channel<Job> = chan_new(4)
-    if (chan_len(c) != 0) { return fail("a fresh channel is not empty") }
-    chan_send(c, Job { seed: 1, steps: 1 })
-    chan_send(c, Job { seed: 2, steps: 1 })
-    if (chan_len(c) != 2) { return fail("chan_len does not count queued messages") }
+    let c = Channel<Job>(4)
+    if (c.length != 0) { return fail("a fresh channel is not empty") }
+    c.send(Job { seed: 1, steps: 1 })
+    c.send(Job { seed: 2, steps: 1 })
+    if (c.length != 2) { return fail("length does not count queued messages") }
 
-    chan_close(c)
+    c.close()
     // Draining a closed channel still yields what was queued before the close.
-    let first = chan_recv(c)
-    let second = chan_recv(c)
+    let first = c.receive()
+    let second = c.receive()
     if (first == none or second == none) {
         return fail("a closed channel dropped messages queued before the close")
     }
@@ -132,9 +142,9 @@ fn capacity_and_length() -> Int {
     let b = expect(second)
     if (a.seed + b.seed != 3) { return fail("a closed channel reordered or altered its queue") }
     // ...and then answers `none`, for ever, rather than blocking.
-    if (chan_recv(c) != none) { return fail("a drained closed channel did not answer none") }
-    if (chan_recv(c) != none) { return fail("a drained closed channel answered none only once") }
-    chan_free(c)
+    if (c.receive() != none) { return fail("a drained closed channel did not answer none") }
+    if (c.receive() != none) { return fail("a drained closed channel answered none only once") }
+    c.free()
     return 0
 }
 

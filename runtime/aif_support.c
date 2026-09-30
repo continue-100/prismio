@@ -2097,6 +2097,14 @@ typedef struct {
     // "a literal or an allocation" resolves exactly like "an allocation". See
     // key_may_be_untracked for the one question that needs the difference.
     int untracked;
+    // Untracked *and* indistinguishable at a release: static storage an `alias`
+    // extern handed back, or a module global's value. A string literal is
+    // untracked without being a hazard -- its pair carries the borrowed tag
+    // (PRISMIO_STR_BORROWED_TAG), every release of a pair skips that tag, and
+    // every conversion to a bare pointer copies it (str_own). So a literal no
+    // longer stops a field, a container or a return owning the Strings it holds;
+    // only a hazard does. The three closures below read this, not `untracked`.
+    int hazard;
     // A String view: pushed into a container, it is copied into a block of its
     // own. So the literal it may be a view of is never what that container
     // holds -- see container_may_hold_untracked, the one reader.
@@ -2119,6 +2127,7 @@ int aif_vs_new(void) {
     v->vlen = 0;
     v->vcap = 0;
     v->untracked = 0;
+    v->hazard = 0;
     v->copied_on_keep = 0;
     return vs_count++;
 }
@@ -2163,6 +2172,11 @@ static void vs_push_view(int vs, int cvs) {
 void aif_vs_view_of(int vs, int container_vs) { vs_push_view(vs, container_vs); }
 
 void aif_vs_mark_untracked(int vs) {
+    if (vs >= 0 && vs < vs_count) { vsets[vs].untracked = 1; vsets[vs].hazard = 1; }
+}
+
+// A string literal: untracked, not a hazard (see ValueSet.hazard).
+void aif_vs_mark_literal(int vs) {
     if (vs >= 0 && vs < vs_count) vsets[vs].untracked = 1;
 }
 
@@ -2194,11 +2208,13 @@ int aif_vs_union(int a, int b) {
         for (int i = 0; i < vsets[a].len; i++) vs_push(out, vsets[a].items[i]);
         for (int i = 0; i < vsets[a].vlen; i++) vs_push_view(out, vsets[a].views[i]);
         if (vsets[a].untracked) vsets[out].untracked = 1;
+        if (vsets[a].hazard) vsets[out].hazard = 1;
     }
     if (b >= 0 && b < vs_count) {
         for (int i = 0; i < vsets[b].len; i++) vs_push(out, vsets[b].items[i]);
         for (int i = 0; i < vsets[b].vlen; i++) vs_push_view(out, vsets[b].views[i]);
         if (vsets[b].untracked) vsets[out].untracked = 1;
+        if (vsets[b].hazard) vsets[out].hazard = 1;
     }
     return out;
 }
@@ -6361,7 +6377,7 @@ static int key_untracked_cons = -1;
 static int vs_may_be_untracked(int vs) {
     if (vs < 0 || vs >= vs_count) return 0;
     const ValueSet* v = &vsets[vs];
-    if (v->untracked) return 1;
+    if (v->hazard) return 1;
     for (int i = 0; i < v->len; i++) {
         int item = v->items[i];
         if ((item & 1) && bits_test(&key_untracked, item >> 1)) return 1;
@@ -6439,7 +6455,7 @@ static int key_may_return_untracked(int key) {
 static int vs_may_return_untracked(int vs) {
     if (vs < 0 || vs >= vs_count) return 0;
     const ValueSet* v = &vsets[vs];
-    if (v->untracked) return 1;
+    if (v->hazard) return 1;
     for (int i = 0; i < v->len; i++) {
         int item = v->items[i];
         if ((item & 1) && bits_test(&key_untracked_ret, item >> 1)) return 1;
@@ -6931,7 +6947,7 @@ static int vs_keeps_untracked(int vs) {
     if (vs < 0 || vs >= vs_count) return 0;
     const ValueSet* v = &vsets[vs];
     if (v->copied_on_keep) return 0;
-    if (v->untracked) return 1;
+    if (v->hazard) return 1;
     for (int i = 0; i < v->len; i++) {
         int item = v->items[i];
         if ((item & 1) && bits_test(&key_kept_untracked, item >> 1)) return 1;
@@ -7276,6 +7292,15 @@ static void ret_partial_build(void) {
         int f = kn->a;
         if (f < 0 || f >= fn_count) continue;
         resolve(cons[i].b, &ret_scratch);
+        // `return ""` hands back a literal, whose pair is tagged borrowed: the
+        // caller releasing it is a no-op, so it takes nothing from the caller's
+        // ownership of what the function's other returns allocate. strRepeat's
+        // empty case made every repeated String unowned (test_205).
+        if (!bits_any(&ret_scratch) && cons[i].b >= 0 && cons[i].b < vs_count
+                && vsets[cons[i].b].untracked && !vsets[cons[i].b].hazard
+                && vsets[cons[i].b].vlen == 0) {
+            continue;
+        }
         // Some sites is not all of them. `return v` for a payload binder
         // resolves to every site stored into that payload field anywhere --
         // std's own `Some(substring)` among them -- while the Option in hand

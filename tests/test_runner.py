@@ -4434,6 +4434,137 @@ def run_failure_builtins_test():
     return True
 
 
+def run_scalar_optional_test():
+    """A scalar `T?` is a value: no allocation, and `expect` on `none` panics.
+
+    test_238 checks the answers; this checks the two things an answer cannot. A
+    boxed `Option<T>` would pass test_238 too, so `half`'s IR must hold no
+    allocation. And the probe's `expect(none)` must exit 101 naming its line.
+    """
+    print(f"\n{BLUE}--- Running scalar_optional ---{RESET}")
+    problems = []
+    alloc = re.compile(r"call ptr @(malloc|rt_alloc|rt_base_alloc|rc_alloc|arena_alloc|cyc_alloc)\b")
+    exe_suffix = ".exe" if platform.system() == "Windows" else ""
+    with tempfile.TemporaryDirectory(prefix="prismio-scalar-optional-") as tmp:
+        ir_path = Path(tmp) / "optionals.ll"
+        built = run_command([str(PRISMIO_EXE), "build", str(TEST_DIR / "test_238_scalar_optionals.psm"),
+                             "-o", str(ir_path)])
+        if built.returncode != 0:
+            problems.append(f"test_238 IR did not build: {built.stdout} {built.stderr}")
+        else:
+            ir = ir_path.read_text()
+            m = re.search(r"^define [^\n]*@half(__[\w$]*)?\(.*?^}", ir, re.M | re.S)
+            if not m:
+                problems.append("missing function half")
+            elif alloc.search(m.group(0)):
+                problems.append("half allocates: a scalar T? is not a value")
+
+        probe = Path(tmp) / ("probe" + exe_suffix)
+        built = run_command([str(PRISMIO_EXE), "build", str(TEST_DIR / "scalar_optional_expect_probe.psm"),
+                             "-o", str(probe)])
+        if built.returncode != 0:
+            problems.append(f"expect probe did not build: {built.stdout} {built.stderr}")
+        else:
+            ran = subprocess.run([str(probe)], cwd=PROJECT_ROOT, capture_output=True, text=True)
+            if ran.returncode != 101:
+                problems.append(f"expect(none): exit status {ran.returncode}, expected 101")
+            if ran.stdout.strip() != "7":
+                problems.append(f"expect(present): stdout {ran.stdout.strip()!r}, expected '7'")
+            if "panic: expect() called on a `none` value" not in ran.stderr \
+                    or "scalar_optional_expect_probe.psm:13:" not in ran.stderr:
+                problems.append(f"expect(none) did not name itself and line 13: {ran.stderr.strip()[:200]!r}")
+    if problems:
+        print(f"{RED}[FAIL] scalar optionals{RESET}")
+        for problem in problems:
+            print(f"  {problem}")
+        return False
+    print(f"{GREEN}[PASS] scalar T? allocates nothing and expect(none) panics at its line{RESET}")
+    return True
+
+
+def run_channel_copies_test():
+    """Plain-data channels copy through the ring; owned messages stay boxed.
+
+    Reads test_232_channel_copies' IR for which entry point each channel used
+    and where each received value lives, then runs it under `--verify`. The
+    functional test alone would pass with every channel on the pointer path --
+    the copy is an optimisation, so only the IR can say it happened.
+    """
+    print(f"\n{BLUE}--- Running channel_copies ---{RESET}")
+    source = TEST_DIR / "test_232_channel_copies.psm"
+    problems = []
+    alloc = re.compile(r"call ptr @(malloc|rt_alloc|rc_alloc|arena_alloc|cyc_alloc)\b")
+    with tempfile.TemporaryDirectory(prefix="prismio-channel-copies-") as tmp:
+        ir_path = Path(tmp) / "copies.ll"
+        built = run_command([str(PRISMIO_EXE), "build", str(source), "-o", str(ir_path)])
+        if built.returncode != 0:
+            print(f"{RED}[FAIL] channel copies IR: {built.stdout} {built.stderr}{RESET}")
+            return False
+        ir = ir_path.read_text()
+
+        def body(name):
+            # Mangled by signature: `@double__Ptr_Ptr(`.
+            m = re.search(r"^define [^\n]*@" + name + r"(__[\w$]*)?\(.*?^}", ir, re.M | re.S)
+            if not m:
+                problems.append(f"no function {name} in the IR")
+                return ""
+            return m.group(0)
+
+        # The relay stage is the whole point: no box made, none freed.
+        for name in ("double", "produceTicks"):
+            text = body(name)
+            if "@chan_send_copy(" not in text:
+                problems.append(f"{name} does not send through the ring")
+            if alloc.search(text) or "@rt_free(" in text:
+                problems.append(f"{name} still allocates or frees a message")
+        for name in ("double", "tickPipeline", "samplePipeline"):
+            if "@chan_recv_copy(" not in body(name):
+                problems.append(f"{name} does not receive from the ring")
+        # T0: received straight into a frame slot, so nothing is allocated.
+        if alloc.search(body("tickPipeline")):
+            problems.append("a receive whose value stays in the frame allocated")
+        # A value that outlives the iteration is copied out into storage of
+        # its own tier -- never left in the next receive's scratch slot.
+        for name in ("receivedIntoVec", "keptAcrossIterations"):
+            text = body(name)
+            if "@chan_recv_copy(" not in text or not alloc.search(text):
+                problems.append(f"{name} kept a received value in the scratch slot")
+        # A message that owns a String is not plain data -- and a send the
+        # closed channel refuses releases it, with its fields.
+        produce_notes = body("produceNotes")
+        if "@chan_send(" not in produce_notes:
+            problems.append("an owned message left the pointer path on send")
+        if not re.search(r"@chan_send\(.*?icmp eq i32 .*?@__aif_release_Note\(",
+                         produce_notes, re.S):
+            problems.append("a send to a closed channel does not release the message")
+        notes = body("notesStayBoxed")
+        if "@chan_recv(" not in notes:
+            problems.append("an owned message left the pointer path on receive")
+        if "@__aif_release_Note(" not in notes:
+            problems.append("a received owned message is not released with its fields")
+
+        exe = Path(tmp) / ("copies.exe" if platform.system() == "Windows" else "copies")
+        for program in (source, TEST_DIR / "test_96_channels.psm",
+                        TEST_DIR / "test_235_channel_owned_messages.psm"):
+            built = run_command([str(PRISMIO_EXE), "build", str(program), "--verify",
+                                 "-o", str(exe)])
+            if built.returncode != 0:
+                problems.append(f"verify build of {program.name} failed: {built.stdout} {built.stderr}")
+                continue
+            ran = subprocess.run([str(exe)], cwd=PROJECT_ROOT, capture_output=True, text=True)
+            output = ran.stdout + ran.stderr
+            if ran.returncode or "PASS:" not in output:
+                problems.append(f"{program.name} run: {output}")
+            if not re.search(r"0 leaked, 0 violation\(s\)", output):
+                problems.append(f"{program.name}: no clean verify ledger: {output}")
+    if problems:
+        print(f"{RED}[FAIL] channel copies: " + "\n".join(problems) + RESET)
+        return False
+    print(f"{GREEN}[PASS] plain-data channels copy through the ring, owned ones stay "
+          f"boxed and release their fields -- refused ones too -- and every ledger is clean{RESET}")
+    return True
+
+
 def run_counted_fill_codegen_test():
     """The pure fill grows early; observable calls and early exits do not."""
     print(f"\n{BLUE}--- Running counted_fill_codegen ---{RESET}")
@@ -6952,6 +7083,11 @@ def run_aif_verify_test():
     """
     print(f"\n{BLUE}--- Running aif_verify ---{RESET}")
     expected_leaks = {
+        # 2026-09-30: every case in it leaked, dangled or failed to compile.
+        "test_236_owned_temporaries_and_literals": 0,
+        # 2026-09-30: scalar T? in every container, as values; Vec<Int?> did
+        # not pass the LLVM verifier before.
+        "test_238_scalar_optionals": 0,
         "test_24_drop": 0,
         "test_25_conventions": 0,
         # Both were 1 -- `escapes() -> Point` and `escapes() -> Wide`, each a T2
@@ -7218,10 +7354,11 @@ def run_aif_verify_test():
         # Vec's methods, and the removals above all. What this guards is the 0
         # violations: `removeAt` takes an element a live view still reads, and a
         # removal that released it at once would be a free under that view. The
-        # 1 is the name inside the `Job` copy `removeAt` returns through two
-        # generic calls. It read 3 until 2026-09-27, the other two being the long
-        # Strings in `words`, a Vec only literals reach (aif_elem_literal_copies_only).
-        "test_155_vec_methods": 1,
+        # 0 since 2026-09-30: the name inside the `Job` copy `removeAt` returns
+        # was the last, declined because `Job.name` also held literals -- which
+        # are tagged borrowed now, so the field releases what it owns. It read
+        # 3 until 2026-09-27 (aif_elem_literal_copies_only).
+        "test_155_vec_methods": 0,
         # `x[i] = v` across arrays, Vec and Slice. An array store is a plain
         # store with no release, admitted only for elements nobody owns, so a
         # leak here is an owning element getting through that gate.
@@ -7242,11 +7379,11 @@ def run_aif_verify_test():
         # the compiler before 1e: a Vec that hands an element out is not
         # released (KNOWN_ISSUES). What this guards is the 0 violations.
         "test_162_removal_parks_under_view": 7,
-        # Array fields are the struct's own bytes and release nothing. The 1 is
-        # the known shape, identical with a String field on the compiler before
-        # them: `total(makeGrid(1).cells, 4)` reads a field off an unbound
-        # temporary, and the temporary is kept rather than freed under the read.
-        "test_164_array_fields": 1,
+        # Array fields are the struct's own bytes and release nothing. 0 since
+        # 2026-09-30: `total(makeGrid(1).cells, 4)` reads a field off an unbound
+        # temporary, which is released after the call now that the call's
+        # result is a scalar and so cannot hold the view (memberChainRoot).
+        "test_164_array_fields": 0,
         # A Vec literal in a struct literal and an assigned field. Both used to
         # leak the Vec: the struct lived on the frame, which releases no field,
         # and nothing else owned a value written straight into one.
@@ -7286,7 +7423,9 @@ def run_aif_verify_test():
         # what the fixture guards is the 0 violations and the strings reading
         # back right; the compiler before 2026-09-25 aborted on it. A fall here
         # is a copy-on-keep landing; a rise is a keeper the guards stopped seeing.
-        "test_185_view_outlives_binding": 22,
+        # 18 since 2026-09-30 (was 22): four of the kept Strings were declined
+        # only because a literal could reach the same place.
+        "test_185_view_outlives_binding": 18,
         # The same, pushed with no binding in between, including a temporary the
         # hoist gave one. Each Vec may be handed the literal fallback, so neither
         # frees its elements.
@@ -8893,6 +9032,8 @@ def main():
         ("slice_gate", run_slice_gate_test),
         ("data_view_gate", run_data_view_gate_test),
         ("counted_fill_codegen", run_counted_fill_codegen_test),
+        ("channel_copies", run_channel_copies_test),
+        ("scalar_optional", run_scalar_optional_test),
         ("loop_range_proofs", run_loop_range_proofs_test),
         ("proved_index_nsw", run_proved_index_nsw_test),
         ("range_direction", run_range_direction_test),

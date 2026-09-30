@@ -1,0 +1,8 @@
+// expect-error: initializer for `plain`: expected Int, found Int?
+// A `T` goes where a `T?` is expected, and not the other way: taking the value
+// out is `expect`, `unwrapOr` or a comparison with `none`.
+fn main() -> Int {
+    let maybe: Int? = 5
+    let plain: Int = maybe
+    return plain
+}

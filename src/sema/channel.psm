@@ -1,0 +1,189 @@
+// Channel's method surface: `Channel<T>(capacity)`, `c.send(v)`, `c.receive()`,
+// `c.share()`, `c.close()`, `c.length` and `c.free()`.
+//
+// Lowered here onto the runtime's `chan_*` entry points, for Vec's reason
+// (src/sema/vec.psm): a wrapper is wrong in both directions. A parameter is a
+// borrow, so a Prismio `send` could not move the message it sends; and a
+// generic wrapper is one template body for every `T`, so the plain-data rename
+// semaCheckBuiltinCall makes on a `Channel<Msg>` (chan_send_copy) would be made
+// on the body a `Channel<String>` shares.
+//
+// The `chan_*` names are the lowering target and nothing else. A program that
+// writes one is refused with the method it means; what tells the two apart is
+// the mark this module leaves on the callee it builds (semaChannelLowered).
+
+import ast.nodes
+import lexer.token
+import ast.types
+import common.diagnostics
+import std.string
+
+// IDENTIFIER_EXPR.i3 on a callee this module built. 1 and 2 are the checker's
+// spelled-as-method and spelled-as-property marks, which a builtin callee never
+// carries.
+private fn semaChannelMark() -> Int { return 3 }
+
+internal fn semaChannelLowered(callee: ASTNode) -> Bool {
+    return callee.i3 == semaChannelMark()
+}
+
+// The method a runtime name is spelled as, or "" when `name` is not one of
+// them. Both halves of each plain-data pair map to the same method.
+internal fn semaChannelSpelling(name: String) -> String {
+    if (name.equals("chan_new")) { return "Channel<T>(capacity)" }
+    if (name.equals("chan_send") or name.equals("chan_send_copy")) { return "c.send(value)" }
+    if (name.equals("chan_recv") or name.equals("chan_recv_copy")) { return "c.receive()" }
+    if (name.equals("chan_share")) { return "c.share()" }
+    if (name.equals("chan_close")) { return "c.close()" }
+    if (name.equals("chan_len")) { return "c.length" }
+    if (name.equals("chan_free")) { return "c.free()" }
+    return ""
+}
+
+// Refuses a `chan_*` call a program wrote itself. True when it did, and the
+// call has been typed Invalid.
+internal fn semaChannelRefuseRuntimeName(call: ASTNode, name: String) -> Bool {
+    let spelling = semaChannelSpelling(name)
+    if (spelling.equals("")) { return false }
+    let callee = ptr_to_node(call.child1)
+    if (semaChannelLowered(callee)) { return false }
+    semaErrorAt(callee, diagQuote(name).concat(" is the runtime's name, not Prismio's"))
+    diag_note("write `".concat(spelling, "`"))
+    nodeSetType(call, typeInvalid())
+    return true
+}
+
+private fn semaChannelEntryPoint(name: String) -> String {
+    if (name.equals("send")) { return "chan_send" }
+    if (name.equals("receive")) { return "chan_recv" }
+    if (name.equals("share")) { return "chan_share" }
+    if (name.equals("close")) { return "chan_close" }
+    if (name.equals("length")) { return "chan_len" }
+    if (name.equals("free")) { return "chan_free" }
+    return ""
+}
+
+// Whether `c.name` with no parentheses is a property: only the queue's length.
+internal fn semaChannelIsProperty(name: String) -> Bool {
+    return name.equals("length")
+}
+
+private fn semaChannelCallee(target: String, at: ASTNode) -> ASTNode {
+    let callee = createNode(NodeKind.IDENTIFIER_EXPR)
+    callee.s1 = target.clone()
+    callee.i3 = semaChannelMark()
+    nodeSpanFrom(callee, at)
+    return callee
+}
+
+private fn semaChannelArgCount(args: Ptr) -> Int {
+    let mut count = 0
+    let mut p = args
+    while (nodeExists(p)) {
+        count = count + 1
+        p = ptr_to_node(p).next
+    }
+    return count
+}
+
+// Rewrites `expr` in place into the lowering of `receiver.name(args)`, where
+// `receiver` is a Channel. Answers semaVecLower's verdicts: 0 not a channel
+// method, 1 rewritten, 2 a mistake was reported.
+//
+// `send` answers Bool rather than the runtime's `int`: true delivered, false
+// dropped because the channel was already closed. It is the comparison
+// `chan_send(c, v) != 0`, which is free once the call is inlined and costs
+// nothing where the result is not read.
+internal fn semaChannelLower(expr: ASTNode, name: String, receiver: ASTNode, args: Ptr) -> Int {
+    let target = semaChannelEntryPoint(name)
+    if (target.equals("")) { return 0 }
+
+    let mut arity = 0
+    if (name.equals("send")) { arity = 1 }
+    let given = semaChannelArgCount(args)
+    if (given != arity) {
+        let mut noun = " arguments"
+        if (arity == 1) { noun = " argument" }
+        semaErrorAt(expr, diagQuote(name).concat(" takes ", arity.toString(), noun,
+                                                 ", found ", given.toString()))
+        nodeSetType(expr, typeInvalid())
+        return 2
+    }
+
+    receiver.next = args
+    let callee = semaChannelCallee(target, expr)
+    if (name.equals("send")) {
+        let call = createNode(NodeKind.CALL_EXPR)
+        call.child1 = node_to_ptr(callee)
+        call.child2 = node_to_ptr(receiver)
+        nodeSpanFrom(call, expr)
+        let zero = createNode(NodeKind.LITERAL_EXPR)
+        zero.i1 = TokenType.NUMBER_LITERAL
+        zero.s1 = "0"
+        nodeSpanFrom(zero, expr)
+        expr.kind = NodeKind.BINARY_EXPR
+        expr.s1 = "!="
+        expr.s2 = ""
+        expr.i1 = 0
+        expr.i3 = 0
+        expr.child1 = node_to_ptr(call)
+        expr.child2 = node_to_ptr(zero)
+        expr.child3 = ptr_null()
+        return 1
+    }
+    expr.kind = NodeKind.CALL_EXPR
+    expr.s1 = ""
+    expr.s2 = ""
+    expr.i1 = 0
+    expr.child1 = node_to_ptr(callee)
+    expr.child2 = node_to_ptr(receiver)
+    expr.child3 = ptr_null()
+    return 1
+}
+
+// `Channel<T>(capacity)` and `Channel<T>.new(capacity)`; semaTypeCall turns the
+// first into the second. `qualifier` is the written type, whose `child1` is
+// `T`. Rewrites `expr` into the endpoint's allocation and answers semaVecLower's
+// verdicts.
+//
+// `Channel(capacity)` without `T` is accepted as `chan_new` was: the call is a
+// `Channel` of nothing yet, and the binding's annotation supplies `T` --
+// `let c: Channel<Job> = Channel(8)`.
+internal fn semaChannelAssociated(module: ASTNode, expr: ASTNode, qualifier: ASTNode,
+                                  name: String) -> Int {
+    if (qualifier.s1.equals("Channel") == false) { return 0 }
+    if (name.equals("new") == false) {
+        semaErrorAt(expr, "`Channel` has no associated function ".concat(diagQuote(name)))
+        diag_note("a channel is made with `Channel<T>(capacity)`")
+        nodeSetType(expr, typeInvalid())
+        return 2
+    }
+    if (semaChannelArgCount(expr.child2) != 1) {
+        semaErrorAt(expr, "`Channel<T>(capacity)` takes 1 argument, found ".concat(
+            semaChannelArgCount(expr.child2).toString()))
+        diag_note("the capacity is how many messages may wait before a send blocks")
+        nodeSetType(expr, typeInvalid())
+        return 2
+    }
+    let mut chanT = typeChannel(typeInvalid())
+    if (nodeExists(qualifier.child1)) {
+        let written = createNode(NodeKind.TYPE_ANNOTATION)
+        written.s1 = "Channel"
+        written.i2 = 1
+        written.child1 = qualifier.child1
+        nodeSpanFrom(written, qualifier)
+        chanT = semaAnnotationType(module, written)
+        // A refused `T` (`Channel<Int>`) has been reported and answers a
+        // Channel of Invalid, which must not reach the binding as unknown.
+        if (typeIsValid(chanT) == false or typeIsValid(typeChannelElem(chanT)) == false) {
+            nodeSetType(expr, typeInvalid())
+            return 2
+        }
+    }
+    expr.s1 = ""
+    expr.child1 = node_to_ptr(semaChannelCallee("chan_new", expr))
+    expr.child3 = ptr_null()
+    semaExpr(module, expr)
+    nodeSetType(expr, chanT)
+    return 1
+}

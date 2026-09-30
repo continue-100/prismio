@@ -1168,6 +1168,7 @@ private fn inlineElemSizeOfList(listExpr: ASTNode) -> Int {
     // Measured at 4,000,000 elements: 64.0 MB against 9.2 MB for the same data
     // as a one-field struct, which passed the predicate only because it was one.
     // See aif/evidence/RESULTS-scalar-list-storage.md.
+    if (optIsWide(ekey)) { return optWideBytes() }
     if (isStructTypeKey(ekey) == false) { return scalarInlineBytes(ekey) }
     return inlineElemSize(structTypeName(ekey))
 }
@@ -1182,6 +1183,7 @@ private fn inlineElemSizeOfSlice(sliceExpr: ASTNode) -> Int {
     // put them inline is not a lost optimisation but corruption: `list_get`
     // ignores `elem_size` and returns `l->data[index]`, so a boxed slice read
     // over a flat row hands back the first eight bytes of the row as a pointer.
+    if (optIsWide(ekey)) { return optWideBytes() }
     if (isStructTypeKey(ekey) == false) { return scalarInlineBytes(ekey) }
     if (isValueStructKey(ekey)) { return 0 }
     return inlineElemSize(structTypeName(ekey))
@@ -1314,6 +1316,29 @@ private fn callIsPrismioFn(funcName: String) -> Bool {
         if (decl.kind == NodeKind.FUNCTION) { return true }
     }
     return false
+}
+
+// The declared storage type of parameter `index` of the Prismio function this
+// call resolved to (CALL_EXPR.s2, the symbol sema chose), or "".
+private fn calleeParamStorage(call: ASTNode, funcName: String, index: Int) -> String {
+    if (call.s2.equals("")) { return "" }
+    let n = ir_decl_count(funcName)
+    for i in 0..<n {
+        let decl = ptr_to_node(ir_decl_at(funcName, i))
+        if (decl.kind != NodeKind.FUNCTION or decl.s2.equals(call.s2) == false) { continue }
+        let mut p = decl.child1
+        let mut k = 0
+        while (nodeExists(p)) {
+            let param = ptr_to_node(p)
+            if (k == index) {
+                if (nodeIsNull(param.child1)) { return "" }
+                return storageType(mapTypeNode(ptr_to_node(param.child1)))
+            }
+            k = k + 1
+            p = param.next
+        }
+    }
+    return ""
 }
 
 private fn callIsExtern(funcName: String) -> Bool {
@@ -2390,7 +2415,8 @@ private fn generateGuardedScalarPush(expr: ASTNode, funcName: String) -> Bool {
     } else if (irLoopFlatGuard.equals("1") == false) {
         guard = ir_get_temp_name(ir_load("i1", irLoopFlatGuard))
     }
-    ir_list_flat_push_scalar(listVal, valueVal, ekey, stride, guard, checkCapacity)
+    ir_list_flat_push_scalar(listVal, toFlatScalar(ekey, valueVal), flatScalarKey(ekey),
+                             stride, guard, checkCapacity)
     return true
 }
 
@@ -2676,6 +2702,10 @@ private fn generateBitBuiltin(expr: ASTNode, funcName: String) -> String {
 // pattern and not the number. `fptoui` here would round a double to an integer
 // and store that.
 private fn scalarToInlineBits(storeType: String, value: String) -> String {
+    let carrier = optCarrierKey(storeType)
+    if (carrier.equals("") == false) {
+        return scalarToInlineBits(carrier, ir_get_temp_name(ir_opt_pack(storeType, value, carrier)))
+    }
     if (storeType.equals("double")) {
         return ir_get_temp_name(ir_bitcast("double", value, "i64"))
     }
@@ -2685,24 +2715,37 @@ private fn scalarToInlineBits(storeType: String, value: String) -> String {
 
 // The inverse of scalarToInlineBits: the i64 an inline scalar read returns,
 // back under the element's own width.
+// A scalar element as the backend's guarded flat operations see it: a scalar
+// `T?` as its carrier integer, since they store and widen by integer width.
+private fn flatScalarKey(key: String) -> String {
+    let carrier = optCarrierKey(key)
+    if (carrier.equals("")) { return key }
+    return carrier
+}
+
+private fn toFlatScalar(key: String, value: String) -> String {
+    let carrier = optCarrierKey(key)
+    if (carrier.equals("")) { return value }
+    return ir_get_temp_name(ir_opt_pack(key, value, carrier))
+}
+
+private fn fromFlatScalar(key: String, value: String) -> String {
+    let carrier = optCarrierKey(key)
+    if (carrier.equals("")) { return value }
+    return ir_get_temp_name(ir_opt_unpack(carrier, value, key))
+}
+
 private fn scalarFromInlineBits(storeType: String, bits: String) -> String {
+    let carrier = optCarrierKey(storeType)
+    if (carrier.equals("") == false) {
+        let word = scalarFromInlineBits(carrier, bits)
+        return ir_get_temp_name(ir_opt_unpack(carrier, word, storeType))
+    }
     if (storeType.equals("double")) {
         return ir_get_temp_name(ir_bitcast("i64", bits, "double"))
     }
     if (storeType.equals("i64")) { return bits }
     return ir_get_temp_name(ir_trunc("i64", bits, storeType))
-}
-
-private fn scalarSpillToSlot(storeType: String, value: String) -> String {
-    let slot = "elem.".concat(irElemSpillCounter.toString())
-    irElemSpillCounter = irElemSpillCounter + 1
-    ir_alloca(storeType, slot)
-    ir_store(storeType, value, slot)
-    // `%name` is how resolve_value in the backend names an alloca as a *value*:
-    // it looks the bare name up among the params and then the allocas. Handing
-    // it the undecorated name instead falls through to const_from_text, which
-    // fails the build with "non-null pointer constant".
-    return "%".concat(slot)
 }
 
 // A struct on the frame releases none of its fields, so an owned temporary
@@ -2794,7 +2837,8 @@ private fn generateStructLiteralFields(expr: ASTNode, structName: String, destPt
             }
         } else {
             let init = ptr_to_node(field.child1)
-            let fieldVal = generateExpression(init)
+            let fieldVal = storeAsDeclared(generateExpression(init), storageType(getExprType(init)),
+                                           fieldStorageType(ir_get_struct_field_type(structName, field.s1)))
             if (onFrame) { spillOwnedFieldTemporary(init, fieldVal) }
             let slot = ir_struct_field_ptr(structName, destPtr, fieldIndex)
             // CYCLES 3. A cyclic edge is an edge the collector *traverses*, so it
@@ -2883,6 +2927,58 @@ private fn generateLiteral(expr: ASTNode) -> String {
     return "0"
 }
 
+// Where AIF put a struct-typed allocation site, as a frame slot or not. A
+// `region` arena wins over T0: the site is T1 inside a region it cannot outlive.
+private fn structPlacedOnFrame(site: Ptr) -> Bool {
+    if (aif_arena_at_node(site) == 1) { return false }
+    return aif_tier_at_node(site) == AIF_TIER_T0
+}
+
+// The allocation for a struct-typed site that is not on the frame, by the tier
+// AIF chose. Shared by a struct literal and a plain-data channel receive
+// (generateChannelRecvCopy), which both allocate storage codegen then fills.
+private fn allocPlacedStruct(site: Ptr, structName: String) -> Int {
+    if (aif_arena_at_node(site) == 1) {
+        // T1 inside a `region` it cannot outlive: bump from the arena, and
+        // the whole block goes back at the region's exit rather than one
+        // object at a time.
+        return ir_alloc_region(structName)
+    }
+    if (aif_rc_at_node(site) == 1) {
+        // AIF Level 5. T3, held by more than one container, so no single
+        // teardown can decide when it dies. The count goes in a prefix header,
+        // which leaves the struct's own layout -- and therefore every field
+        // index below -- exactly as it was.
+        return ir_alloc_rc(structName)
+    }
+    if (aif_cycle_at_node(site) == 1) {
+        // AIF T4b. Shared, fully escaping, and of a type that lies in a
+        // non-trivial SCC -- so a count alone cannot reclaim it and the
+        // collector has to be able to walk it. Header in front, as for T3.
+        return ir_alloc_cycle(structName)
+    }
+    return ir_alloc_object(structName)
+}
+
+// CYCLES 3. The object is told how to find its cyclic children and how to
+// release itself, for the same reason a container is told its element
+// disposition: at collection time it is a bare pointer, and reading a
+// descriptor out of it would be reading memory we did not put there.
+private fn registerCyclicStruct(site: Ptr, structName: String, memName: String) {
+    if (aif_cycle_at_node(site) != 1) { return }
+    let childrenPtr = ir_func_addr(cyclicChildrenFnName(structName))
+    ir_call_begin()
+    ir_call_arg("ptr", memName)
+    ir_call_arg("ptr", ir_get_temp_name(childrenPtr))
+    if (aif_type_releases(structName) == 1) {
+        let releasePtr = ir_func_addr(releaseFnName(structName))
+        ir_call_arg("ptr", ir_get_temp_name(releasePtr))
+    } else {
+        ir_call_arg("ptr", "null")
+    }
+    ir_call_end("void", "cyc_set_type")
+}
+
 private fn generateStructLiteral(expr: ASTNode) -> String {
     let structName = expr.s1
 
@@ -2924,27 +3020,11 @@ private fn generateStructLiteral(expr: ASTNode) -> String {
     // mode behaviourally identical rather than merely intended to be.
     let mut allocTemp = 0
     let mut onFrame = false
-    if (aif_arena_at_node(node_to_ptr(expr)) == 1) {
-        // T1 inside a `region` it cannot outlive: bump from the arena, and
-        // the whole block goes back at the region's exit rather than one
-        // object at a time.
-        allocTemp = ir_alloc_region(structName)
-    } else if (aif_tier_at_node(node_to_ptr(expr)) == AIF_TIER_T0) {
+    if (structPlacedOnFrame(node_to_ptr(expr))) {
         allocTemp = ir_alloc_stack(structName)
         onFrame = true
-    } else if (aif_rc_at_node(node_to_ptr(expr)) == 1) {
-        // AIF Level 5. T3, held by more than one container, so no single
-        // teardown can decide when it dies. The count goes in a prefix header,
-        // which leaves the struct's own layout -- and therefore every field
-        // index below -- exactly as it was.
-        allocTemp = ir_alloc_rc(structName)
-    } else if (aif_cycle_at_node(node_to_ptr(expr)) == 1) {
-        // AIF T4b. Shared, fully escaping, and of a type that lies in a
-        // non-trivial SCC -- so a count alone cannot reclaim it and the
-        // collector has to be able to walk it. Header in front, as for T3.
-        allocTemp = ir_alloc_cycle(structName)
     } else {
-        allocTemp = ir_alloc_object(structName)
+        allocTemp = allocPlacedStruct(node_to_ptr(expr), structName)
     }
     let memName = ir_get_temp_name(allocTemp)
     // LAYOUT 2.1's alloc(tau). Counted after the tier has chosen an allocator
@@ -2954,24 +3034,7 @@ private fn generateStructLiteral(expr: ASTNode) -> String {
     // in the hooks would miss exactly the instances that are cheapest and
     // most numerous.
     irProfileAlloc(structName)
-
-    // CYCLES 3. The object is told how to find its cyclic children and how
-    // to release itself, for the same reason a container is told its element
-    // disposition: at collection time it is a bare pointer, and reading a
-    // descriptor out of it would be reading memory we did not put there.
-    if (aif_cycle_at_node(node_to_ptr(expr)) == 1) {
-        let childrenPtr = ir_func_addr(cyclicChildrenFnName(structName))
-        ir_call_begin()
-        ir_call_arg("ptr", memName)
-        ir_call_arg("ptr", ir_get_temp_name(childrenPtr))
-        if (aif_type_releases(structName) == 1) {
-            let releasePtr = ir_func_addr(releaseFnName(structName))
-            ir_call_arg("ptr", ir_get_temp_name(releasePtr))
-        } else {
-            ir_call_arg("ptr", "null")
-        }
-        ir_call_end("void", "cyc_set_type")
-    }
+    registerCyclicStruct(node_to_ptr(expr), structName, memName)
 
     generateStructLiteralFields(expr, structName, memName, false, onFrame)
     return memName
@@ -2987,6 +3050,43 @@ private fn generateIdentifier(expr: ASTNode) -> String {
         return ir_get_temp_name(ir_load_global(loadType, expr.s1))
     }
     return ir_get_temp_name(ir_load(loadType, ir_get_var_slot(expr.s1)))
+}
+
+// The call at the bottom of `call().a.b`, through any number of struct field
+// reads, or null. Whether a field is embedded or a separate allocation the
+// struct owns does not matter to either caller: both release the root only
+// once nothing can point into it -- after a scalar has been copied out
+// (generateMemberAccess), or after a call whose result holds no pointer
+// (the argument list) -- and the root's release reaches everything it owns.
+private fn memberChainRoot(node: ASTNode) -> ASTNode {
+    if (node.kind == NodeKind.CALL_EXPR) { return node }
+    if (node.kind != NodeKind.MEMBER_ACCESS_EXPR or nodeIsNull(node.child1)) {
+        return ptr_to_node(ptr_null())
+    }
+    let object = ptr_to_node(node.child1)
+    if (nodeHasType(object) == false or nodeGetType(object).kind != TypeKind.STRUCT) {
+        return ptr_to_node(ptr_null())
+    }
+    return memberChainRoot(object)
+}
+
+// The temporary under an argument that reads a field of one -- `f(make().name)`,
+// `f(make().inner.cells)` -- or null. A scalar field is excluded: the field
+// read releases its own root (generateMemberAccess), and a second release here
+// would free it twice.
+private fn memberChainRootOfArgument(arg: ASTNode) -> ASTNode {
+    if (arg.kind != NodeKind.MEMBER_ACCESS_EXPR or nodeIsNull(arg.child1)) {
+        return ptr_to_node(ptr_null())
+    }
+    if (scalarInlineBytes(storageType(getExprType(arg))) > 0) { return ptr_to_node(ptr_null()) }
+    return memberChainRoot(ptr_to_node(arg.child1))
+}
+
+// Whether a call's result can hold no pointer, so it cannot be a view of any
+// argument it was given.
+private fn irCallResultIsScalar(call: ASTNode) -> Bool {
+    let key = storageType(getExprType(call))
+    return key.equals("void") or scalarInlineBytes(key) > 0
 }
 
 private fn generateMemberAccess(expr: ASTNode) -> String {
@@ -3029,7 +3129,22 @@ private fn generateMemberAccess(expr: ASTNode) -> String {
         return ir_get_temp_name(ir_data_load_ptr(fieldType, slot, structName, fieldIndex))
     }
 
+    // `make().count`: a struct a call handed this expression, read once and
+    // named by nothing -- directly, or through fields that are part of it
+    // (`fresh().inner.count`). Asked before generateExpression, which consumes
+    // the call's resolved name (see irArgumentIsOwnedTemporary).
+    let root = memberChainRoot(objectNode)
+    let ownedTemp = nodeExists(node_to_ptr(root)) and irArgumentIsOwnedTemporary(root)
+    let mut ownedTempKind = 0
+    let mut ownedTempType = ""
+    if (ownedTemp) {
+        ownedTempKind = irOwnedTemporaryKind(root)
+        ownedTempType = irOwnedTemporaryDeclType(root)
+    }
     let objectVal = generateExpression(objectNode)
+    // The root's value, for an argument list that has to release it after its
+    // call instead (irMemberRootValue).
+    if (objectNode.kind == NodeKind.CALL_EXPR) { irMemberRootValue = objectVal.clone() }
     let objectType = getExprType(objectNode)
     let structName = structTypeName(objectType)
     let fieldIndex = ir_get_struct_field_index(structName, expr.s1)
@@ -3054,8 +3169,16 @@ private fn generateMemberAccess(expr: ASTNode) -> String {
     if (isStructTypeKey(fieldType) or isArrayValueKey(fieldType)) {
         return ir_get_temp_name(slot)
     }
-    return ir_get_temp_name(ir_struct_load_ptr(fieldType, ir_get_temp_name(slot),
-                                               structName, fieldIndex))
+    let loaded = ir_get_temp_name(ir_struct_load_ptr(fieldType, ir_get_temp_name(slot),
+                                                     structName, fieldIndex))
+    // A scalar is a copy, so once it is loaded nothing points into the struct
+    // and the temporary is released here -- `Config.default().retries` leaked
+    // the Config. A reference field is a view into it and stays as it was: the
+    // release would have to wait for the view's last use.
+    if (ownedTemp and scalarInlineBytes(fieldType) > 0) {
+        generateOwnedTemporaryRelease(irMemberRootValue.clone(), ownedTempKind, ownedTempType)
+    }
+    return loaded
 }
 
 // Every element a number written as a literal: what a constant table is made of.
@@ -3091,7 +3214,7 @@ private fn generateArrayLiteral(expr: ASTNode) -> String {
     // Past 64 bytes of numeric literals, the contents are a constant and the
     // frame array is filled from it by one copy. See ir_array_literal_end.
     if (scalarInlineBytes(elemType) * elemCount > 64
-            and elemType.equals("i1") == false
+            and elemType.equals("i1") == false and elemType.startsWith("opt:") == false
             and arrayLiteralIsNumeric(expr.child1)) {
         ir_array_literal_begin()
         let mut constPtr = expr.child1
@@ -3265,8 +3388,16 @@ private fn generateCast(expr: ASTNode) -> String {
         return val
     }
 
+    if (typeIsValueOptional(toT)) { return generatePresent(val, toT) }
+
+    // Char and Bool are unsigned here as they are when widening below.
+    // `sitofp` read the i1 of `true` as -1 and the i8 of Char 200 as -56.
+    let unsignedSource = typeIntIsUnsigned(fromT)
+                          or fromT.kind == TypeKind.CHAR
+                          or fromT.kind == TypeKind.BOOL
+
     if (toKey.equals("double")) {
-        if (typeIntIsUnsigned(fromT)) {
+        if (unsignedSource) {
             return ir_get_temp_name(ir_uitofp(fromKey, val, toKey))
         }
         return ir_get_temp_name(ir_sitofp(fromKey, val, toKey))
@@ -3291,13 +3422,106 @@ private fn generateCast(expr: ASTNode) -> String {
 
     // Widening. Char and Bool are zero-extended: a Char is a byte value, so
     // 'A' as Int must be 65 and never a negative number.
-    let zeroExtend = typeIntIsUnsigned(fromT)
-                      or fromT.kind == TypeKind.CHAR
-                      or fromT.kind == TypeKind.BOOL
-    if (zeroExtend) {
+    if (unsignedSource) {
         return ir_get_temp_name(ir_zext(fromKey, val, toKey))
     }
     return ir_get_temp_name(ir_sext(fromKey, val, toKey))
+}
+
+// `{ true, value }`: a present scalar `T?`. Its absent counterpart is the type's
+// zero, which is what `none` already emits.
+private fn generatePresent(val: String, optT: TypeInfo) -> String {
+    let key = typeIrKey(optT)
+    let flagged = ir_get_temp_name(ir_insert_value(key, ir_get_temp_name(ir_undef(key)), "true", "i1", 0))
+    return ir_get_temp_name(ir_insert_value(key, flagged, val,
+                                            typeIrKey(typeOptionalInner(optT)), 1))
+}
+
+private fn scalarOptionalField(opt: String, optT: TypeInfo, index: Int) -> String {
+    return ir_get_temp_name(ir_extract_value(typeIrKey(optT), opt, index))
+}
+
+private fn isBareNone(node: ASTNode) -> Bool {
+    if (node.kind == NodeKind.NONE_LITERAL_EXPR) { return true }
+    let t = nodeGetType(node)
+    return t.kind == TypeKind.OPTIONAL and nodeIsNull(t.child)
+}
+
+// `==` and `!=` on a scalar `T?`. Against `none` it is the present flag. Two
+// optionals are equal when both are absent, or both present with equal values
+// -- by value, as the `T`s would compare, where a reference's `T?` compares the
+// pointer.
+private fn generateScalarOptionalCompare(expr: ASTNode) -> String {
+    let left = ptr_to_node(expr.child1)
+    let right = ptr_to_node(expr.child2)
+    let wantEqual = expr.s1.equals("==")
+
+    if (isBareNone(left) or isBareNone(right)) {
+        let mut optPtr = expr.child1
+        if (isBareNone(left)) { optPtr = expr.child2 }
+        let optNode = ptr_to_node(optPtr)
+        let optT = nodeGetType(optNode)
+        let present = scalarOptionalField(generateExpression(optNode), optT, 0)
+        if (wantEqual) { return ir_get_temp_name(ir_icmp_eq("i1", present, "false")) }
+        return present
+    }
+
+    let optT = nodeGetType(left)
+    let innerKey = typeIrKey(typeOptionalInner(optT))
+    let a = generateExpression(left)
+    let b = generateExpression(right)
+    let aPresent = scalarOptionalField(a, optT, 0)
+    let bPresent = scalarOptionalField(b, optT, 0)
+    let aValue = scalarOptionalField(a, optT, 1)
+    let bValue = scalarOptionalField(b, optT, 1)
+    let mut sameValue = ""
+    if (innerKey.equals("double")) {
+        sameValue = ir_get_temp_name(ir_fcmp_oeq(innerKey, aValue, bValue))
+    } else {
+        sameValue = ir_get_temp_name(ir_icmp_eq(innerKey, aValue, bValue))
+    }
+    let sameFlag = ir_get_temp_name(ir_icmp_eq("i1", aPresent, bPresent))
+    let absent = ir_get_temp_name(ir_icmp_eq("i1", aPresent, "false"))
+    let absentOrSame = ir_get_temp_name(ir_or("i1", absent, sameValue))
+    let equal = ir_get_temp_name(ir_and("i1", sameFlag, absentOrSame))
+    if (wantEqual) { return equal }
+    return ir_get_temp_name(ir_icmp_eq("i1", equal, "false"))
+}
+
+// `expect(o)` on a scalar `T?`: the value, or a panic naming where. A branch to
+// a cold block as `assert` has, since there is no pointer for prismio_expect to
+// test.
+private fn generateExpectPresent(expr: ASTNode) -> String {
+    let optNode = ptr_to_node(expr.child2)
+    let optT = nodeGetType(optNode)
+    let opt = generateExpression(optNode)
+    let failLabel = ir_get_label()
+    let passLabel = ir_get_label()
+    ir_cond_br_numbered(scalarOptionalField(opt, optT, 0), passLabel, failLabel)
+    ir_label_numbered(failLabel)
+    let message = ir_get_temp_name(ir_const_cstring("expect() called on a `none` value"))
+    let failFile = ir_get_temp_name(ir_const_cstring(diag_file_path(expr.file)))
+    ir_call_begin()
+    ir_call_arg("ptr", message)
+    ir_call_arg("ptr", failFile)
+    ir_call_arg("i32", expr.line.toString())
+    ir_call_arg("i32", expr.col.toString())
+    ir_call_end("void", "prismio_panic")
+    ir_unreachable()
+    ir_label_numbered(passLabel)
+    return scalarOptionalField(opt, optT, 1)
+}
+
+// `o.unwrapOr(fallback)` on a scalar `T?`: a select on the present flag. The
+// fallback is evaluated either way, as an argument is.
+private fn generateUnwrapOr(expr: ASTNode) -> String {
+    let optNode = ptr_to_node(expr.child2)
+    let optT = nodeGetType(optNode)
+    let opt = generateExpression(optNode)
+    let fallback = generateExpression(ptr_to_node(optNode.next))
+    return ir_get_temp_name(ir_select(typeIrKey(typeOptionalInner(optT)),
+                                      scalarOptionalField(opt, optT, 0),
+                                      scalarOptionalField(opt, optT, 1), fallback))
 }
 
 private fn generateUnary(expr: ASTNode) -> String {
@@ -3483,6 +3707,10 @@ private fn generateBinary(expr: ASTNode) -> String {
     if (expr.s1.equals("and") or expr.s1.equals("or")) {
         return generateShortCircuit(expr)
     }
+    if (typeIsValueOptional(nodeGetType(ptr_to_node(expr.child1)))
+            or typeIsValueOptional(nodeGetType(ptr_to_node(expr.child2)))) {
+        return generateScalarOptionalCompare(expr)
+    }
 
     let leftVal = generateExpression(ptr_to_node(expr.child1))
     let rightVal = generateExpression(ptr_to_node(expr.child2))
@@ -3587,6 +3815,114 @@ private fn generateBinary(expr: ASTNode) -> String {
     return ir_get_temp_name(tempId)
 }
 
+// Whether argument `index` of a foreign call is consumed: the callee keeps it
+// and someone other than this frame frees it. A declared extern says so with
+// `consume`; `chan_send`'s message is the builtin that does (aifRuntimeContract).
+private fn irArgIsConsumed(funcName: String, index: Int) -> Bool {
+    if (irSendsOwnedMessage(funcName, index)) { return true }
+    return aif_extern_contract(funcName, index).equals("consume")
+}
+
+// The message argument of a pointer-path send. A plain-data send is
+// `chan_send_copy` by now, and copies rather than consumes.
+private fn irSendsOwnedMessage(funcName: String, index: Int) -> Bool {
+    return index == 1 and funcName.equals("chan_send")
+}
+
+// A pointer-path send answers 0 when the channel was closed, and then the
+// message -- moved into the call, so no longer this frame's -- was delivered to
+// nobody. It is released here, as the receiver would have released it
+// (valueDropKind, the same function a received `T?` is dropped by), and only on
+// that path. `message` is the pointer the channel was given, which for a String
+// is the buffer the call made, not the pair.
+private fn generateUndeliveredRelease(call: ASTNode, status: String, message: String) {
+    let elemT = typeChannelElem(nodeGetType(ptr_to_node(call.child2)))
+    let dropped = ir_get_temp_name(ir_icmp_eq("i32", status, "0"))
+    let releaseLabel = ir_get_label()
+    let doneLabel = ir_get_label()
+    ir_cond_br_numbered(dropped, releaseLabel, doneLabel)
+
+    ir_label_numbered(releaseLabel)
+    let kind = valueDropKind(elemT)
+    if (kind == IR_DROP_LIST) {
+        ir_free_list(message)
+    } else if (kind == IR_DROP_DATAVIEW) {
+        ir_free_data_view(message)
+    } else if (kind == IR_DROP_TYPED) {
+        ir_free_typed(message, releaseFnName(elemT.name))
+    } else {
+        ir_free_object(message)
+    }
+    ir_br_numbered(doneLabel)
+
+    ir_label_numbered(doneLabel)
+}
+
+// The element struct of the channel argument a plain-data channel builtin was
+// given: `Msg` for `chan_send_copy(c, m)` on a `Channel<Msg>`. Sema
+// (semaChannelCopies) only renames a call to one of the two copy entry points
+// when this is a non-generic all-scalar struct.
+private fn channelCopyStruct(call: ASTNode) -> String {
+    return typeChannelElem(nodeGetType(ptr_to_node(call.child2))).name
+}
+
+// A receive from a plain-data channel, `chan_recv_copy(c)`, typed `Msg?`.
+//
+// The runtime copies the message into storage the caller hands it and answers
+// 1, or 0 once the channel is closed and drained. So the storage is this
+// frame's to choose, and AIF has placed the receive like any struct site: T0 is
+// a frame slot and the message is copied straight into it -- no allocation on
+// either side of the channel, which is what C++ moving the value costs. Any
+// other tier receives into a scratch slot and copies into storage allocated
+// exactly as a struct literal's would be; copying after the status is known
+// is what keeps a closed channel from allocating a value nothing releases.
+//
+// `none` is a null pointer, and dropping one is a no-op for every tier's
+// release (rt_free, rc_release, cyc_release). The result goes through a slot
+// rather than a phi for generateShortCircuit's reason.
+//
+// The scratch slot is hoisted to the entry block, so a T0 receive in a loop
+// reuses one slot per iteration -- the same as a T0 struct literal there, and
+// safe for the same reason: T0 says the value does not outlive the iteration's
+// use of it. A value kept across iterations escapes that and is not T0.
+private fn generateChannelRecvCopy(expr: ASTNode) -> String {
+    let site = node_to_ptr(expr)
+    let structName = channelCopyStruct(expr)
+    let handle = generateExpression(ptr_to_node(expr.child2))
+    let scratch = ir_get_temp_name(ir_alloc_stack(structName))
+
+    ir_call_begin()
+    ir_call_arg("ptr", handle)
+    ir_call_arg("ptr", scratch.clone())
+    ir_call_arg("i32", ir_struct_size(structName).toString())
+    let status = ir_get_temp_name(ir_call_end("i32", "chan_recv_copy"))
+    let received = ir_get_temp_name(ir_icmp_ne("i32", status, "0"))
+
+    let slot = "recv.".concat(irChannelRecvCounter.toString())
+    irChannelRecvCounter = irChannelRecvCounter + 1
+    ir_alloca("ptr", slot)
+    ir_store("ptr", "null", slot)
+
+    let gotLabel = ir_get_label()
+    let doneLabel = ir_get_label()
+    ir_cond_br_numbered(received, gotLabel, doneLabel)
+
+    ir_label_numbered(gotLabel)
+    if (structPlacedOnFrame(site)) {
+        ir_store("ptr", scratch, slot)
+    } else {
+        let storage = ir_get_temp_name(allocPlacedStruct(site, structName))
+        irProfileAlloc(structName)
+        registerCyclicStruct(site, structName, storage.clone())
+        ir_copy_struct(structName, storage.clone(), scratch)
+        ir_store("ptr", storage, slot)
+    }
+    ir_br_numbered(doneLabel)
+
+    ir_label_numbered(doneLabel)
+    return ir_get_temp_name(ir_load("ptr", slot))
+}
+
 private fn generateCall(expr: ASTNode) -> String {
     let callee = ptr_to_node(expr.child1)
     let funcName = callee.s1
@@ -3616,6 +3952,10 @@ private fn generateCall(expr: ASTNode) -> String {
             }
         }
         return ""
+    }
+
+    if (funcName.equals("chan_recv_copy") and nodeExists(expr.child2)) {
+        return generateChannelRecvCopy(expr)
     }
 
     // M4.3a. Build real per-field storage from an ordinary AoS list. The
@@ -3857,9 +4197,10 @@ private fn generateCall(expr: ASTNode) -> String {
                 hoistedBound = irLoopHoistedBoundValue.clone()
                 hoistedData = irLoopHoistedDataValue.clone()
             }
-            return ir_get_temp_name(ir_list_flat_scalar_elem(
-                listVal, indexVal, flatRet, flatStride, guard, checkBounds,
+            let flatVal = ir_get_temp_name(ir_list_flat_scalar_elem(
+                listVal, indexVal, flatScalarKey(flatRet), flatStride, guard, checkBounds,
                 hoistedBound, hoistedData))
+            return fromFlatScalar(flatRet, flatVal)
         }
     }
 
@@ -3893,7 +4234,8 @@ private fn generateCall(expr: ASTNode) -> String {
             hoistedBound2 = irLoopHoistedBoundValue.clone()
             hoistedData2 = irLoopHoistedDataValue.clone()
         }
-        ir_list_flat_scalar_set(listVal2, indexVal2, valueVal2, elemKey,
+        ir_list_flat_scalar_set(listVal2, indexVal2, toFlatScalar(elemKey, valueVal2),
+                                flatScalarKey(elemKey),
                                 flatSetStride, guard2, checkBounds2,
                                 hoistedBound2, hoistedData2)
         return ""
@@ -3924,6 +4266,13 @@ private fn generateCall(expr: ASTNode) -> String {
 
     if (intBitCountBuiltin(funcName) or intRotateBuiltin(funcName)) {
         return generateBitBuiltin(expr, funcName)
+    }
+
+    if (funcName.equals("expect") or funcName.equals("unwrapOr")) {
+        if (nodeExists(expr.child2) and typeIsValueOptional(nodeGetType(ptr_to_node(expr.child2)))) {
+            if (funcName.equals("expect")) { return generateExpectPresent(expr) }
+            return generateUnwrapOr(expr)
+        }
     }
 
     // The failure builtins. Each failing path is a call the runtime does not
@@ -4085,8 +4434,15 @@ private fn generateCall(expr: ASTNode) -> String {
         and nodeExists(expr.child2)) {
         let a0 = ptr_to_node(expr.child2)
         if (nodeExists(a0.next) == false) {
+            // `direct().length`: a String a call handed over, measured and then
+            // named by nothing. The length is a copy, so it is released here --
+            // asked before generateExpression, which consumes the call's name.
+            let ownedTemp = irArgumentIsOwnedTemporary(a0)
+            let ownedTempKind = irOwnedTemporaryKind(a0)
+            let ownedTempType = irOwnedTemporaryDeclType(a0)
             let value = generateExpression(a0)
-            let wide = ir_get_temp_name(ir_extract_value("struct:prismio.str", value, 1))
+            let wide = ir_get_temp_name(ir_extract_value("struct:prismio.str", value.clone(), 1))
+            if (ownedTemp) { generateOwnedTemporaryRelease(value, ownedTempKind, ownedTempType) }
             let narrow = ir_get_temp_name(ir_trunc("i64", wide, "i32"))
             // Bit 31 is the inline tag, not part of the length. This `and` is
             // the entire per-read cost of the German-string representation --
@@ -4447,15 +4803,31 @@ private fn generateCall(expr: ASTNode) -> String {
     // Which storage key the element argument carried, so the entry-point
     // choice below can tell a scalar from a struct without re-deriving it.
     let mut elemStoreKey = ""
+    // The pointer a pointer-path send handed the channel, which is the message
+    // it releases if the channel was closed (generateUndeliveredRelease).
+    let mut sentMessage = ""
     let mut argPtr = expr.child2
     let mut argIndex = 0
     while (nodeExists(argPtr)) {
         let argNode = ptr_to_node(argPtr)
         // Query ownership before generateExpression: regular call lowering
         // consumes CALL_EXPR.s2 when it takes the resolved symbol name.
-        let releaseOwnedTemp = irArgumentIsOwnedTemporary(argNode)
-        let ownedTempKind = irOwnedTemporaryKind(argNode)
-        let ownedTempType = irOwnedTemporaryDeclType(argNode)
+        let mut releaseOwnedTemp = irArgumentIsOwnedTemporary(argNode)
+        let mut ownedTempKind = irOwnedTemporaryKind(argNode)
+        let mut ownedTempType = irOwnedTemporaryDeclType(argNode)
+        // `total(makeGrid(1).cells, 4)`: a field of a temporary, passed on. The
+        // temporary is released after this call, as it would be if it were the
+        // argument itself -- but only where the result can carry no pointer,
+        // since what was passed is a view into it.
+        let memberRoot = memberChainRootOfArgument(argNode)
+        let memberOwned = nodeExists(node_to_ptr(memberRoot))
+            and irArgumentIsOwnedTemporary(memberRoot)
+            and irCallResultIsScalar(expr)
+        if (memberOwned) {
+            releaseOwnedTemp = true
+            ownedTempKind = irOwnedTemporaryKind(memberRoot)
+            ownedTempType = irOwnedTemporaryDeclType(memberRoot)
+        }
         let argVal = generateExpression(argNode)
         let argStore = storageType(getExprType(argNode))
         // Cloned: `argStore` is affine and the branches below still name it.
@@ -4463,7 +4835,12 @@ private fn generateCall(expr: ASTNode) -> String {
         // Cloned because `argVal` is affine and the argument itself still
         // has to consume it below -- the same reason the two branches under
         // this one each name it exactly once.
-        if (releaseOwnedTemp) {
+        if (memberOwned) {
+            ownedTempVals.push(irMemberRootValue.clone())
+            ownedTempKinds.push(ownedTempKind)
+            ownedTempTypes.push(ownedTempType.clone())
+            ownedTempArgs.push(argIndex)
+        } else if (releaseOwnedTemp) {
             ownedTempVals.push(argVal.clone())
             ownedTempKinds.push(ownedTempKind)
             ownedTempTypes.push(ownedTempType)
@@ -4502,6 +4879,25 @@ private fn generateCall(expr: ASTNode) -> String {
                 } else {
                     ir_call_arg("ptr", scalarToSlot("struct:prismio.str", element))
                 }
+            } else if (irArgIsConsumed(funcName, argIndex)) {
+                // **A consumed String must cross as a buffer of its own.** The
+                // callee keeps the pointer past the call -- a channel hands it
+                // to the receiver, who frees it -- so the NUL-terminated scratch
+                // `ir_call_arg_cstr` makes for a short or view String is wrong
+                // twice: it is a stack slot, the same one for every call, and
+                // it is released as a temporary once the call returns. Ten
+                // short Strings sent through a channel all arrived as the last
+                // one, and each receive freed a stack address. The container
+                // path's `scalarToSlot` is the right conversion: an owned long
+                // String passes through, and a short or view one, or a literal,
+                // is copied out to the heap.
+                let mut owned = argVal.clone()
+                if (nodeIsStringLiteralExpr(argPtr)) {
+                    owned = generateOwnedStringLiteral(owned, argPtr)
+                }
+                let crossing = scalarToSlot("struct:prismio.str", owned)
+                if (irSendsOwnedMessage(funcName, argIndex)) { sentMessage = crossing.clone() }
+                ir_call_arg("ptr", crossing)
             } else if (irCallReturnsAlias(expr)) {
                 // An alias return may outlive this expression or even this
                 // frame. Inline String bytes live in a stack pair, and a
@@ -4566,7 +4962,16 @@ private fn generateCall(expr: ASTNode) -> String {
                 } else {
                     ir_call_arg("ptr", scalarToSlot(argStore, argVal))
                 }
+            } else if (isForeign == false and isFatStringKey(argStore)
+                    and calleeParamStorage(expr, funcName, argIndex).equals("ptr")) {
+                // A String passed to a `String?` parameter. A parameter is a
+                // borrow, so this is the FFI borrow lowering rather than an
+                // owning copy: the pointer has to be valid, NUL-terminated,
+                // for the call and no longer -- an inline String's scratch
+                // slot, a view's temporary copy (released after the call).
+                ir_call_arg_cstr(argVal, 1)
             } else {
+                if (irSendsOwnedMessage(funcName, argIndex)) { sentMessage = argVal.clone() }
                 ir_call_arg(argStore, argVal)
             }
         }
@@ -4645,6 +5050,11 @@ private fn generateCall(expr: ASTNode) -> String {
     // runtime aborts on a null rather than codegen branching around one.
     if (funcName.equals("expect")) {
         callName = "prismio_expect"
+    }
+    // A plain-data send copies the message's bytes into the ring; the runtime is
+    // told how many, since it sees only the pointer (see channelCopyStruct).
+    if (funcName.equals("chan_send_copy")) {
+        ir_call_arg("i32", ir_struct_size(channelCopyStruct(expr)).toString())
     }
 
     let mut retType = storageType(getExprType(expr))
@@ -4788,6 +5198,9 @@ private fn generateCall(expr: ASTNode) -> String {
     // is what came back.
     if (releaseTemps) {
         generateOwnedTemporaryReleases(ownedTempVals, ownedTempKinds, ownedTempTypes)
+    }
+    if (sentMessage.equals("") == false) {
+        generateUndeliveredRelease(expr, result.clone(), sentMessage)
     }
     if (arrayByValue) {
         return ir_get_temp_name(ir_array_from_value(retType, result))

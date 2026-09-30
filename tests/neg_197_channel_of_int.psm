@@ -1,9 +1,10 @@
 // expect-error: a channel carries references
-// One pointer travels per message and a receive answers `T?`, so the element
-// must be a reference -- the rule `T?` has. `Channel<Int>` used to be accepted
-// and sent an `i32` where the runtime reads a pointer.
+// A receive answers `T?`, and `T?` is defined only for a reference, so the
+// element must be one. `Channel<Int>` used to be accepted and sent an `i32`
+// where the runtime reads a pointer. A struct of one Int is the way to send a
+// number, and it costs nothing: a message of scalars is copied through the ring.
 fn main() -> Int {
-    let c: Channel<Int> = chan_new(4)
-    chan_free(c)
+    let c = Channel<Int>(4)
+    c.free()
     return 0
 }

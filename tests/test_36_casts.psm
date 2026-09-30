@@ -85,6 +85,36 @@ fn main() -> Int {
         return fail("chained casts should round-trip")
     }
 
+    // Bool and Char convert to Float unsigned, as they widen: `sitofp` made
+    // `true` -1.0 and Char 200 -56.0
+    let yes = true
+    if (yes as Float != 1.0) {
+        return fail("true as Float should be 1.0")
+    }
+    let high = 200 as Char
+    if (high as Float != 200.0) {
+        return fail("Char 200 as Float should be 200.0")
+    }
+
+    // a prefix operator binds inside the cast: `-1 as U8` is `(-1) as U8`
+    if (-1 as U8 as Int != 255) {
+        return fail("-1 as U8 should be 255")
+    }
+    let small: I8 = 5
+    if (-small as I64 != -5 as I64) {
+        return fail("-x as I64 should negate first")
+    }
+    let huge = 1e30
+    if (-huge as I64 != -9223372036854775807 as I64 - 1 as I64) {
+        return fail("-1e30 as I64 should saturate to I64.MIN")
+    }
+    if (-128 as I8 as Int != -128) {
+        return fail("-128 as I8 should name I8's minimum")
+    }
+    if (!yes as Int != 0) {
+        return fail("!true as Int should be 0")
+    }
+
     println("PASS: casts")
     return 0
 }

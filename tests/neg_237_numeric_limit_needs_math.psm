@@ -1,0 +1,7 @@
+// expect-error: `U8.MAX` is not defined; the numeric limits are in `std.math`
+// Without the import, `U8` read as a value and the error was "unknown
+// identifier `U8`", which names the wrong problem.
+fn main() -> Int {
+    let top = U8.MAX
+    return 0
+}

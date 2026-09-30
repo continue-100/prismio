@@ -1,8 +1,8 @@
 // Expressions.
 //
 // Precedence climbing: parseExpression handles binary operators by precedence,
-// parseUnary the prefix operators, parsePostfix the `as` chain, and
-// parsePrimary the atoms plus the call/index/member suffixes that bind tightest.
+// parseCast the `as` chain, parseUnary the prefix operators, and parsePrimary
+// the atoms plus the call/index/member suffixes that bind tightest.
 
 import lexer.token
 import lexer.scanner
@@ -42,7 +42,7 @@ private fn isBinaryOperator(t: Token) -> Bool {
 }
 
 internal fn parseExpression(p: Parser, precedence: Int) -> ASTNode {
-    let mut left = parseUnary(p)
+    let mut left = parseCast(p)
 
     loop {
         let operatorToken = p.current()
@@ -103,8 +103,8 @@ private fn foldNegativeLiteral(operand: ASTNode, minus: Token) -> Bool {
     return true
 }
 
-// Prefix operators bind tighter than any binary operator, so they sit between
-// parseExpression and parsePrimary. Recursing into parseUnary rather than
+// Prefix operators bind tighter than `as` and any binary operator, so they sit
+// between parseCast and parsePrimary. Recursing into parseUnary rather than
 // parsePrimary is what makes `--x` and `!!b` parse.
 private fn parseUnary(p: Parser) -> ASTNode {
     let current = p.current()
@@ -114,7 +114,7 @@ private fn parseUnary(p: Parser) -> ASTNode {
     let isComplement = current.type == TokenType.ARITHMETIC_OPERATOR and current.value.equals("~")
 
     if (isNegate == false and isNot == false and isComplement == false) {
-        return parsePostfix(p)
+        return parsePrimary(p)
     }
 
     let op = current.value
@@ -134,8 +134,13 @@ private fn parseUnary(p: Parser) -> ASTNode {
 // `expr as Type`. Binds tighter than any binary operator and looser than a prefix
 // operator, so `-x as I64` negates first and `a + b as I64` converts only b.
 // Looping allows `x as I64 as Float` to chain left to right.
-private fn parsePostfix(p: Parser) -> ASTNode {
-    let mut expr = parsePrimary(p)
+//
+// The prefix operators are parsed *inside* the cast, not the other way round.
+// When parseUnary called this, `-1 as U8` was `-(1 as U8)` -- a negation of an
+// unsigned value, rejected -- and `-1e30 as I64` saturated before negating, one
+// short of I64.MIN.
+private fn parseCast(p: Parser) -> ASTNode {
+    let mut expr = parseUnary(p)
 
     while (p.matchVal(TokenType.KEYWORD, "as")) {
         let cast = p.node(NodeKind.CAST_EXPR)

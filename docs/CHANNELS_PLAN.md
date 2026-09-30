@@ -73,8 +73,32 @@ wrapping the ring with a compare instead of `%`. Median 0.968x, minimum 1.006x.
 This agrees with the topology result below: the lock and the signalling are not
 the cost. Phase 1 is.
 
+**Done 2026-09-30: plain-data messages copy through the ring**
+(`aif/evidence/RESULTS-typed-channels.md`). A message whose every field is a
+scalar is copied into an in-place byte ring and out into storage the receiving
+frame supplies (`chan_send_copy`, `chan_recv_copy`), so AIF places the received
+value like a struct literal -- T0 in the pipeline. On the same 21-run A/B at
+5M messages: boxed 1.025 s, copied **0.646 s**, C++ 0.688 s, so
+`channel_pipeline` went from 1.49x to **0.94x of C++**. The `--verify` ledger
+went from 2,000,001 allocations per 1M messages to 1. Spinning before parking
+was measured and is not a lever, nor is the mutex policy; a direct handoff into
+a parked receiver's slot (Go's `sendDirect`) was not built (the RESULTS file
+has the numbers and the reasoning). A message that owns anything still travels
+as one pointer.
+
+**Also 2026-09-30: the surface is methods.** `Channel<T>(n)`, `c.send(v) ->
+Bool`, `c.receive()`, `for msg in c`, `c.share()`, `c.close()`, `c.length`,
+`c.free()`, lowered in sema (`src/sema/channel.psm`); the `chan_*` names are
+refused in source. This is not the Phase 1 API in §3 -- there are no separate
+`Sender`/`Receiver` endpoints and `send` does not hand back an undelivered value
+-- it is the 0.1 surface respelled, and §3 still describes where it goes. A
+send to a closed channel no longer leaks what it refused: it answers false and
+releases the message as a receiver would have (KNOWN_ISSUES, "Fixed 2026-09-30:
+a send on a closed channel"). Returning it to the sender is still Phase 0.
+
 The runtime (`runtime/program_support.c`) is a mutex and two condition
-variables over a `void*` ring, with `%` to wrap. Task start is one OS thread per
+variables over a `void*` ring, with `%` to wrap, and beside it the plain-data
+byte ring, which wraps with a compare. Task start is one OS thread per
 `spawn`, with at most three word-sized arguments.
 
 Topology specialisation, meaning an SPSC ring when one producer and one
@@ -172,7 +196,7 @@ unsound aliasing rule after the fact.
 | Phase | Deliverable | Exit criterion |
 |---|---|---|
 | 0 · Contract | written semantics (ownership, close, endpoint clones, error types, blocking); `Channel<Int>` refused or lowered properly; spawn failure explicit; send after close returns the value; teardown tests with live waiters | the compiler's tests pass; a leak probe on send after close passes; every failure has a result type |
-| 1 · Typed bounded channel | type descriptors, an aligned in-place ring, `Sender`/`Receiver` with counted endpoints, direct handoff, a wrap without division | the primitive pipeline makes no allocation per message; `channel_pipeline` near the inline C++ control; the state machine's tests pass |
+| 1 · Typed bounded channel | **partly done 2026-09-30:** the in-place ring and "no allocation per message" for plain-data messages, `channel_pipeline` at 0.94x of C++. Remaining: type descriptors, an aligned in-place ring, `Sender`/`Receiver` with counted endpoints, direct handoff, a wrap without division | the primitive pipeline makes no allocation per message; `channel_pipeline` near the inline C++ control; the state machine's tests pass |
 | 2 · Complete blocking API | rendezvous, try, timeouts, cancellation, one-shot, per-platform parkers (futex, `WaitOnAddress`, `os_sync_wait_on_address`) | no lost value or orphaned waiter under stress; deterministic timeouts in tests |
 | 3 · Runtime integration | structured task scopes, a bounded worker pool, park and unpark through the scheduler, select, permits | a blocked channel does not pin a worker; select commits exactly one arm |
 | 4 · Specialisation | SPSC and MPSC fast paths, batches, an atomic MPMC ring (Vyukov; SCQ/wCQ), broadcast, watch, unbounded with a memory policy | each justified by a benchmark and a correctness case. Remember the SPSC negative result |

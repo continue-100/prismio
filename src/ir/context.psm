@@ -13,6 +13,13 @@ import ast.types
 
 let mut irStringCounter = 0
 let mut irShortCircuitCounter = 0
+// Names generateChannelRecvCopy's result slots, as the counter above names
+// generateShortCircuit's.
+let mut irChannelRecvCounter = 0
+// The value of the call at the root of the member chain generateMemberAccess
+// last evaluated (memberChainRoot), for the release that follows the read or
+// the call it was passed to.
+let mut irMemberRootValue = ""
 // How many loops enclose the statement being generated.
 //
 // The flat push below is worth its three header loads and a branch only where a

@@ -1004,6 +1004,13 @@ internal fn monoMatchParam(module: ASTNode, tn: ASTNode, actual: TypeInfo, param
 
     if (tn.i1 == 0 and tn.i2 == 0 and tn.s1.equals(paramName)) {
         if (typeIsValid(actual) == false) { return ptr_to_node(ptr_null()) }
+        // `v: T?` against an `Int?` is `T = Int`, not `T = Int?` and a `T?` of
+        // `Int??`. A bare `none` says nothing about `T`; a present `Int`, which
+        // the call wraps, says `Int`.
+        if (tn.i3 == 1 and actual.kind == TypeKind.OPTIONAL) {
+            if (nodeIsNull(actual.child)) { return ptr_to_node(ptr_null()) }
+            return monoAnnotationFromType(typeOptionalInner(actual))
+        }
         return monoAnnotationFromType(actual)
     }
     if (tn.i1 == 1 and actual.kind == TypeKind.ARRAY and nodeExists(tn.child1)) {
@@ -1086,8 +1093,13 @@ internal fn monoTypeArgsFromExpected(module: ASTNode, call: ASTNode, expected: T
     let mut templatePtr = module.child2
     while (nodeExists(templatePtr)) {
         let template = ptr_to_node(templatePtr)
+        // A template taking a different number of arguments is not this
+        // call's callee, and solving it anyway named one: `return expect(x)`
+        // on an `Int?` became `expect<Int>`, `Option<T>`'s two-parameter
+        // method, instead of the builtin.
         if (template.kind == NodeKind.FUNCTION and template.s1.equals(name)
-                and nodeExists(template.child3)) {
+                and nodeExists(template.child3)
+                and monoChainLength(template.child1) == monoChainLength(call.child2)) {
             let params = template.s2
             let solved = nodeList()
             let mut fromArgs = true
@@ -1159,11 +1171,54 @@ private fn monoTemplateAcceptsCall(module: ASTNode, template: ASTNode,
         monoResolveProjections(module, node_to_ptr(expectedAnnotation))
         let expected = semaAnnotationType(module, expectedAnnotation)
         let actual = semaExpr(module, ptr_to_node(actualPtr))
-        if (typeEquals(expected, actual) == false) { return false }
+        if (monoArgumentFits(expected, actual) == false) { return false }
         paramPtr = param.next
         actualPtr = ptr_to_node(actualPtr).next
     }
     return nodeIsNull(paramPtr) and nodeIsNull(actualPtr)
+}
+
+// An argument fits a parameter of its own type, or of its `T?`: a `T` is
+// accepted wherever a `T?` is expected, and the ordinary argument check converts
+// it once this template is chosen. Without the second case `m.set(1, 2.5)` on a
+// `Map<Int, Float?>` found no `set`, though a concrete `Float?` parameter took
+// the same argument.
+private fn monoArgumentFits(expected: TypeInfo, actual: TypeInfo) -> Bool {
+    if (typeEquals(expected, actual)) { return true }
+    return expected.kind == TypeKind.OPTIONAL and nodeExists(expected.child)
+        and typeEquals(typeOptionalInner(expected), actual)
+}
+
+// Whether a non-generic overload of `name` takes exactly these argument types.
+// One that does is the call's callee, and no template is instantiated for it:
+// `f(5)` beside `fn f(x: Int)` and `fn f<T>(x: T)` used to name `f<Int>`, so the
+// overload written for `Int` could never be called.
+private fn monoConcreteOverloadFits(module: ASTNode, name: String, argPtr: Ptr) -> Bool {
+    let count = ir_decl_count(name)
+    for i in 0..<count {
+        let decl = ptr_to_node(ir_decl_at(name, i))
+        if ((decl.kind == NodeKind.FUNCTION or decl.kind == NodeKind.EXTERN_FUNCTION)
+                and monoParamsTakeExactly(module, decl.child1, argPtr)) {
+            return true
+        }
+    }
+    return false
+}
+
+private fn monoParamsTakeExactly(module: ASTNode, paramPtr: Ptr, argPtr: Ptr) -> Bool {
+    let mut param = paramPtr
+    let mut arg = argPtr
+    while (nodeExists(param) and nodeExists(arg)) {
+        let paramNode = ptr_to_node(param)
+        let expected = semaAnnotationType(module, ptr_to_node(paramNode.child1))
+        let actual = semaExpr(module, ptr_to_node(arg))
+        if (typeIsValid(expected) == false or typeEquals(expected, actual) == false) {
+            return false
+        }
+        param = paramNode.next
+        arg = ptr_to_node(arg).next
+    }
+    return nodeIsNull(param) and nodeIsNull(arg)
 }
 
 // Rewrites a call to a generic function so that it names an instantiation.
@@ -1200,6 +1255,8 @@ internal fn monoResolveGenericCall(module: ASTNode, callExpr: ASTNode, callee: A
         callee.s1 = monoInstantiateFunction(module, firstTemplate, explicit.child1)
         return
     }
+
+    if (monoConcreteOverloadFits(module, callee.s1, callExpr.child2)) { return }
 
     // A name may have several generic templates. This was unobservable while
     // generic functions were effectively unique by name, but generic inherent

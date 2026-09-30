@@ -419,6 +419,7 @@ private fn semaConcatSpineIsString(module: ASTNode, expr: ASTNode) -> Bool {
 //     String, Vec<T>, Slice<T>, Array<T, N>    each element; `(i, x)` adds its index
 //     Map<K, V>                                 each key; `(k, v)` adds its value
 //     a type implementing `Iterator`            each `next`
+//     Channel<T>                                each message, until closed and drained
 //
 // **A collection that is not a place is bound first.** The loop reads the
 // collection twice -- once for the length, once per element -- so
@@ -454,6 +455,14 @@ private fn semaForEachDesugar(module: ASTNode, stmt: ASTNode) -> Bool {
         return semaForEachIterator(module, stmt, source)
     }
     if (semaForIsMap(module, sourceT)) { return semaForEachMap(stmt, source) }
+    if (typeIsChannel(sourceT)) {
+        if (stmt.s2.equals("") == false) {
+            semaErrorAt(stmt, "a Channel gives one message per iteration, but this loop names two")
+            return false
+        }
+        semaForEachChannel(stmt, source)
+        return true
+    }
 
     let length = createNode(NodeKind.CALL_EXPR)
     nodeSpanFrom(length, source)
@@ -477,7 +486,7 @@ private fn semaForEachDesugar(module: ASTNode, stmt: ASTNode) -> Bool {
         diag_note("a `[T]` parameter takes arrays of any length; pass the length too and write `for i in 0..<n`")
         return false
     } else {
-        semaErrorAt(source, "`for ... in` needs a String, Vec, Slice, array, Map, or a type implementing `Iterator`, found ".concat(typeDisplay(sourceT)))
+        semaErrorAt(source, "`for ... in` needs a String, Vec, Slice, array, Map, Channel, or a type implementing `Iterator`, found ".concat(typeDisplay(sourceT)))
         diag_note("implement `Iterator` for it, or iterate by index -- `for i in 0..<n`")
         return false
     }
@@ -499,6 +508,69 @@ private fn semaForEachDesugar(module: ASTNode, stmt: ASTNode) -> Bool {
 
     semaForBecomeRange(stmt, indexName, length)
     return true
+}
+
+// `for msg in c` over a `Channel<T>`: receive until the channel is closed and
+// drained, which is Go's `for v := range ch` and Kotlin's `for (x in channel)`.
+//
+//     loop {
+//         let $msg = c.receive()
+//         if ($msg == none) { break }
+//         let msg = expect($msg)
+//         <body>
+//     }
+//
+// A `loop`, not a range: a channel has no length to count to, only the `none`
+// a drained closed channel answers. The body block is the user's own, so a
+// label on it (`outer@ for ...`) still names this loop, and a `continue` in it
+// is the next receive. The receive is built through channel.psm, so it is the
+// same call `c.receive()` is and takes the plain-data path the same way.
+private fn semaForEachChannel(stmt: ASTNode, source: ASTNode) {
+    let hidden = "$".concat(stmt.s1)
+
+    let received = createNode(NodeKind.CALL_EXPR)
+    nodeSpanFrom(received, source)
+    semaChannelLower(received, "receive", monoCopyOne(node_to_ptr(source)), ptr_null())
+
+    let unwrap = createNode(NodeKind.CALL_EXPR)
+    nodeSpanFrom(unwrap, source)
+    semaBecomeCall(unwrap, "expect", node_to_ptr(semaNameNode(source, hidden)))
+    semaForPrependLet(stmt, stmt.s1, unwrap)
+
+    let jump = createNode(NodeKind.BREAK_STATEMENT)
+    nodeSpanFrom(jump, stmt)
+    let exitBlock = createNode(NodeKind.BLOCK)
+    nodeSpanFrom(exitBlock, stmt)
+    exitBlock.child1 = node_to_ptr(jump)
+    let drained = createNode(NodeKind.BINARY_EXPR)
+    nodeSpanFrom(drained, source)
+    drained.s1 = "=="
+    drained.child1 = node_to_ptr(semaNameNode(source, hidden))
+    let noneNode = createNode(NodeKind.NONE_LITERAL_EXPR)
+    nodeSpanFrom(noneNode, source)
+    drained.child2 = node_to_ptr(noneNode)
+    let exit = createNode(NodeKind.IF_STATEMENT)
+    nodeSpanFrom(exit, stmt)
+    exit.child1 = node_to_ptr(drained)
+    exit.child2 = node_to_ptr(exitBlock)
+
+    let body = ptr_to_node(stmt.child3)
+    exit.next = body.child1
+    body.child1 = node_to_ptr(exit)
+    let bind = createNode(NodeKind.VARIABLE_DECL)
+    nodeSpanFrom(bind, stmt)
+    bind.s1 = hidden
+    bind.child2 = node_to_ptr(received)
+    bind.next = body.child1
+    body.child1 = node_to_ptr(bind)
+
+    stmt.kind = NodeKind.LOOP_STATEMENT
+    stmt.s1 = ""
+    stmt.s2 = ""
+    stmt.i1 = 0
+    stmt.child1 = node_to_ptr(body)
+    stmt.child2 = ptr_null()
+    stmt.child3 = ptr_null()
 }
 
 // `for k in m` and `for (k, v) in m` over a `Map<K, V>`: its iteration API,
@@ -930,6 +1002,12 @@ private fn semaNoneLiteralExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
     // allowed, so a cast never quietly reinterprets memory.
 private fn semaCastExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
     let source = ptr_to_node(expr.child1)
+    // A present value wrapped as a scalar's `T?` (semaWrapPresent). Nothing
+    // was written, so there is nothing to check but the value.
+    if (nodeIsNull(expr.child2)) {
+        semaExpr(module, source)
+        return nodeGetType(expr)
+    }
     let fromT = semaExpr(module, source)
     let toT = semaAnnotationType(module, ptr_to_node(expr.child2))
 
@@ -940,10 +1018,9 @@ private fn semaCastExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
     // **When it does not fit, the cast is left to truncate**, and that is
     // not an oversight -- `as` is the explicit narrowing operator, so
     // `300 as U8` meaning 44 is the feature rather than the bug. Making that
-    // a diagnostic would leave no way to write a deliberate truncation, and
-    // `-128 as I8` -- which parses as a negation of `128 as I8` -- would stop
-    // naming the most negative I8. The two rules only look alike: a value
-    // that fits is being *named*, and one that does not is being *cut*.
+    // a diagnostic would leave no way to write a deliberate truncation, such as
+    // `-1 as U8` for 255. The two rules only look alike: a value that fits is
+    // being *named*, and one that does not is being *cut*.
     if (toT.kind == TypeKind.INT and semaIsIntLiteral(source) and fromT.kind == TypeKind.INT) {
         if (typeIntLiteralFits(source.s1, toT)) {
             nodeSetType(source, toT)
@@ -1235,7 +1312,8 @@ private fn semaTypeCall(module: ASTNode, expr: ASTNode, callee: ASTNode) -> Int 
     if (semaDeclaresFunction(name) or monoHasTemplate(module, name, NodeKind.FUNCTION)) {
         return semaVecNotLowered()
     }
-    let isVec = name.equals("Vec")
+    // Vec and Channel are the compiler's own, with no declaration to find.
+    let isVec = name.equals("Vec") or name.equals("Channel")
     let isType = isVec or semaHasStruct(module, name) or semaHasEnum(module, name)
         or monoHasTemplate(module, name, NodeKind.STRUCT_DECL)
         or monoHasTemplate(module, name, NodeKind.ENUM_DECL)
@@ -1272,6 +1350,12 @@ private fn semaTypeCall(module: ASTNode, expr: ASTNode, callee: ASTNode) -> Int 
     let mut qualifier = callee
     if (nodeExists(expr.child3)) {
         qualifier = ptr_to_node(expr.child3)
+    } else if (name.equals("Channel")) {
+        // `Channel(8)`: the written type with no `T`, which the Channel
+        // arm of the associated-function path reads as "from the binding".
+        qualifier = createNode(NodeKind.TYPE_ANNOTATION)
+        qualifier.s1 = "Channel"
+        nodeSpanFrom(qualifier, callee)
     } else {
         qualifier = createNode(NodeKind.IDENTIFIER_EXPR)
         qualifier.s1 = name.clone()
@@ -1431,8 +1515,28 @@ private fn semaCallExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
             let associated = semaVecAssociated(module, expr, target, callee.s1)
             if (associated == semaVecRewritten()) { return semaExpr(module, expr) }
             if (associated == semaVecRejected()) { return typeInvalid() }
+            // `semaExpr` already typed the channel's allocation, from the
+            // written `T`; checking it again would re-type it from `chan_new`.
+            let channelMade = semaChannelAssociated(module, expr, target, callee.s1)
+            if (channelMade == semaVecRewritten()) { return nodeGetType(expr) }
+            if (channelMade == semaVecRejected()) { return typeInvalid() }
         } else if (target.kind != NodeKind.IDENTIFIER_EXPR or ir_has_var_type(target.s1) == 1) {
-            let receiverKind = semaExpr(module, target).kind
+            let receiverT = semaExpr(module, target)
+            let receiverKind = receiverT.kind
+            // Channel's methods, for Vec's reason: `send` moves, and the
+            // plain-data rename is per call site (src/sema/channel.psm).
+            if (typeIsChannel(receiverT)) {
+                let chanMethod = callee.s1.clone()
+                if (semaChannelIsProperty(chanMethod)) {
+                    semaErrorAt(callee, diagQuote(chanMethod).concat(" is a property, not a method"))
+                    diag_note("read it without parentheses: `c.".concat(chanMethod, "`"))
+                    nodeSetType(expr, typeInvalid())
+                    return typeInvalid()
+                }
+                let chanLowered = semaChannelLower(expr, chanMethod, target, expr.child2)
+                if (chanLowered == semaVecRewritten()) { return semaExpr(module, expr) }
+                if (chanLowered == semaVecRejected()) { return typeInvalid() }
+            }
             if (semaVecLowersKind(receiverKind)) {
                 let method = callee.s1.clone()
                 // `v.length()`: the collection's properties are the compiler's
@@ -1729,6 +1833,16 @@ private fn semaMemberAccessExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
         return semaExpr(module, expr)
     }
 
+    // `U8.MAX` without `import std.math` would read `U8` as a value and report
+    // it as an unknown identifier, which names the wrong problem.
+    if (objectNode.kind == NodeKind.IDENTIFIER_EXPR and ir_has_var_type(objectNode.s1) == 0
+            and typeIsNumeric(typeFromSemKey(objectNode.s1))) {
+        semaErrorAt(expr, "`".concat(objectNode.s1, ".", expr.s1,
+            "` is not defined; the numeric limits are in `std.math` -- add `import std.math`"))
+        nodeSetType(expr, typeInvalid())
+        return typeInvalid()
+    }
+
     let objectT = semaExpr(module, objectNode)
     if (objectT.kind == TypeKind.DATAELEMENT) {
         if (nodeIsNull(objectT.child)) {
@@ -1750,6 +1864,12 @@ private fn semaMemberAccessExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
     // and before the failure, so a field always wins and no existing program
     // changes meaning; a struct may still have a property, which is what
     // makes `point.magnitude` available next to `point.x`.
+    if (typeIsChannel(objectT) and semaChannelIsProperty(expr.s1)) {
+        let chanProperty = expr.s1.clone()
+        let chanRead = semaChannelLower(expr, chanProperty, objectNode, ptr_null())
+        if (chanRead == semaVecRewritten()) { return semaExpr(module, expr) }
+        if (chanRead == semaVecRejected()) { return typeInvalid() }
+    }
     if (semaVecLowersKind(objectT.kind) and semaVecIsProperty(objectT.kind, expr.s1)) {
         let propertyName = expr.s1.clone()
         let loweredProperty = semaVecLower(module, expr, objectT.kind, propertyName, objectNode, ptr_null())
@@ -2382,6 +2502,14 @@ private fn semaVariableDecl(module: ASTNode, stmt: ASTNode, expectedReturn: Type
             // No annotation, so nothing will widen a bare literal after
             // this: `let n = 4294967296` is an `Int` and has to fit one.
             semaCheckLiteralRange(ptr_to_node(stmt.child2))
+            // `let c = Channel(8)`: a channel of nothing yet, and nothing left
+            // to say what it carries.
+            if (typeIsChannel(varT) and typeIsValid(typeChannelElem(varT)) == false) {
+                semaErrorAt(ptr_to_node(stmt.child2), "this channel's message type is not known")
+                let hint = "write `Channel<T>(capacity)`, or annotate the binding: `let "
+                diag_note(hint.concat(stmt.s1, ": Channel<T> = Channel(capacity)`"))
+                varT = typeInvalid()
+            }
         }
         semaMoveOperand(ptr_to_node(stmt.child2))
     }
@@ -3928,6 +4056,11 @@ private fn semaImplTargetsMayOverlap(aPtr: Ptr, aParams: String,
     let b = ptr_to_node(bPtr)
     let aVariable = a.i1 == 0 and a.i2 == 0 and semaImplParam(aParams, a.s1)
     let bVariable = b.i1 == 0 and b.i2 == 0 and semaImplParam(bParams, b.s1)
+    // A parameter written `T?` stands only for an optional, so it cannot meet a
+    // concrete target that is not one: `impl<T: Dup> Dup for T?` beside
+    // `impl Dup for Int` is two impls, not one twice.
+    if (aVariable and a.i3 == 1 and bVariable == false and b.i3 == 0) { return false }
+    if (bVariable and b.i3 == 1 and aVariable == false and a.i3 == 0) { return false }
     if (aVariable or bVariable) { return true }
 
     if (a.i1 != b.i1 or a.i2 != b.i2 or a.i3 != b.i3) { return false }

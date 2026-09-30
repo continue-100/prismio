@@ -1,0 +1,13 @@
+// expect-error: overlapping impl `Dup` for `T?`
+// `T?` stands for every optional, `Int?` among them, so these two are one
+// implementation twice. `T?` beside `impl Dup for Int` is not (test_240).
+trait Dup {
+    fn dup(self) -> Self
+}
+
+impl Dup for Int? { fn dup(self) -> Self { return self } }
+impl<T> Dup for T? { fn dup(self) -> Self { return self } }
+
+fn main() -> Int {
+    return 0
+}

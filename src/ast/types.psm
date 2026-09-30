@@ -278,7 +278,9 @@ public fn typeStruct(name: String) -> TypeInfo {
 public fn typeNone() -> TypeInfo { return typeMake(TypeKind.OPTIONAL, "none", "ptr") }
 
 public fn typeOptional(inner: TypeInfo) -> TypeInfo {
-    let t = typeMake(TypeKind.OPTIONAL, inner.name.concat("?"), "ptr")
+    let mut key = "ptr"
+    if (typeIsScalarOptionalInner(inner)) { key = "opt:".concat(typeIrKey(inner)) }
+    let t = typeMake(TypeKind.OPTIONAL, inner.name.concat("?"), key)
     t.child = type_to_ptr(inner)
     return t
 }
@@ -341,14 +343,30 @@ public fn typeOptionalInner(t: TypeInfo) -> TypeInfo {
     return typeInvalid()
 }
 
-// Only a reference can be absent. A scalar has no spare representation -- 0 is a
-// perfectly good Int -- so `Int?` would need a second word and is refused rather
-// than silently given one.
+// A reference is absent as a null pointer. A scalar has no spare representation
+// -- 0 is a perfectly good Int -- so its `T?` is a second word beside it: a
+// present flag and the value, `{ i1, T }` by value (typeIsValueOptional).
 public fn typeCanBeOptional(t: TypeInfo) -> Bool {
     if (t.kind == TypeKind.STRUCT) { return true }
     if (t.kind == TypeKind.STRING) { return true }
     if (t.kind == TypeKind.LIST) { return true }
+    if (typeIsScalarOptionalInner(t)) { return true }
     return t.kind == TypeKind.PTR
+}
+
+// The types whose `T?` is a value rather than a nullable pointer: a number,
+// `Bool`, `Char` or an enum without payloads. Such a `T?` owns nothing, copies
+// like its `T`, and costs no allocation -- which is what `Option<T>`, a boxed
+// payload enum, cannot say.
+public fn typeIsScalarOptionalInner(t: TypeInfo) -> Bool {
+    let k = t.kind
+    return k == TypeKind.INT or k == TypeKind.FLOAT or k == TypeKind.BOOL
+        or k == TypeKind.CHAR or k == TypeKind.ENUM
+}
+
+public fn typeIsValueOptional(t: TypeInfo) -> Bool {
+    return t.kind == TypeKind.OPTIONAL and nodeExists(t.child)
+        and typeIsScalarOptionalInner(ptr_to_type(t.child))
 }
 
 public fn typeEnum(name: String) -> TypeInfo {
@@ -369,6 +387,7 @@ public fn typeOwnsNothing(t: TypeInfo) -> Bool {
     let k = t.kind
     return k == TypeKind.INT or k == TypeKind.FLOAT or k == TypeKind.BOOL
         or k == TypeKind.CHAR or k == TypeKind.PTR or k == TypeKind.ENUM
+        or typeIsValueOptional(t)
 }
 
 // Whether binding or assigning this array copies its elements: its length is
@@ -609,11 +628,13 @@ public fn typeIrKey(t: TypeInfo) -> String {
     if (t.kind == TypeKind.SLICE) { return "struct:prismio.slice" }
     if (t.kind == TypeKind.DATAVIEW) { return "ptr" }
     if (t.kind == TypeKind.DATAELEMENT) { return "struct:prismio.data_element" }
-    // REQUIREMENTS 4. A `T?` is one pointer, absent or not. Deliberately *not*
-    // `struct:T` even when the inner is a struct: the storage is the same, but
-    // an lvalue of this type must never reach ir_struct_field_ptr without an
-    // unwrap, and keeping the key opaque is what makes that a type error rather
-    // than a null dereference.
+    // A scalar's `T?` is `{ i1 present, T value }`, by value.
+    if (typeIsValueOptional(t)) { return "opt:".concat(typeIrKey(ptr_to_type(t.child))) }
+    // REQUIREMENTS 4. A reference's `T?` is one pointer, absent or not.
+    // Deliberately *not* `struct:T` even when the inner is a struct: the storage
+    // is the same, but an lvalue of this type must never reach
+    // ir_struct_field_ptr without an unwrap, and keeping the key opaque is what
+    // makes that a type error rather than a null dereference.
     if (t.kind == TypeKind.OPTIONAL) { return "ptr" }
     if (t.kind == TypeKind.ARRAY) {
         if (nodeExists(t.child)) {

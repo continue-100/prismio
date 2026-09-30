@@ -137,13 +137,6 @@ private fn umsRunnableScript(value: String) -> Bool {
     return value.endsWith(".py") or value.endsWith(".psm")
 }
 
-private fn umsAbsolutePath(value: String) -> Bool {
-    let length = __builtin_string_len(value)
-    if (length == 0) { return false }
-    if (value.charAt(0) == '/' or value.charAt(0) == '\\') { return true }
-    return length > 1 and value.charAt(1) == ':'
-}
-
 // Validation, as methods on the model it validates. `project.validate(diags)`
 // rather than `umsProjectValidate(project, diags)`: the same call after the
 // checker's rewrite, and the receiver stops being an argument that happens to be

@@ -61,8 +61,10 @@ Supported top-level blocks and declarations are:
 
 - `toolchain { host = ".prismio/build/debug/compiler" }` (optional; when
   present it must be the first block so an older global compiler can read this
-  stable prefix without parsing the remaining manifest). The path must be under
-  `.prismio/` with no `..` (`UMS2405`). Write it without an extension: on
+  stable prefix without parsing the remaining manifest). The path is relative
+  to the manifest, or absolute, and may name another project's host -- a
+  sub-project can use `../.prismio/build/debug/prismio`. Only a host under the
+  project's own `.prismio/` is removed by `clean`. Write it without an extension: on
   Windows the host, like every executable and test target, is built as
   `<name>.exe`, and the path is resolved to match
 - `project { name = "..."; version = "..."; prismio = "..." }`
