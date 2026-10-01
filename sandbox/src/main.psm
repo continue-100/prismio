@@ -1,9 +1,20 @@
+import std.display
+import std.input
 import std.io
-import std.vec
+import std.string
 
+// Counts the lines, words and bytes of whatever is piped in.
 fn main() -> Int {
-
-    let x = [1,2,3,4]
-    print(x.contains(1))
+    let mut lines = 0
+    let mut words = 0
+    let mut bytes = 0
+    for line in stdin.lines() {
+        lines = lines + 1
+        bytes = bytes + line.length
+        for word in line.split(' ') {
+            if (word.isNotEmpty) { words = words + 1 }
+        }
+    }
+    println("${lines} lines, ${words} words, ${bytes} bytes")
     return 0
 }

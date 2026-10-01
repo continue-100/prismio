@@ -19,6 +19,8 @@ No garbage collector, no <code>free</code>, no lifetime annotations.
 
 ---
 
+[//]: # (No edit are allowed above this line)
+
 Prismio compiles to native code through LLVM. Its compiler is written in Prismio and
 builds itself to a byte-identical fixpoint.
 
@@ -28,13 +30,39 @@ for it: the stack, a bulk-freed region, a single owner with a deterministic free
 a reference count. It shows you each decision, and it can check them against a
 real run.
 
-> **Status: pre-release.** 0.1.0 is being prepared ([release procedure](RELEASE.md)).
-> The language and standard library can still change in incompatible ways before 1.0.
-> Build it from source today; installers come with the 0.1.0 release.
+> **Status: 0.1.0, the first release.** Read the
+> [release notes](https://docs.prismio.org/releases/0.1.0). The language and standard
+> library can still change in incompatible ways before 1.0.
+
+## Install
+
+macOS and Linux:
+
+```bash
+curl -fsSL https://prismio.org/install.sh | sh
+```
+
+Windows: download the archive for your machine from the
+[latest release](https://github.com/prismio-lang/prismio/releases/latest), unpack it, and
+put its `bin` directory on `PATH`.
+
+The compiler carries its own LLVM, but it links programs with the system's linker, so you
+also need the platform's C tools: the Xcode Command Line Tools on macOS
+(`xcode-select --install`), `cc` and the C library headers on Linux (`build-essential` on
+Debian and Ubuntu), or Visual Studio Build Tools with the **Desktop development with
+C++** workload on Windows. Then:
+
+```console
+$ prismio --version
+prismio 0.1.0
+llvm 23.1.1
+compiler /home/you/.prismio/bin
+stdlib /home/you/.prismio/stdlib
+```
 
 ## A first look
 
-```prismio
+```rust
 import std.display
 import std.io
 import std.map
@@ -123,8 +151,8 @@ and `--verify` builds a program whose run checks the inference held. The
 specification and the evidence behind it are in [`aif/`](aif/README.md).
 
 The model is still being tightened. Some shapes leak rather than release, and
-each is listed with a reproducer in [KNOWN_ISSUES.md](KNOWN_ISSUES.md) under
-"Ownership".
+each is listed with a reproducer in
+[KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md#ownership) under "Ownership".
 
 ## Performance
 
@@ -158,7 +186,8 @@ processes and the environment, time, math, strings, and collections.
 
 ## Building from source
 
-Requirements: Python 3.8 or later, which is the one thing you install yourself, and a
+To work on the compiler, or to run a platform the release does not ship for, build it
+yourself. Requirements: Python 3.8 or later, which is the one thing you install yourself, and a
 C toolchain (Xcode Command Line Tools, `build-essential`, or Visual Studio's C++
 tools). `tools/setup.py` checks the toolchain by compiling and linking a program with
 it, says exactly what is missing, and can install it (`--install-system-deps`, which
@@ -180,7 +209,7 @@ a machine with no Prismio builds its first one. On Windows the script is
 `tools/bootstrap.ps1 -Seed bootstrap/prismio-seed.ll -Out build/gen0`, then
 `-Compiler build/gen0 -Out build/gen1`.
 
-Then start a project:
+With the compiler installed or built, start a project:
 
 ```console
 $ prismio init hello && cd hello
@@ -196,8 +225,10 @@ diagnostics, [IDE_PROTOCOL.md](IDE_PROTOCOL.md)) and `-g` for DWARF debug info
 **Platforms.** CI builds and tests on Linux, macOS and Windows. Development happens
 on macOS (arm64) and Linux (x86_64), so Windows is the least exercised: a compiler
 self-hosted there has no export table, and some Windows-only paths are verified by
-CI alone. WebAssembly IR can be emitted but has no runtime yet. See
-[Platform](KNOWN_ISSUES.md#platform).
+CI alone. The compiler runs on macOS 14 or later, and the programs it builds on macOS 11
+or later. WebAssembly IR can be emitted but has no runtime yet. See
+[Platform](docs/KNOWN_ISSUES.md#platform) and
+[targets](https://docs.prismio.org/compiler/targets).
 
 ## Repository layout
 

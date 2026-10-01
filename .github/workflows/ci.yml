@@ -116,7 +116,7 @@ jobs:
       #
       # The compiler is named without `.exe` on purpose: that is how build.ums
       # names one, and package.py resolving it (tools/executable.py) is what
-      # `prismio dist` depends on on Windows.
+      # `prismio verify` depends on on Windows.
       - name: Package the toolchain
         shell: bash
         run: |

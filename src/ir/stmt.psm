@@ -914,9 +914,13 @@ private fn generateWhile(stmt: ASTNode) {
     irLoopHeaderBoundList = ""
     irLoopHeaderBoundIndex = ""
     irLoopHeaderBoundActive = false
-    irLoopHoistedBoundList = ""
-    irLoopHoistedBoundValue = ""
-    irLoopHoistedDataValue = ""
+    // The enclosing loop's hoisted base and length stay in force here: it
+    // captured a receiver only after checking that nothing in its whole body,
+    // this loop included, rebinds or pushes it, and the preheader that computed
+    // them dominates this one. Clearing them made every scan nested in a
+    // guarded loop (quicksort's partition) reload `data` per element. A loop
+    // that captures a receiver of its own replaces them, and they are restored
+    // below.
 
     // A successful bulk zero append bypasses the loop entirely. Emit it
     // before preparing the ordinary push guard so the fast arm does not

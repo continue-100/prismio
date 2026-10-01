@@ -120,6 +120,50 @@ every workload. On completion it writes two files to `benchmarks/results/`:
   sortable comparisons, precise nanoseconds, Prismio ratios, build timings, and
   unsupported coverage. It needs no server or external JavaScript dependency.
 
+### When a difference counts
+
+A flat percentage cannot be right for a 0.2 ms workload and a 200 ms one. The short
+ones are dominated by things no code change moves -- process start, which core the
+scheduler picks, the clock ramping up -- and they appear as **two timing modes**, not a
+smooth spread: `edit_distance` runs in about 560 us or about 700 us in every language,
+and the share of runs landing in each differs. So a result is a `win` or a `loss` only
+when **both** the ratio of medians and the ratio of best runs leave a tolerance:
+
+- on medians, the largest of `0.04`, either arm's own spread (interquartile range over
+  the median) and a 25 us floor as a fraction of the run;
+- on best runs, the larger of `0.04` and the same floor, because noise only adds time and
+  the best run is the steadiest estimate of what the code costs.
+
+Equal best runs with different medians is the signature of timing modes, and is parity.
+The terminal summary, the row colours and the HTML report all read the recorded
+`verdict`, so they cannot disagree, and each pill's tooltip says what it was judged
+against. The measure is the interquartile range because a median-and-MAD figure reads a
+bimodal run as 0% noise.
+
+### What `results.json` records
+
+The file is the single source for the HTML report and for the website's
+benchmark page, so it carries everything needed to read a number against the
+machine that produced it. Nothing in it is typed in: the harness probes the host
+and toolchains each run, and a probe that finds nothing leaves its key out.
+
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | `3`. Bumped when a field is added or changes meaning. |
+| `generated_at`, `runs` | When the run finished (UTC) and the samples taken per arm. |
+| `parity`, `noise_model` | The flat fraction (`0.04`) and the rest of the rule a verdict is decided by: a floor in nanoseconds for very short runs and the spread measure. See below. |
+| `elimination_ns` | Below this an elimination workload counts as deleted. |
+| `build_commands` | The exact build command per arm. **Repo-relative**: a path inside the checkout is relative to it and one outside (`clang++`) is its file name, so the file carries no path from the machine that wrote it. |
+| `compile_ns`, `binary_bytes` | Build time and executable size per arm. |
+| `cached_builds` | Arms served from the earlier build; their `compile_ns` is that build's. |
+| `environment` | `processor`, `cores`, `memory_bytes`, `os`, `target`, `power`; `toolchains` (`prismio` with its `version` and the `profile` it was built in, `clang`, `rustc`, `llvm`); `source` (`commit`, `dirty`); `harness`. |
+| `benchmarks` | One entry per workload with each arm's median, raw samples, and peak RSS, and a `verdict` against C++ and against Rust: `outcome` (`win`, `parity`, `loss`), the median `ratio`, the `best_ratio`, the `tolerance` it was judged against and the `noise` measured. |
+| `artifacts` | Repo-relative paths of the report and the raw data. |
+
+`environment.toolchains.prismio.profile` is worth reading before a compile-time
+comparison: `prismio bench` measures the compiler built into `.prismio/build/debug/`,
+so the Prismio compile time is a debug build's.
+
 Use `prismio bench --open` to open the completed report automatically. The
 default command only prints its path, which keeps CI and scripted runs quiet.
 
@@ -153,9 +197,18 @@ Release compilation:
 
 ```text
 Prismio: <compiler> build benchmarks/prismio/suite.psm -o benchmarks/build/prismio-suite
-C++:     clang++ -O3 -std=c++20 -pthread benchmarks/cpp/{suite,algorithms,data_structures,compute,memory,io,adversarial}.cpp -o benchmarks/build/cpp-suite
-Rust:    rustc -C opt-level=3 --edition=2021 benchmarks/rust/suite.rs -o benchmarks/build/rust-suite
+C++:     clang++ -O3 -flto -std=c++20 -pthread benchmarks/cpp/{suite,algorithms,data_structures,compute,memory,io,adversarial}.cpp -o benchmarks/build/cpp-suite
+Rust:    rustc -C opt-level=3 -C lto=fat -C codegen-units=1 --edition=2021 benchmarks/rust/suite.rs -o benchmarks/build/rust-suite
 ```
+
+The C++ and Rust arms are built with whole-program optimisation (`-flto`, fat LTO
+with one codegen unit) because the Prismio arm always is: the compiler internalises
+every function but `main`, so the dispatcher's `scale = 4` reaches each workload as
+a constant. Without it the other two arms receive `scale` across a translation-unit
+boundary and divide by a run-time value with hardware `sdiv`, which on Apple
+silicon beat the constant multiply-shift sequence by about 8% in `graph_bfs` and
+made that workload read as a Prismio loss that C++ at the same constant does not
+show (576 us against 575-578 us).
 
 Each language mirrors the same production layout: category modules own the
 workloads, a small common module owns shared types/helpers, and `suite` owns only

@@ -83,11 +83,26 @@ Run on **each** platform, against that platform's own gate-green build:
 python tools/release.py --compiler build/v0.1-rc --version 0.1.0 --out dist/release
 ```
 
+That ships the gate-green RC binary exactly as it is. `prismio release` is the
+other form: it has the project host run `build --release` and ships the result,
+so the archive always holds the checkout as it is now rather than whatever the
+last `prismio build` left behind.
+
 It refuses to build from a compiler that is not a fixpoint, packages, runs the
 separation checks, archives as `prismio-<version>-<triple>.tar.gz`, and writes a
 SHA-256 beside it. The three `.sha256` files concatenate into one manifest, which
 is what lets three machines produce one checksum file without any of them
 trusting the others.
+
+**It also reads the oldest system the artifact runs on off the binaries** — the
+compiler's and a program's it builds — because nothing else would notice. The
+0.1.0 macOS archive said `minos 27.0`, the build machine's version, and would not
+start on macOS 26. A macOS artifact must say 14.0 for the compiler (the LLVM it
+links) and 11.0 for programs; a Windows one must not import the Visual C++
+runtime. **Linux has no such check**: glibc binds every symbol to the build
+machine's version, and only the build machine can set that floor. Build the Linux
+artifact on the oldest distribution you mean to support, and copy the glibc
+version it prints into the release notes.
 
 **`POST_INSTALL.txt` is not dead weight.** Nothing in this repository reads it —
 the Windows `.exe` installer, which lives outside this tree, displays it after a

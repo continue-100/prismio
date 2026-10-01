@@ -120,7 +120,7 @@ COMPONENTS = [
 
 # Bumped whenever what `prepare` produces changes, so an older preparation is
 # redone rather than trusted.
-PREPARED_FORMAT = 1
+PREPARED_FORMAT = 2
 PREPARED_MARKER = ".prismio-prepared.json"
 
 # Everything else in bin/ is several gigabytes the build never runs.
@@ -302,6 +302,24 @@ def write_clang_config(root: Path) -> None:
         (root / "bin" / f"{driver}.cfg").write_text(line)
 
 
+def llvm_macos_floor(root: Path) -> str:
+    """The oldest macOS this LLVM release supports: its own clang's `minos`.
+
+    The archives were compiled against that version's SDK availability, so a
+    compiler linking them can claim no older one. Lowering used to leave the
+    version to clang, which took this machine's SDK, and a compiler packaged on
+    macOS 27 then refused to start on 26 (2026-10-02). Lowering, zstd, and the
+    two response files the compiler's own build reads all state it instead.
+    """
+    objdump = str(root / "bin" / exe("llvm-objdump"))
+    r = run([objdump, "--macho", "--private-headers", str(root / "bin" / exe("clang"))])
+    for line in r.stdout.splitlines():
+        words = line.split()
+        if len(words) == 2 and words[0] == "minos":
+            return words[1]
+    raise SystemExit("could not read the macOS version LLVM's clang was built for")
+
+
 def is_bitcode(path: Path) -> bool:
     with open(path, "rb") as f:
         magic = f.read(4)
@@ -309,7 +327,8 @@ def is_bitcode(path: Path) -> bool:
     return magic in (b"BC\xc0\xde", b"\xde\xc0\x17\x0b")
 
 
-def lower_archives(root: Path, out: Path, archives: list[Path]) -> list[Path]:
+def lower_archives(root: Path, out: Path, archives: list[Path],
+                   target_flags: list[str]) -> list[Path]:
     """Rebuild each archive with native members, lowering any bitcode ones.
 
     -O2 over ThinLTO pre-link bitcode, which is already optimised per module:
@@ -348,7 +367,7 @@ def lower_archives(root: Path, out: Path, archives: list[Path]) -> list[Path]:
 
     def lower(job):
         src, dst = job
-        r = run([clang, "-O2", "-c", "-x", "ir", str(src), "-o", str(dst)])
+        r = run([clang, *target_flags, "-O2", "-c", "-x", "ir", str(src), "-o", str(dst)])
         return None if r.returncode == 0 else f"{src.name}: {r.stderr[:400]}"
 
     with ThreadPoolExecutor(os.cpu_count() or 4) as pool:
@@ -369,7 +388,7 @@ def lower_archives(root: Path, out: Path, archives: list[Path]) -> list[Path]:
     return produced
 
 
-def build_zstd(root: Path, out: Path) -> Path:
+def build_zstd(root: Path, out: Path, target_flags: list[str]) -> Path:
     archive = DOWNLOADS / f"zstd-{ZSTD_VERSION}.tar.gz"
     download(ZSTD_URL.format(v=ZSTD_VERSION), archive, ZSTD_SHA256)
     src = extract(archive, out / "zstd-src")
@@ -382,7 +401,7 @@ def build_zstd(root: Path, out: Path) -> Path:
     def compile_one(c: Path):
         o = out / f"zstd-{c.stem}.o"
         # No assembly and no threads: LLVM calls the one-shot API only.
-        r = run([clang, "-O2", "-fPIC", "-DZSTD_DISABLE_ASM", "-DZSTD_MULTITHREAD=0",
+        r = run([clang, *target_flags, "-O2", "-fPIC", "-DZSTD_DISABLE_ASM", "-DZSTD_MULTITHREAD=0",
                  "-c", str(c), "-o", str(o)])
         return o, (None if r.returncode == 0 else f"{c.name}: {r.stderr[:400]}")
 
@@ -437,17 +456,25 @@ def prepare(root: Path, keep_all: bool) -> dict:
         shutil.rmtree(out)
     out.mkdir(parents=True)
 
+    macos_min = ""
+    target_flags = []
     if sys.platform == "darwin":
         write_clang_config(root)
+        macos_min = llvm_macos_floor(root)
+        target_flags = [f"-mmacosx-version-min={macos_min}"]
 
     if sys.platform == "win32":
         link_args = [str(root / "lib" / "LLVM-C.lib")]
     else:
         archives = [Path(p) for p in
                     llvm_config(root, "--libfiles", "--link-static", *COMPONENTS).split()]
-        prepared = lower_archives(root, out, archives)
-        zstd = build_zstd(root, out)
-        link_args = [str(p) for p in prepared] + [str(zstd)] + system_libs(root, prepared)
+        prepared = lower_archives(root, out, archives, target_flags)
+        zstd = build_zstd(root, out, target_flags)
+        # The link states the version too: the compiler's own object is built
+        # for the program floor (11.0), older than LLVM's, and the executable
+        # must claim the newer of the two.
+        link_args = (target_flags + [str(p) for p in prepared] + [str(zstd)]
+                     + system_libs(root, prepared))
 
     rsp = out / "link.rsp"
     # One argument per line, quoted: clang and gcc both read `@file` this way,
@@ -469,6 +496,7 @@ def prepare(root: Path, keep_all: bool) -> dict:
         "bin": str(root / "bin"),
         "link_library": "LLVM-C.lib" if sys.platform == "win32" else "static",
         "link_rsp": str(rsp),
+        "macos_min": macos_min,
         "version": LLVM_VERSION,
         "required_major": REQUIRED_MAJOR,
     }
@@ -550,7 +578,8 @@ def verify(info: dict) -> bool:
         src = Path(tmp) / "probe.c"
         src.write_text(PROBE)
         out = Path(tmp) / exe("probe")
-        r = run([clang, "-O1", str(src), "-o", str(out), f"-I{info['include']}",
+        min_os = [f"-mmacosx-version-min={info['macos_min']}"] if info.get("macos_min") else []
+        r = run([clang, *min_os, "-O1", str(src), "-o", str(out), f"-I{info['include']}",
                  f"@{info['link_rsp']}"])
         if r.returncode != 0:
             log("! The probe failed to link:")
@@ -581,7 +610,10 @@ LINK_RSP = THIRD_PARTY / "llvm-link.rsp"
 
 def write_response_files(info: dict) -> None:
     include = Path(info["include"]).as_posix()
-    COMPILE_RSP.write_text(f'"-I{include}"\n')
+    # The compiler's runtime/*.c are built for the macOS its LLVM needs; the
+    # build driver puts the program floor first, and the later flag wins.
+    min_os = f"-mmacosx-version-min={info['macos_min']}\n" if info.get("macos_min") else ""
+    COMPILE_RSP.write_text(f'"-I{include}"\n{min_os}')
     if info.get("link_rsp"):
         LINK_RSP.write_text(Path(info["link_rsp"]).read_text())
         return

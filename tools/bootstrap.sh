@@ -120,8 +120,8 @@ cache_entry() {
         [ -n "$HEADER_KEY" ] || return 0
     fi
 
-    entry_key="$( { printf 'bootstrap|%s|-O2 -DPRISMIO_LLVM_REAL_HEADERS -DPRISMIO_BOOTSTRAP_COMPAT -I%s|%s|' \
-                           "$entry_src" "$entry_inc" "$HEADER_KEY"
+    entry_key="$( { printf 'bootstrap|%s|-O2 -DPRISMIO_LLVM_REAL_HEADERS -DPRISMIO_BOOTSTRAP_COMPAT -I%s|%s|%s|' \
+                           "$entry_src" "$entry_inc" "$HEADER_KEY" "${MACOSX_DEPLOYMENT_TARGET:-}"
                     cat "$REPO/runtime/$entry_src"
                   } | hash_stdin )"
     [ -n "$entry_key" ] || return 0
@@ -155,6 +155,12 @@ resolve_llvm() {
         CLANG="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["bin"])' "$REPO/third_party/llvm-paths.json")/clang"
         LLVM_RSP="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("link_rsp",""))' "$REPO/third_party/llvm-paths.json")"
         LLVM_INC="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["include"])' "$REPO/third_party/llvm-paths.json")"
+        # The macOS the pinned LLVM was built for, which every object linked
+        # with it is compiled for too -- clang reads the variable for compiles
+        # and the link alike. Left to clang, the version is this machine's SDK,
+        # and the compiler would not start on an older macOS.
+        MACOS_MIN="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("macos_min",""))' "$REPO/third_party/llvm-paths.json")"
+        if [ -n "$MACOS_MIN" ]; then export MACOSX_DEPLOYMENT_TARGET="$MACOS_MIN"; fi
         LLVM_LIB="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["lib"])' "$REPO/third_party/llvm-paths.json")"
         # libLLVM-C.dylib -> LLVM-C, libLLVM.so -> LLVM, LLVM-C.lib -> LLVM-C:
         # drop a leading `lib`, then everything from the first dot.

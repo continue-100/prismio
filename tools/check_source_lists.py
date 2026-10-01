@@ -12,6 +12,10 @@ someone's source of truth:
   are `prismio_toolchain_files[]` in build_driver.c (what `runtime-hash`
   hashes) and `RUNTIME_BITCODE` in tools/package.py (what is packaged).
 
+One value rides along because it is written down twice the same way: the macOS
+a program is built for, `PRISMIO_MACOS_FLOOR` in llvm-api-backend.c and
+`MACOS_FLOOR` in tools/package.py, which builds the runtime bitcode for it.
+
 Adding a file to runtime/ should fail loudly here until every list knows about
 it, which is cheaper than discovering it on someone else's machine.
 
@@ -101,6 +105,16 @@ def package_runtime_bitcode():
     return re.findall(r'"([^"]+)"', m.group(1))
 
 
+def macos_floors():
+    """The macOS a program targets, as the backend and package.py each say it."""
+    c = re.search(r'^#define PRISMIO_MACOS_FLOOR "([^"]+)"',
+                  read(RUNTIME / "llvm-api-backend.c"), re.M)
+    py = re.search(r'^MACOS_FLOOR = "([^"]+)"', read(TOOLS / "package.py"), re.M)
+    if not c or not py:
+        raise Failure("could not find PRISMIO_MACOS_FLOOR / MACOS_FLOOR")
+    return c.group(1), py.group(1)
+
+
 def main() -> int:
     problems = []
 
@@ -125,6 +139,8 @@ def main() -> int:
         compare("tools/bootstrap.sh RUNTIME_SOURCES", bootstrap_sh_list(), compiler)
 
         compare("tools/package.py RUNTIME_BITCODE", package_runtime_bitcode(), runtime)
+        c_floor, py_floor = macos_floors()
+        compare("tools/package.py MACOS_FLOOR vs PRISMIO_MACOS_FLOOR", [py_floor], [c_floor])
         missing = [name for name in runtime if name not in compiler]
         if missing:
             problems.append("runtime sources the compiler does not compile: " + " ".join(missing))

@@ -1623,7 +1623,12 @@ private fn irBodyPushesListChain(head: Ptr, name: String) -> Bool {
 // A single receiver covers the important mixed-container shape (a growing work
 // queue plus a fixed visited/score array) without allocating analysis tables in
 // the self-hosted compiler.
-private fn irCaptureStableListBound(nodePtr: Ptr, bodyPtr: Ptr) -> Bool {
+//
+// `condPtr` is the loop's condition, which runs every iteration beside the body,
+// so a push there ends the receiver's stability as much as one in the body does.
+// It is also a place to *find* a receiver: a scan such as
+// `while (xs[i] < pivot) { i = i + 1 }` reads only in its condition.
+private fn irCaptureStableListBound(nodePtr: Ptr, bodyPtr: Ptr, condPtr: Ptr) -> Bool {
     if (nodeIsNull(nodePtr)) { return false }
     let n = ptr_to_node(nodePtr)
     if (n.kind == NodeKind.CALL_EXPR and nodeExists(n.child1)
@@ -1634,7 +1639,8 @@ private fn irCaptureStableListBound(nodePtr: Ptr, bodyPtr: Ptr) -> Bool {
         let recv = ptr_to_node(n.child2)
         if (stride > 0 and recv.kind == NodeKind.IDENTIFIER_EXPR
                 and irBodyBindsName(bodyPtr, recv.s1) == false
-                and irBodyPushesList(bodyPtr, recv.s1) == false) {
+                and irBodyPushesList(bodyPtr, recv.s1) == false
+                and irBodyPushesList(condPtr, recv.s1) == false) {
             irLoopHoistedBoundList = recv.s1.clone()
             let listValue = generateExpression(recv)
             irLoopHoistedBoundValue = ir_get_temp_name(ir_list_len(listValue))
@@ -1642,16 +1648,16 @@ private fn irCaptureStableListBound(nodePtr: Ptr, bodyPtr: Ptr) -> Bool {
             return true
         }
     }
-    if (irCaptureStableListBoundChain(n.child1, bodyPtr)) { return true }
-    if (irCaptureStableListBoundChain(n.child2, bodyPtr)) { return true }
-    return irCaptureStableListBoundChain(n.child3, bodyPtr)
+    if (irCaptureStableListBoundChain(n.child1, bodyPtr, condPtr)) { return true }
+    if (irCaptureStableListBoundChain(n.child2, bodyPtr, condPtr)) { return true }
+    return irCaptureStableListBoundChain(n.child3, bodyPtr, condPtr)
 }
 
-private fn irCaptureStableListBoundChain(head: Ptr, bodyPtr: Ptr) -> Bool {
+private fn irCaptureStableListBoundChain(head: Ptr, bodyPtr: Ptr, condPtr: Ptr) -> Bool {
     let mut p = head
     while (nodeExists(p)) {
         let n = ptr_to_node(p)
-        if (irCaptureStableListBound(node_to_ptr(n), bodyPtr)) { return true }
+        if (irCaptureStableListBound(node_to_ptr(n), bodyPtr, condPtr)) { return true }
         p = n.next
     }
     return false
@@ -1695,7 +1701,9 @@ internal fn generateLoopFlatGuard(condPtr: Ptr, body: ASTNode) -> String {
     ir_alloca("i1", slot)
     ir_store("i1", "true", slot)
     irEmitFlatGuards(condPtr, bodyPtr, slot)
-    irCaptureStableListBound(bodyPtr, bodyPtr)
+    if (irCaptureStableListBound(bodyPtr, bodyPtr, condPtr) == false) {
+        irCaptureStableListBound(condPtr, bodyPtr, condPtr)
+    }
     if (nodeExists(condPtr)) { generateLoopHeaderBound(ptr_to_node(condPtr), bodyPtr, slot) }
     return slot
 }

@@ -62,6 +62,13 @@ RESET = "" if WINDOWS else "\033[0m"
 # tools/check_source_lists.py parses this table and compares it against that one.
 RUNTIME_BITCODE = ["lang_runtime.c", "program_support.c"]
 
+# Must match PRISMIO_MACOS_FLOOR in runtime/llvm-api-backend.c, which is the
+# macOS a program is built for. The runtime bitcode and every .plib carry it as
+# well: clang would otherwise compile them for its SDK's version, the merged
+# program would need the build machine's macOS, and the merge would warn about
+# two target triples. tools/check_source_lists.py compares the two.
+MACOS_FLOOR = "11.0"
+
 def die(message: str) -> "NoReturn":
     print(f"{RED}FAILED: {message}{RESET}", file=sys.stderr)
     raise SystemExit(1)
@@ -231,6 +238,13 @@ def main() -> int:
     parser.add_argument("--sysroot", action="append", default=[], metavar="TRIPLE=PATH",
                         help="where this machine keeps the C headers for a --target")
     args = parser.parse_args()
+
+    # Set, not defaulted: the package is used by programs built without the
+    # variable, so a value in the packager's shell must not reach the bitcode.
+    # Every clang below reads it, and so does the compiler that builds the .plib
+    # code -- for the host and for a `--target` naming macOS without a version.
+    if sys.platform == "darwin":
+        os.environ["MACOSX_DEPLOYMENT_TARGET"] = MACOS_FLOOR
 
     sysroots = {}
     for entry in args.sysroot:

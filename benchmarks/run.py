@@ -8,7 +8,9 @@ from html import escape
 import json
 import math
 import os
+import platform
 from pathlib import Path
+import re
 import shutil
 import statistics
 import subprocess
@@ -48,6 +50,74 @@ CACHED_INPUTS = {
 # the suite's run-to-run floor, measured alternating identical binaries, is
 # about 4% (aif/evidence, and code layout alone moves numeric kernels that far).
 PARITY = 0.04
+
+# What a verdict may not call a difference: the harness's own jitter. A workload
+# that finishes in 600 us is dominated by things no code change moves -- process
+# start, which core the scheduler picks, the clock ramping up -- and they show up
+# as two timing modes (a fast one and one ~25% slower) rather than as a smooth
+# spread. A flat percentage cannot be right for 0.2 ms and 200 ms at once, and a
+# median-and-MAD noise estimate reads such a bimodal run as 0% noise, so
+# `edit_distance` (560 us or 700 us in *every* language) was called a 1.18x loss.
+# The rule below uses two things instead: the arms' own spread, and the best run.
+NOISE_FLOOR_NS = 25_000
+
+
+def spread(samples):
+    """Interquartile range over the median: how much of the median is jitter. Two
+    timing modes make this large (an IQR sees both), where MAD sees one."""
+    values = sorted(samples)
+    if len(values) < 2:
+        return 0.0
+    median = statistics.median(values)
+    if median <= 0:
+        return 0.0
+    if len(values) < 4:
+        return (values[-1] - values[0]) / median
+    q1, _, q3 = statistics.quantiles(values, n=4, method="inclusive")
+    return (q3 - q1) / median
+
+
+def verdict(prismio, other):
+    """`win`, `parity` or `loss` for Prismio's samples against another arm's, with
+    the numbers it was decided on.
+
+    A loss (or a win) needs **both** the ratio of medians and the ratio of best runs
+    to leave the tolerance. Noise only ever adds time, so the best run is the
+    stablest estimate of what the code costs; the median says what a run usually
+    costs. Both disagreeing -- equal best runs, different medians -- is the signature
+    of timing modes, and is parity.
+
+    The tolerance on medians is the larger of the flat `PARITY`, either arm's own
+    spread, and `NOISE_FLOOR_NS` as a fraction of the run. On best runs, which carry
+    no spread, only `PARITY` and the floor."""
+    med_p, med_o = statistics.median(prismio), statistics.median(other)
+    min_p, min_o = min(prismio), min(other)
+    ratio = med_p / max(med_o, 1)
+    best_ratio = min_p / max(min_o, 1)
+    noise = max(spread(prismio), spread(other))
+    tol_median = max(PARITY, noise, NOISE_FLOOR_NS / max(med_o, 1))
+    tol_best = max(PARITY, NOISE_FLOOR_NS / max(min_o, 1))
+    outcome = "parity"
+    if ratio >= 1 + tol_median and best_ratio >= 1 + tol_best:
+        outcome = "loss"
+    elif ratio <= 1 - tol_median and best_ratio <= 1 - tol_best:
+        outcome = "win"
+    return {"outcome": outcome, "ratio": round(ratio, 4), "best_ratio": round(best_ratio, 4),
+            "tolerance": round(tol_median, 4), "noise": round(noise, 4)}
+
+
+def verdicts(item):
+    """Both comparisons for one measured workload, from its recorded samples."""
+    prismio = item["languages"]["prismio"]["elapsed_ns_samples"]
+    return {other: verdict(prismio, item["languages"][other]["elapsed_ns_samples"])
+            for other in ("cpp", "rust")}
+
+# Bumped when a field is added or its meaning changes. 2 added `parity`,
+# `environment`, repo-relative paths in `build_commands` and `artifacts`. 3 added
+# `verdict` per workload and `noise_model`, so every reader judges a result by the
+# rule above rather than by its own percentage.
+SCHEMA_VERSION = 3
+HARNESS = "benchmarks/run.py"
 
 
 def color_enabled(stream):
@@ -142,13 +212,18 @@ def normalize_rss_bytes(ru_maxrss):
     return int(ru_maxrss * 1024)
 
 
-def ratio_cell(ratio, width=8):
+def ratio_cell(ratio, width=8, outcome=None):
     """Prismio's time over the other arm's: below 1 is Prismio ahead. Padded
-    before it is coloured, so escape codes never disturb the columns."""
+    before it is coloured, so escape codes never disturb the columns.
+
+    `outcome` is the noise-aware verdict for this comparison. Without one (memory
+    columns, summary geomeans) the flat `PARITY` rule applies."""
     text = "{:.2f}×".format(ratio).rjust(width)
-    if ratio <= 1 - PARITY:
+    if outcome is None:
+        outcome = "win" if ratio <= 1 - PARITY else "loss" if ratio >= 1 + PARITY else "parity"
+    if outcome == "win":
         return STYLE.green + text + STYLE.reset
-    if ratio < 1 + PARITY:
+    if outcome == "parity":
         return text
     if ratio < 1.25:
         return STYLE.yellow + text + STYLE.reset
@@ -224,6 +299,25 @@ def command_text(command):
     return " ".join(str(part) for part in command)
 
 
+def portable_part(part):
+    """A path as a reader of the repository would type it. A path inside the
+    repository becomes relative to it; one outside (a Homebrew `clang++`) is
+    reduced to its file name. The recorded command then neither depends on nor
+    reveals where the checkout lives, so the JSON is safe to publish as it is."""
+    text = str(part)
+    path = Path(text)
+    if not path.is_absolute():
+        return text
+    try:
+        return str(path.relative_to(REPO))
+    except ValueError:
+        return path.name
+
+
+def portable_command(command):
+    return " ".join(portable_part(part) for part in command)
+
+
 def run_command(command, *, env=None):
     return subprocess.run(command, cwd=REPO, env=env, capture_output=True, text=True)
 
@@ -282,9 +376,9 @@ def build_all(args, progress):
     cxx = str(llvm_bin / "clang++") if llvm_bin and (llvm_bin / "clang++").exists() else "clang++"
     commands = {
         "prismio": [str(Path(args.compiler).resolve()), "build", str(HERE / "prismio/suite.psm"), "-o", str(BUILD / "prismio-suite")],
-        "cpp": [cxx, "-O3", "-std=c++20", "-pthread", *(str(path) for path in CPP_SOURCES),
+        "cpp": [cxx, "-O3", "-flto", "-std=c++20", "-pthread", *(str(path) for path in CPP_SOURCES),
                 "-o", str(BUILD / "cpp-suite")],
-        "rust": ["rustc", "-C", "opt-level=3", "--edition=2021", str(HERE / "rust/suite.rs"), "-o", str(BUILD / "rust-suite")],
+        "rust": ["rustc", "-C", "opt-level=3", "-C", "lto=fat", "-C", "codegen-units=1", "--edition=2021", str(HERE / "rust/suite.rs"), "-o", str(BUILD / "rust-suite")],
     }
     elapsed = {}
     cached = []
@@ -380,7 +474,9 @@ def table_row(progress, measured, name_width):
     for language in LANGUAGES:
         text = format_ns(times[language]).rjust(10)
         cells.append(STYLE.bold + text + STYLE.reset if times[language] == fastest else text)
-    ratios = [ratio_cell(times["prismio"] / max(times[other], 1)) for other in ("cpp", "rust")]
+    judged = verdicts(measured)
+    ratios = [ratio_cell(times["prismio"] / max(times[other], 1), outcome=judged[other]["outcome"])
+              for other in ("cpp", "rust")]
     p_rss_str = format_bytes(rss["prismio"]).rjust(9)
     rss_ratio = ratio_cell(rss["prismio"] / max(rss["cpp"], 1), width=8) if rss["cpp"] > 0 else "—".rjust(8)
     progress.line("    {:<{w}}  {}  {}  {}  {}".format(
@@ -405,19 +501,18 @@ def print_summary(progress, report, elapsed_seconds):
     for other in ("cpp", "rust"):
         ratios = [item["languages"]["prismio"]["elapsed_ns_median"]
                   / max(item["languages"][other]["elapsed_ns_median"], 1) for item in measured]
-        faster = sum(ratio <= 1 - PARITY for ratio in ratios)
-        slower = sum(ratio >= 1 + PARITY for ratio in ratios)
-        parity = len(ratios) - faster - slower
+        outcomes = [verdicts(item)[other]["outcome"] for item in measured]
+        faster, slower = outcomes.count("win"), outcomes.count("loss")
+        parity = len(outcomes) - faster - slower
         progress.line("  vs {:<5} geomean {}   {}{} faster{} · {} parity · {}{} slower{}".format(
             LANGUAGE_LABELS[other], ratio_cell(geomean(ratios), 0),
             STYLE.green, faster, STYLE.reset, parity, STYLE.red if slower else "", slower, STYLE.reset))
     behind = sorted(((item["languages"]["prismio"]["elapsed_ns_median"]
                       / max(item["languages"]["cpp"]["elapsed_ns_median"], 1), item["name"])
-                     for item in measured), reverse=True)
-    behind = [(ratio, name) for ratio, name in behind if ratio >= 1 + PARITY][:5]
+                     for item in measured if verdicts(item)["cpp"]["outcome"] == "loss"), reverse=True)[:5]
     if behind:
         progress.line("  {}slowest vs C++{}  {}".format(
-            STYLE.dim, STYLE.reset, ", ".join("{} {}".format(name, ratio_cell(ratio, 0)) for ratio, name in behind)))
+            STYLE.dim, STYLE.reset, ", ".join("{} {}".format(name, ratio_cell(ratio, 0, "loss")) for ratio, name in behind)))
     for item in elimination_benchmarks(report):
         progress.line("  {}elimination{}     {}: {}".format(
             STYLE.dim, STYLE.reset, item["name"], " · ".join(
@@ -453,6 +548,108 @@ def print_summary(progress, report, elapsed_seconds):
                 progress.line("  vs {:<5} geomean {}".format(
                     LANGUAGE_LABELS[other], ratio_cell(geomean(rss_ratios), 0)
                 ))
+
+
+def first_line(command, *, env=None):
+    """The first line a command prints, or "" when it is missing or fails."""
+    try:
+        probe = subprocess.run([str(part) for part in command], cwd=REPO, env=env,
+                               capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    lines = ((probe.stdout or "") + (probe.stderr or "")).strip().splitlines()
+    return lines[0].strip() if lines else ""
+
+
+def version_number(text):
+    match = re.search(r"\b(\d+\.\d+(?:\.\d+)?)\b", text)
+    return match.group(1) if match else None
+
+
+def collect_environment(args):
+    """The machine and toolchains this run measured, so the numbers can be read
+    against them. Everything is probed, nothing typed in, and a probe that finds
+    nothing leaves its key out rather than guessing."""
+    system = platform.system()
+    llvm_bin = llvm_bin_from(args)
+    env = os.environ.copy()
+    if llvm_bin:
+        env["PATH"] = str(llvm_bin) + os.pathsep + env.get("PATH", "")
+    cxx = str(llvm_bin / "clang++") if llvm_bin and (llvm_bin / "clang++").exists() else "clang++"
+
+    info = {}
+    if system == "Darwin":
+        info["processor"] = first_line(["sysctl", "-n", "machdep.cpu.brand_string"])
+        cores = first_line(["sysctl", "-n", "hw.physicalcpu"])
+        memory = first_line(["sysctl", "-n", "hw.memsize"])
+        version = first_line(["sw_vers", "-productVersion"])
+        build = first_line(["sw_vers", "-buildVersion"])
+        info["os"] = "macOS {} ({})".format(version, build) if version else "macOS"
+        battery = first_line(["pmset", "-g", "batt"])
+        if "AC Power" in battery:
+            info["power"] = "AC Power"
+        elif "Battery Power" in battery:
+            info["power"] = "Battery Power"
+    else:
+        info["processor"] = platform.processor() or platform.machine()
+        cores = str(os.cpu_count() or "")
+        memory = ""
+        if system == "Linux":
+            try:
+                for line in Path("/proc/cpuinfo").read_text().splitlines():
+                    if line.startswith("model name"):
+                        info["processor"] = line.split(":", 1)[1].strip()
+                        break
+                for line in Path("/proc/meminfo").read_text().splitlines():
+                    if line.startswith("MemTotal"):
+                        memory = str(int(line.split()[1]) * 1024)
+                        break
+            except (OSError, ValueError):
+                pass
+        info["os"] = platform.platform()
+    if cores.isdigit():
+        info["cores"] = int(cores)
+    if memory.isdigit():
+        info["memory_bytes"] = int(memory)
+    info["target"] = first_line([cxx, "-print-target-triple"], env=env) or "{}-{}".format(
+        platform.machine(), system.lower())
+
+    toolchains = {}
+    if args.compiler:
+        compiler = [str(Path(args.compiler).resolve()), "--version"]
+        hosted = dict(os.environ, PRISMIO_INTERNAL_HOSTED="1")
+        try:
+            probe = subprocess.run(compiler, cwd=REPO, env=hosted, capture_output=True, text=True, timeout=30)
+            lines = (probe.stdout or "").strip().splitlines()
+        except (OSError, subprocess.SubprocessError):
+            lines = []
+        prismio = {}
+        for line in lines:
+            head, _, rest = line.partition(" ")
+            if head == "prismio" and rest:
+                prismio["version"] = rest.strip()
+            elif head == "llvm" and rest:
+                toolchains["llvm"] = rest.strip()
+            elif head == "compiler" and rest:
+                # The directory the compiler was built into: `debug` or `release`.
+                prismio["profile"] = Path(rest.strip()).name
+        if prismio:
+            toolchains["prismio"] = prismio
+    clang = version_number(first_line([cxx, "--version"], env=env))
+    if clang:
+        toolchains["clang"] = clang
+        toolchains.setdefault("llvm", clang)
+    rustc = version_number(first_line(["rustc", "--version"], env=env))
+    if rustc:
+        toolchains["rustc"] = rustc
+    info["toolchains"] = toolchains
+
+    commit = first_line(["git", "rev-parse", "--short", "HEAD"])
+    if commit:
+        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True)
+        info["source"] = {"commit": commit, "dirty": bool(dirty.stdout.strip())}
+    info["harness"] = {"name": HARNESS, "schema_version": SCHEMA_VERSION}
+    return {key: value for key, value in info.items() if value not in ("", None)}
 
 
 def select_benchmarks(manifest, names):
@@ -561,10 +758,25 @@ def main():
     binary_bytes = {language: executables[language].stat().st_size for language in LANGUAGES}
 
     report = {
-        "schema_version": 1,
+        "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "runs": args.runs,
-        "build_commands": {key: command_text(value) for key, value in (build_commands or {}).items()},
+        # Repo-relative, so the file carries no path from the machine that wrote it.
+        "build_commands": {key: portable_command(value) for key, value in (build_commands or {}).items()},
+        # Within this fraction of the other arm a result is parity, not a win or a
+        # loss -- the rule the terminal summary uses, recorded so a reader of the
+        # JSON applies the same one.
+        "parity": PARITY,
+        # How `verdict` on each workload was decided, so a reader can say why a
+        # difference was or was not called one.
+        "noise_model": {
+            "parity": PARITY,
+            "floor_ns": NOISE_FLOOR_NS,
+            "spread": "interquartile range over the median, larger of the two arms",
+            "rule": "win/loss needs the ratio of medians and the ratio of best runs both "
+                    "outside max(parity, spread, floor/median); otherwise parity",
+        },
+        "environment": collect_environment(args),
         "compile_ns": compile_ns,
         "binary_bytes": binary_bytes,
         # Which arms were served from the previous build. Their `compile_ns` is
@@ -619,6 +831,8 @@ def main():
                     "peak_rss_bytes_median": int(statistics.median(sample.get("peak_rss_bytes", 0) for sample in samples[language])),
                     "peak_rss_bytes_samples": [sample.get("peak_rss_bytes", 0) for sample in samples[language]],
                 }
+            if not is_elimination(measured):
+                measured["verdict"] = verdicts(measured)
             report["benchmarks"].append(measured)
             if is_elimination(measured):
                 elimination_row(progress, measured, name_width)
@@ -628,8 +842,8 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     html_path = args.output.parent / "report.html"
     report["artifacts"] = {
-        "html_report": str(html_path),
-        "raw_data": str(args.output),
+        "html_report": portable_part(html_path),
+        "raw_data": portable_part(args.output),
     }
     progress.show("Writing JSON results")
     args.output.write_text(json.dumps(report, indent=2) + "\n")

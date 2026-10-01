@@ -4,7 +4,7 @@ A manifest spells `.prismio/build/debug/prismio` once for every platform, and
 the compiler itself appends `.exe` on Windows when it builds or starts a target
 (umsExecutablePath). The tools a manifest command runs receive that spelling,
 checked it with `is_file()`, and stopped with "no compiler at" on Windows --
-`prismio dist`, `ship` and `verify` all did, and nothing noticed because CI
+`prismio release` and `verify` both did, and nothing noticed because CI
 called the tools directly with `$EXT` appended.
 """
 import os

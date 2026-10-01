@@ -65,7 +65,7 @@ def main() -> int:
         if source is None:
             names = ", ".join(str(c.relative_to(REPO)) for c in DEFAULT_CANDIDATES)
             print(f"run_suite: no compiler found. Looked for: {names}")
-            print("Build one with `prismio build`, then `prismio dist`.")
+            print("Build one with `prismio build`.")
             return 1
 
     with tempfile.TemporaryDirectory(prefix="prismio-suite-") as tmp:
@@ -94,7 +94,7 @@ def main() -> int:
         if missing:
             print(f"run_suite: {shown_root(source)} is not in a toolchain layout; "
                   f"no {', '.join(missing)} beside it.")
-            print("Build one with `prismio build`, or package one with `prismio dist`.")
+            print("Build one with `prismio build`, or package one with tools/package.py.")
             return 1
         for directory in ("lib", "stdlib", "third_party"):
             if (toolchain / directory).is_dir():

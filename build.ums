@@ -56,22 +56,30 @@ targets {
 }
 
 commands {
-    command("dist") {
-        description = "Package an installable toolchain and check the runtime/backend split"
-        run("tools/package.py", "--compiler", ".prismio/build/debug/prismio",
-        "--out", "dist/Prismio")
-        run("tools/verify_separation.py", "--dist", "dist/Prismio")
-    }
-
     // A compiler release for this machine only: `dist/release/prismio-<version>-<triple>`
     // as `.tar.gz` (`.zip` on Windows) plus its `.sha256`. Other platforms each run
-    // it on their own host -- RELEASE.md §3. release.py refuses a compiler that is
-    // not a fixpoint, so run `prismio build` first when the compiler has changed:
-    // a command step cannot rebuild the toolchain.host it is running on.
-    command("ship") {
-        description = "Package a compiler release for this host: fixpoint check, archive, SHA-256"
-        run("tools/release.py", "--compiler", ".prismio/build/debug/prismio",
+    // it on their own host -- RELEASE.md §3.
+    //
+    // It ships this checkout, never a leftover binary: release.py has the host run
+    // `build --release` and ships `.prismio/build/release/prismio`, then checks it
+    // is a fixpoint, packages it with runtime bitcode and std rebuilt from source,
+    // and checks the oldest OS it runs on. Not a `build("prismio")` step: a step
+    // builds in the profile the user typed, and in `debug` that is the host this
+    // command is running on.
+    command("release") {
+        description = "Cut a compiler release for this host: build, fixpoint, OS-floor check, archive, SHA-256"
+        run("tools/release.py", "--build-with", ".prismio/build/debug/prismio",
         "--out", "dist/release", args)
+    }
+
+    // The project host, which `prismio build` leaves as a complete toolchain:
+    // `.prismio/build/lib/runtime/*.bc` and `.prismio/build/stdlib/*.plib` are
+    // built beside it and are byte-identical to what `dist` would package. So
+    // this measures the working tree, including uncommitted `std/` and
+    // `runtime/` changes, with no packaging step in front of it.
+    command("bench") {
+        description = "Run the cross-language performance benchmark suite"
+        run("benchmarks/run.py", "--compiler", ".prismio/build/debug/prismio", args)
     }
 
     // Through tools/run_suite.py, which tests a *copy* of the compiler.
@@ -84,16 +92,6 @@ commands {
     command("suite") {
         description = "Run the compiler test suite against the packaged compiler"
         run("tools/run_suite.py", args)
-    }
-
-    // The project host, which `prismio build` leaves as a complete toolchain:
-    // `.prismio/build/lib/runtime/*.bc` and `.prismio/build/stdlib/*.plib` are
-    // built beside it and are byte-identical to what `dist` would package. So
-    // this measures the working tree, including uncommitted `std/` and
-    // `runtime/` changes, with no packaging step in front of it.
-    command("bench") {
-        description = "Run the cross-language performance benchmark suite"
-        run("benchmarks/run.py", "--compiler", ".prismio/build/debug/prismio", args)
     }
 
     // Both package first: the extern check and the differential read
@@ -115,5 +113,14 @@ commands {
         run("tools/check_source_lists.py")
         run("tools/check_externs.py", "--dist", "dist/Prismio")
         run("tools/aif_differential.py", "--compiler", "dist/Prismio/bin/prismio")
+    }
+
+    // The pre-push check: lint, then a packaged candidate through the release
+    // gate, with the pinned LLVM on PATH and, on macOS, the cross target the
+    // gate builds for. Slower than `verify` and covers what it does not: the
+    // fixpoint, the seed, the --verify sweep, the JIT and the cross target.
+    command("gate") {
+        description = "Pre-push gate: lint, then the release gate on a packaged candidate"
+        run("tools/gate.py", "--compiler", ".prismio/build/debug/prismio", args)
     }
 }

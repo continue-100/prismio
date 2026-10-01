@@ -295,12 +295,18 @@
       return Math.exp(logSum / values.length);
     }
 
+    // Interquartile range over the median, as a percentage -- the same measure
+    // benchmarks/run.py judges a result by. (A median-and-MAD figure reads a run
+    // with two timing modes as 0% noise.)
     function robustJitter(samples, med) {
       if (!samples || samples.length <= 1 || !med) return null;
-      const devs = samples.map(s => Math.abs(s - med)).sort((a, b) => a - b);
-      const mid = Math.floor(devs.length / 2);
-      const mad = devs.length % 2 === 0 ? (devs[mid - 1] + devs[mid]) / 2 : devs[mid];
-      return (1.4826 * mad / med) * 100;
+      const v = samples.slice().sort((a, b) => a - b);
+      const at = q => {
+        const pos = (v.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+        return v[lo] + (v[hi] - v[lo]) * (pos - lo);
+      };
+      const iqr = v.length < 4 ? v[v.length - 1] - v[0] : at(0.75) - at(0.25);
+      return (iqr / med) * 100;
     }
 
     function duration(ns) {
@@ -349,13 +355,23 @@
     const cppSpeedupPct = (1 - cppGeomean) * 100;
     const rustSpeedupPct = (1 - rustGeomean) * 100;
 
-    const winsVsCpp = implemented.filter(item => ratio(item, "cpp") < 0.95).length;
-    const parityVsCpp = implemented.filter(item => ratio(item, "cpp") >= 0.95 && ratio(item, "cpp") <= 1.05).length;
-    const lossesVsCpp = implemented.filter(item => ratio(item, "cpp") > 1.05).length;
+    // Counted from the verdicts the harness recorded (benchmarks/run.py `verdict`),
+    // which weigh each workload's own noise, not from a flat percentage.
+    const verdictOf = (item, who) => (item.verdict && item.verdict[who]) ? item.verdict[who].outcome : null;
+    const legacyOutcome = (item, who) => {
+      const r = ratio(item, who);
+      return r < 0.95 ? "win" : r > 1.05 ? "loss" : "parity";
+    };
+    const outcomeOf = (item, who) => verdictOf(item, who) || legacyOutcome(item, who);
+    const countOutcome = (who, kind) => implemented.filter(item => outcomeOf(item, who) === kind).length;
 
-    const winsVsRust = implemented.filter(item => ratio(item, "rust") < 0.95).length;
-    const parityVsRust = implemented.filter(item => ratio(item, "rust") >= 0.95 && ratio(item, "rust") <= 1.05).length;
-    const lossesVsRust = implemented.filter(item => ratio(item, "rust") > 1.05).length;
+    const winsVsCpp = countOutcome("cpp", "win");
+    const parityVsCpp = countOutcome("cpp", "parity");
+    const lossesVsCpp = countOutcome("cpp", "loss");
+
+    const winsVsRust = countOutcome("rust", "win");
+    const parityVsRust = countOutcome("rust", "parity");
+    const lossesVsRust = countOutcome("rust", "loss");
 
     // Render Hero Aside Stats
     function renderHeroAside() {
@@ -627,33 +643,16 @@
       });
     }
 
-    // Outcome Classification
-    function getPillStatus(r, noisePct) {
-      const tol = Math.max(0.05, (noisePct || 0) / 100);
-      if (r < 1.0 - tol) return "faster";
-      if (r > 1.0 + tol) return "slower";
-      return "parity";
-    }
+    // Outcome Classification. The harness decides (run.py `verdict`): a result is a
+    // win or a loss only when both the ratio of medians and the ratio of best runs
+    // leave a tolerance that grows with the workload's own spread and with a fixed
+    // floor for very short runs. This only translates its words to the pill classes.
+    const PILL = { win: "faster", loss: "slower", parity: "parity" };
 
     function getOutcome(item) {
-      const pMed = median(item, "prismio");
-      const cMed = median(item, "cpp");
-      const rMed = median(item, "rust");
-
-      const pSamples = item.languages.prismio.elapsed_ns_samples || [];
-      const cSamples = item.languages.cpp.elapsed_ns_samples || [];
-      const rSamples = item.languages.rust.elapsed_ns_samples || [];
-
-      const pNoise = robustJitter(pSamples, pMed) || 0;
-      const cNoise = robustJitter(cSamples, cMed) || 0;
-      const rNoise = robustJitter(rSamples, rMed) || 0;
-
-      const cr = ratio(item, "cpp");
-      const rr = ratio(item, "rust");
-
-      const statusCpp = getPillStatus(cr, Math.max(pNoise, cNoise));
-      const statusRust = getPillStatus(rr, Math.max(pNoise, rNoise));
-
+      const who = ["cpp", "rust"];
+      const status = who.map(w => PILL[outcomeOf(item, w)]);
+      const [statusCpp, statusRust] = status;
       let outcome;
       if (statusCpp === "slower" || statusRust === "slower") {
         outcome = "prismio-loss";
@@ -662,8 +661,7 @@
       } else {
         outcome = "parity";
       }
-
-      return { statusCpp, statusRust, outcome, pNoise, cNoise, rNoise };
+      return { statusCpp, statusRust, outcome };
     }
 
     // Filter & Sort Logic
@@ -754,7 +752,11 @@
             const sign = pct > 0 ? `+${pct}` : `${pct}`;
             label = `${r.toFixed(2)}× (${sign}%)`;
           }
-          return `<span class="delta-pill ${status}">${label}</span>`;
+          const v = item.verdict && item.verdict[baseline];
+          const why = v
+            ? `Judged against ±${(v.tolerance * 100).toFixed(0)}% on medians (this workload's own spread and the timer floor), and best runs ${v.best_ratio.toFixed(2)}×`
+            : "";
+          return `<span class="delta-pill ${status}" title="${escapeHtml(why)}">${label}</span>`;
         };
 
         const isExpanded = expandedRows.has(item.name);

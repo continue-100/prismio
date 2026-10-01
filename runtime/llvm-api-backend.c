@@ -51,10 +51,6 @@
 #include <unistd.h>
 #endif
 
-#ifdef __APPLE__
-#include <sys/sysctl.h>
-#endif
-
 // The value and block tables are indexed by a counter that runs for the whole
 // module, so their old fixed sizes were a ceiling on *program size* rather than
 // on anything a single function could do: a 922 KB source stopped with
@@ -3641,15 +3637,73 @@ static void set_fp_contract(LLVMValueRef v) {
     if (LLVMIsAInstruction(v)) LLVMSetFastMathFlags(v, (1 << 5));
 }
 
+// A multiply that is a *direct operand* of an add or subtract -- the source
+// expression `a * b + c` -- becomes one `llvm.fmuladd`, decided here as clang's
+// front end decides it, and not left to the backend's fusion.
+//
+// **Why the decision is made at emission.** The multiply in `x * x + y * y` and
+// the one in `x * x - y * y` are the same value, and by the time instruction
+// selection sees them LLVM has merged the two into one `fmul` with two users.
+// A multiply with two users is not fused into either add, so the loop kept a
+// standalone `fmul` plus a separate `fadd`/`fsub` where C++ has one `fmadd` and
+// one `fnmsub` -- a longer dependency chain in a Mandelbrot iteration (12% on
+// the suite's mandelbrot). Fusing at emission leaves nothing to merge: each
+// expression owns its multiply, which is what clang's tree-shaped emission does.
+//
+// Only a multiply nothing has used yet -- the add being built is its first user --
+// so a value an expression already shares is not recomputed, and only one carrying
+// `contract`, which is the licence for the fusion. The left operand's multiply is preferred, then the right's, which is
+// clang's order and therefore gives clang's rounding for the same expression.
+static LLVMValueRef single_use_contracted_fmul(LLVMValueRef v) {
+    if (!LLVMIsAInstruction(v) || LLVMGetInstructionOpcode(v) != LLVMFMul) return NULL;
+    if (!(LLVMGetFastMathFlags(v) & (1 << 5))) return NULL;
+    if (LLVMGetFirstUse(v)) return NULL;
+    return v;
+}
+
+static LLVMValueRef build_fmuladd(LLVMValueRef a, LLVMValueRef b, LLVMValueRef c) {
+    LLVMTypeRef ty = LLVMTypeOf(a);
+    const char *name = LLVMGetTypeKind(ty) == LLVMDoubleTypeKind ? "llvm.fmuladd.f64"
+                     : LLVMGetTypeKind(ty) == LLVMFloatTypeKind ? "llvm.fmuladd.f32" : NULL;
+    if (!name) return NULL;
+    LLVMTypeRef params[3] = {ty, ty, ty};
+    LLVMTypeRef fnty = LLVMFunctionType(ty, params, 3, 0);
+    LLVMValueRef fn = LLVMGetNamedFunction(g_module, name);
+    if (!fn) fn = LLVMAddFunction(g_module, name, fnty);
+    LLVMValueRef args[3] = {a, b, c};
+    return LLVMBuildCall2(g_builder, fnty, fn, args, 3, "");
+}
+
+static LLVMValueRef fuse_multiply(LLVMValueRef l, LLVMValueRef r, int subtract) {
+    LLVMValueRef m = single_use_contracted_fmul(l);
+    if (m) {
+        LLVMValueRef c = subtract ? LLVMBuildFNeg(g_builder, r, "") : r;
+        return build_fmuladd(LLVMGetOperand(m, 0), LLVMGetOperand(m, 1), c);
+    }
+    m = single_use_contracted_fmul(r);
+    if (m) {
+        LLVMValueRef a = LLVMGetOperand(m, 0);
+        if (subtract) a = LLVMBuildFNeg(g_builder, a, "");
+        return build_fmuladd(a, LLVMGetOperand(m, 1), l);
+    }
+    return NULL;
+}
+
 int ir_fadd(const char *type, const char *lhs, const char *rhs) {
     if (block_done()) return 0;
-    LLVMValueRef v = LLVMBuildFAdd(g_builder, resolve_value(lhs, type), resolve_value(rhs, type), "");
+    LLVMValueRef l = resolve_value(lhs, type), r = resolve_value(rhs, type);
+    LLVMValueRef fused = fuse_multiply(l, r, 0);
+    if (fused) return intern_value(fused);
+    LLVMValueRef v = LLVMBuildFAdd(g_builder, l, r, "");
     set_fp_contract(v);
     return intern_value(v);
 }
 int ir_fsub(const char *type, const char *lhs, const char *rhs) {
     if (block_done()) return 0;
-    LLVMValueRef v = LLVMBuildFSub(g_builder, resolve_value(lhs, type), resolve_value(rhs, type), "");
+    LLVMValueRef l = resolve_value(lhs, type), r = resolve_value(rhs, type);
+    LLVMValueRef fused = fuse_multiply(l, r, 1);
+    if (fused) return intern_value(fused);
+    LLVMValueRef v = LLVMBuildFSub(g_builder, l, r, "");
     set_fp_contract(v);
     return intern_value(v);
 }
@@ -6030,7 +6084,7 @@ static LLVMMetadataRef di_struct_type(const char *name) {
 //
 // The host default is reached only when nothing was named. It is stamped in
 // the spelling the object is compiled for -- host_codegen_triple's
-// `arm64-apple-macosx27.0`, not LLVMGetDefaultTargetTriple's
+// `arm64-apple-macosx11.0`, not LLVMGetDefaultTargetTriple's
 // `arm64-apple-darwin27.0.0` -- because that is what the runtime bitcode and
 // every .plib carry. With the kernel's spelling, the library merge warned
 // "Linking two modules of different target triples" once per module on every
@@ -7535,22 +7589,21 @@ static const char *default_target_cpu(const char *triple) {
 }
 
 // The macOS a host build targets: MACOSX_DEPLOYMENT_TARGET when set, as clang
-// honours it, otherwise the running system. The linker is told the same version
-// (compiler_link_min_os), so object and executable cannot disagree -- the
-// alternative is ld's "built for newer macOS version than being linked" on every
-// build whose SDK is older than the machine.
+// honours it, otherwise PRISMIO_MACOS_FLOOR. The linker (link_program_object)
+// and a target's native C (compile_native_sources) are told the same version,
+// so object and executable cannot disagree.
+//
+// **Not the running system.** That was the default until 2026-10-02, and it
+// stamped every program -- and the released compiler, which is one -- with the
+// build machine's macOS: a toolchain packaged on macOS 27 would not start on
+// 26. 11.0 is the first macOS on Apple silicon, and what Rust's arm64 target
+// assumes too. tools/package.py builds the runtime bitcode and the .plib code
+// for the same version, since a merge of modules with different triples warns.
+#define PRISMIO_MACOS_FLOOR "11.0"
+
 static void host_macos_version(char *out, size_t size) {
     const char *env = getenv("MACOSX_DEPLOYMENT_TARGET");
-    if (env && *env) {
-        snprintf(out, size, "%s", env);
-        return;
-    }
-    out[0] = '\0';
-#ifdef __APPLE__
-    size_t len = size;
-    if (sysctlbyname("kern.osproductversion", out, &len, NULL, 0) != 0) out[0] = '\0';
-#endif
-    if (!out[0]) snprintf(out, size, "11.0");
+    snprintf(out, size, "%s", env && *env ? env : PRISMIO_MACOS_FLOOR);
 }
 
 const char *ir_host_macos_version(void) {

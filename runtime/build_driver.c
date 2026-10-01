@@ -1628,6 +1628,30 @@ static int codegen_uses_clang(void) {
     return v && strcmp(v, "clang") == 0;
 }
 
+// `-mmacosx-version-min=<v> `, or "" -- the macOS version a build's objects are
+// compiled for (ir_host_macos_version), for the clang that compiles its native C
+// or links it. Without it clang uses its SDK's version, and an executable needs
+// the newest macOS of any object in it. A host build on a Mac needs it, and so
+// does a `--target` that names macOS without a version, which ir_emit_object
+// fills in the same way; a triple with a version carries its own.
+static void macos_min_flag(char* out, size_t size) {
+    out[0] = '\0';
+    int wants = 0;
+    if (!ir_target_is_explicit()) {
+#ifdef __APPLE__
+        wants = !codegen_uses_clang();
+#endif
+    } else {
+        const char* triple = ir_target_triple();
+        size_t n = strlen(triple);
+        wants = (n >= 6 && strcmp(triple + n - 6, "-macos") == 0) ||
+                (n >= 7 && strcmp(triple + n - 7, "-macosx") == 0);
+    }
+    if (wants && ir_host_macos_version()[0]) {
+        snprintf(out, size, "-mmacosx-version-min=%s ", ir_host_macos_version());
+    }
+}
+
 // Whether every caller of the program's functions is in the merged module, so
 // all but `main` can be internal (internalize_executable, llvm-api-backend.c).
 // C the target compiles or links may call a Prismio function by its symbol, and
@@ -1977,12 +2001,18 @@ static int link_program_msvc(const char* program_obj, const char* exe_file) {
 }
 #endif
 
-// Whether the C library keeps `sin`, `sqrt` and the rest in a separate libm.
-// glibc and musl do, and clang links neither by default: the benchmark suite's
-// fft and raytracer failed CI's first Linux link with `undefined reference to
-// cos`. Darwin's libSystem and the Windows CRT carry them, and wasm targets
-// get them from their own libc.
-static int target_needs_libm(void) {
+// Whether the C library keeps `sin`, `sqrt` and the rest in a separate libm,
+// and threads in a separate libpthread. glibc and musl do, and clang links
+// neither by default: the benchmark suite's fft and raytracer failed CI's first
+// Linux link with `undefined reference to cos`. Darwin's libSystem and the
+// Windows CRT carry them, and wasm targets get them from their own libc.
+//
+// libpthread is the one a new glibc hides. Since 2.34 the threads live in libc
+// and libpthread is an empty stub, so a program links on the machines this was
+// built on and fails on Ubuntu 20.04, Debian 11 or RHEL 8, whose glibc keeps
+// `pthread_create` and `pthread_once` -- both of which the runtime calls -- in
+// libpthread alone.
+static int target_splits_libc(void) {
     if (!ir_target_is_explicit()) {
 #if defined(__APPLE__) || defined(_WIN32)
         return 0;
@@ -2012,15 +2042,10 @@ static int link_program_object(const char* program_obj, const char* exe_file) {
     char* q_exe = command_quote_arg(exe_file);
     char* target = target_clang_flags();
     const char* native = g_native_link_args ? g_native_link_args : "";
-    // A host build on macOS states the deployment version its object was
-    // compiled for (ir_host_macos_version), rather than letting the driver
-    // default to its SDK's and warn when the two differ.
-    char min_os[64] = "";
-#ifdef __APPLE__
-    if (!ir_target_is_explicit() && !codegen_uses_clang() && ir_host_macos_version()[0]) {
-        snprintf(min_os, sizeof(min_os), "-mmacosx-version-min=%s ", ir_host_macos_version());
-    }
-#endif
+    // A build for macOS states the deployment version its object was compiled
+    // for, rather than letting the driver default to its SDK's.
+    char min_os[64];
+    macos_min_flag(min_os, sizeof(min_os));
     // The 16 MiB stack link_program_msvc gives every program it links, for the
     // links that go through a driver instead. A project host is one of them -- it
     // has native sources and exports -- and at Windows' default 1 MiB it overflowed
@@ -2044,7 +2069,7 @@ static int link_program_object(const char* program_obj, const char* exe_file) {
     // so nothing a loaded module could resolve is removed.
     snprintf(command, len, "%s %s%s%s%s%s%s -o %s%s%s",
              driver, target, min_os, q_obj, g_link_extra, native, stack, q_exe,
-             target_needs_libm() ? " -lm" : "",
+             target_splits_libc() ? " -lm -lpthread" : "",
              target_is_mach_o() ? " -Wl,-dead_strip" : "");
     int result = run_build_command(command);
 
@@ -2444,10 +2469,15 @@ static int compile_native_sources(const char* exe_file, char** objects, int* cac
 
     char* target = target_clang_flags();
     const char* declared = g_native_flags ? g_native_flags : "";
-    size_t flags_len = strlen(target) + strlen(declared) + 16;
+    // Before the target's own flags, so a target that needs a newer macOS can
+    // say so -- the compiler does, for the LLVM it links (tools/setup_llvm.py).
+    char min_os[64];
+    macos_min_flag(min_os, sizeof(min_os));
+    size_t flags_len = strlen(target) + strlen(min_os) + strlen(declared) + 16;
     char* flags = (char*)malloc(flags_len);
     if (!flags) { free(target); return 1; }
-    snprintf(flags, flags_len, "%s-O2%s%s", target, g_debug_info ? " -g" : "", declared);
+    snprintf(flags, flags_len, "%s%s-O2%s%s", target, min_os, g_debug_info ? " -g" : "",
+             declared);
     free(target);
 
     int result = 0;
