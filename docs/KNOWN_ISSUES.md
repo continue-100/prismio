@@ -83,8 +83,8 @@ either. Fixed 2026-10-01 in `runtime/aif_support.c`: a String site that is never
 stored as a view is exempt from that rule, because a fresh String cannot be one
 value in two containers (storing a binding twice is "use of moved value").
 Measured: 273 -> 0 leaked, 0 violations; `test_162`, `test_166` and `test_167`
-dropped to 0 with it. `Map` still has no `keys()`: the leak that blocked it is
-gone, but the method is a decision of its own.
+dropped to 0 with it. `Map.keys()` was waiting on this and now exists: 41 allocated,
+41 released, 0 leaked on String and Int keys (`test_193` runs it under `--verify`).
 
 **An element read pushed as it is is copied at the push.** `c.push(s[0]);
 d.push(s[0])` stored one block under three owners, and the first version of the

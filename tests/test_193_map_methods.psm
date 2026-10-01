@@ -1,7 +1,9 @@
 // Map's methods, and removal.
 //
 // 1. The methods answer what the `map*` functions do: `length`, `isEmpty`,
-//    `has`, `get`, `getOr`, `m[k]`, `set`, `values`, `keyAt`/`valueAt`.
+//    `has`, `get`, `getOr`, `m[k]`, `set`, `keys`, `values`, `keyAt`/`valueAt`.
+//    `keys` copies each String key into the returned Vec, which releases them:
+//    the `--verify` run below is what shows none leaked.
 // 2. `remove`: an absent key; the first, a middle and the last entry; a key
 //    whose probe passes a removed one (every key in one bucket, so each is
 //    behind the others); removing and reinserting; removing across growth and
@@ -58,6 +60,10 @@ fn main() -> Int {
     if (missing.isSome) { bad = bad + fail("get of an absent key") }
     if (m.keyAt(0).equals("ada") == false or m.keyAt(1).equals("grace") == false) {
         bad = bad + fail("keys in insertion order")
+    }
+    let keys = m.keys()
+    if (keys.length != 3 or keys[0].equals("ada") == false or keys[2].equals("alan") == false) {
+        bad = bad + fail("keys")
     }
     let values = m.values()
     if (values.length != 3 or values[1] != 85) { bad = bad + fail("values") }

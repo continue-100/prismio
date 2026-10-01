@@ -546,10 +546,14 @@ impl < K: Key + Copy, V > Map<K, V> {
 
     public fn clear(self) { mapClear(self) }
 
-    // No `keys()` returning copies yet: copies of String keys pushed into a
-    // returned Vec are not released (KNOWN_ISSUES, "Copies of a Map's keys"),
-    // and a method that leaks every call is worse than none. `keyAt` reads them
-    // in place.
+    // The keys, in position order, as the `Vec` `values()` is for the values. The
+    // `Vec` owns its own copy of each key and releases it with the rest; the map
+    // keeps its own. `keyAt` reads one in place when no copy is wanted.
+    public fn keys(self) -> Vec<K> {
+        let mut out: Vec<K> = []
+        for i in 0..<list_len(self.entryKeys) { out.push(list_get(self.entryKeys, i)) }
+        return out
+    }
 
     // The values, in position order. A value is never owned (see the header),
     // so this copies nothing that needs releasing.
