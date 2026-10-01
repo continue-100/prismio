@@ -5446,8 +5446,17 @@ def run_target_test():
                 if "x86_64" not in kind:
                     problems.append(f"the cross build produced {kind.strip()!r} "
                                     "rather than an x86_64 binary")
-                ran = run_command([str(exe)])
-                if ran.returncode != 0 or "cross" not in (ran.stdout or ""):
+                # An arm64 Mac without Rosetta cannot exec an x86_64 binary at
+                # all (`Bad CPU type`): that says nothing about the build, which
+                # the `file` check above has already judged.
+                try:
+                    ran = run_command([str(exe)])
+                except OSError as err:
+                    ran = None
+                    linked = f"x86_64-apple-macos built, not run here ({err.strerror})"
+                if ran is None:
+                    pass
+                elif ran.returncode != 0 or "cross" not in (ran.stdout or ""):
                     problems.append("the cross-built binary did not run: "
                                     f"exit {ran.returncode}, "
                                     f"stdout {(ran.stdout or '').strip()!r}")

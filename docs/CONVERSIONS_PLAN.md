@@ -32,9 +32,9 @@ reference's `T?` is unchanged: a nullable pointer, where `none` is null.
 | 4 | [Text to value: `s as T` and `s as T?`](#4-text-to-value) | done 2026-09-30 |
 | 5 | [std fill-out: every width has `toString`, `toFloat`, `parse`](#5-std-fill-out) | done 2026-09-30 |
 | 6 | [Enum and `Int` interchange](#6-enum-and-int) | done 2026-09-30 |
-| 7 | [Docs, both apps](#7-docs) | todo |
-| 8 | [IntelliJ plugin](#8-intellij-plugin) | todo |
-| 9 | [Build and verify everything](#9-build-and-verify) | todo |
+| 7 | [Docs, both apps](#7-docs) | done 2026-09-30 (website a8b9b64) |
+| 8 | [IntelliJ plugin](#8-intellij-plugin) | done 2026-09-30 (plugin f28e7d0) |
+| 9 | [Build and verify everything](#9-build-and-verify) | done 2026-10-01 ([gate record](../aif/evidence/RESULTS-conversions-release-gate.md)) |
 
 ### 0. Cast bugs
 
@@ -230,3 +230,11 @@ corpus test catches drift.
 Two generations to a fixpoint, the full suite, `aif_differential.py`, the corpus,
 `release_gate.py`, a packaged toolchain, the project host promoted, the seed
 refreshed once the syntax is in.
+
+**State 2026-10-01.** `release_gate.py` against the packaged RC `build/cv-rc3`
+passes in full, suite 492/492; the run is recorded in
+[`aif/evidence/RESULTS-conversions-release-gate.md`](../aif/evidence/RESULTS-conversions-release-gate.md).
+Two harness defects had been hiding it: the gate ran `bin/prismio` inside the
+checkout, which forwards to the project host (now run under a neutral name), and
+`target_cross` executed an x86_64 binary on a Mac without Rosetta (now reports
+`built, not run here`).

@@ -26,6 +26,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from aif_differential import under_neutral_name
+
 REPO = Path(__file__).resolve().parent.parent
 WINDOWS = os.name == "nt"
 EXE = ".exe" if WINDOWS else ""
@@ -274,7 +276,14 @@ def main() -> int:
     parser.add_argument("--old")
     args = parser.parse_args()
 
-    rc = Path(args.rc).resolve()
+    candidate = Path(args.rc).resolve()
+    # The RC as packaged is `bin/prismio`, and a compiler of that name run inside
+    # the checkout forwards to the project host: every step measured that host,
+    # and passed only while it happened to be built from the same tree. The
+    # cross-target build is what showed it -- the host's toolchain has no
+    # x86_64 runtime. A copy under another name beside it keeps the layout.
+    neutral, copy = under_neutral_name(str(candidate))
+    rc = Path(neutral)
     old = Path(args.old).resolve() if args.old else None
     work = Path(tempfile.mkdtemp(prefix="prismio-gate-"))
     try:
@@ -298,9 +307,11 @@ def main() -> int:
             mnemonic_diff(rc, old, work)
     finally:
         shutil.rmtree(work, ignore_errors=True)
+        if copy:
+            os.remove(copy)
 
     print()
-    print("GATE FAILED" if failed else f"GATE PASSED -- {rc}")
+    print("GATE FAILED" if failed else f"GATE PASSED -- {candidate}")
     return 1 if failed else 0
 
 
