@@ -270,6 +270,11 @@ internal extern fn aif_elem_owner_at_node(node: Ptr) -> Int
 // push, which no site describes; codegen asks it for a `Vec<String>` only.
 internal extern fn aif_elem_literal_copies_only(node: Ptr) -> Int
 
+// 1 when the String stored at argument `index` of this push or insert is a view
+// of another collection, so codegen copies it into a block of its own as it goes
+// in (the analysis counted the store as that copy).
+internal extern fn aif_arg_copies_view(node: Ptr, index: Int) -> Int
+
 // AIF Level 5. Whether this node's value carries a reference count. Reads the
 // same predicate the element disposition does, because a container told its
 // elements are counted decrements every one of them -- so a site that reached it

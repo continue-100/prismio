@@ -2358,6 +2358,11 @@ void aif_con_store(int key, int vs, int owners) { con_add(AIF_CON_STORE, key, vs
 void aif_con_live_in(int vs, int scope, int fn) { con_add(AIF_CON_LIVE_IN, vs, scope, fn); }
 void aif_con_opaque(int vs)                     { con_add(AIF_CON_OPAQUE, vs, 0, 0); }
 void aif_con_retain_in(int vs, int holder)      { con_add(AIF_CON_RETAIN_IN, vs, holder, 0); }
+// A `retain_in` of a String element that codegen copies when the value is a view
+// of another collection (aif_arg_copies_view). c = 1 says so; no other store
+// reads it. The two sides have to agree: a store the analysis counts as a copy
+// and codegen does not copy would leave one block under two owners.
+void aif_con_retain_in_string(int vs, int holder) { con_add(AIF_CON_RETAIN_IN, vs, holder, 1); }
 void aif_con_borrow(int vs)                     { con_add(AIF_CON_BORROW, vs, 0, 0); }
 void aif_con_escape_caller(int vs)              { con_add(AIF_CON_ESCAPE_CALLER, vs, 0, 0); }
 void aif_con_return(int vs, int fn)              { con_add(AIF_CON_ESCAPE_CALLER, vs, fn, 1); }
@@ -3049,11 +3054,15 @@ int aif_solve(int max_rounds) {
                 // guards only the list's own block), so counting -- and boxing --
                 // the type is what keeps a cross-list copy sound. KNOWN_ISSUES.
                 resolve_views(k->a, &scratch_views);
+                // A String element read pushed into a Vec is copied into a block of
+                // its own at the push (generateCall's element argument), so it is
+                // not a second holder of the block it read and taints nothing.
+                int copies = k->c == 1 && !bits_is_empty(&scratch_views);
                 if (vec_own.len > 0 && !bits_is_empty(&scratch_views)) {
                     force_rule = AIF_RULE_A_CONTAIN;
                     for (int i = 0; i < vec_val.len; i++) {
                         int s = vec_val.v[i];
-                        if (!sites[s].view_stored) {
+                        if (!copies && !sites[s].view_stored) {
                             sites[s].view_stored = 1;
                             changed = moved(s);
                         }
@@ -7007,6 +7016,12 @@ static int container_may_hold_untracked(int container) {
             // with no items is exactly that one.
             if (v->untracked && v->len == 0) continue;
             if (!vs_keeps_untracked(k->a)) continue;
+            // A String view pushed with a copy holds the copy, not what it viewed.
+            if (k->c == 1) {
+                static Bits copied_views;
+                resolve_views(k->a, &copied_views);
+                if (!bits_is_empty(&copied_views)) continue;
+            }
             resolve(k->b, &holders_of);
             bits_or(&holds_untracked, &holders_of, "AIF untracked holders");
         }
@@ -7218,6 +7233,8 @@ typedef struct NodeArgs {
     int fn;             // the callee, or -1 for one only a contract describes
     unsigned retained;  // contract-retained argument indices; bit 31 is "31 or later"
     unsigned aliased;   // arguments an extern's result may be, or be a view into
+    int copy_arg;       // the element argument of a String push, or -1
+    int copy_vs;        // its value set
 } NodeArgs;
 
 static NodeArgs* args_buckets[AIF_NODE_BUCKETS];
@@ -7237,6 +7254,8 @@ void aif_note_call_args(const void* node, int fn) {
     n->fn = fn;
     n->retained = 0;
     n->aliased = 0;
+    n->copy_arg = -1;
+    n->copy_vs = -1;
     n->next = args_buckets[b];
     args_buckets[b] = n;
 }
@@ -7256,6 +7275,37 @@ void aif_note_arg_aliased(const void* node, int index) {
     NodeArgs* n = node_args_find(node);
     if (n == NULL || index < 0) return;
     n->aliased |= 1u << (index < 31 ? index : 31);
+}
+
+// A RETAIN_IN that codegen performs as a copy (aif_con_retain_in_string, and the
+// value is a view): it keeps nothing it was handed, so the binding it read from is
+// still the owner and still released.
+static int retain_in_is_copy(const Constraint* k) {
+    if (k->c != 1 || k->a < 0 || k->a >= vs_count) return 0;
+    static Bits views;
+    resolve_views(k->a, &views);
+    return !bits_is_empty(&views);
+}
+
+// The element argument of a `Vec<String>` push or insert, and the value set it
+// carries: what aif_arg_copies_view answers from once the facts have converged.
+void aif_note_arg_copied(const void* node, int index, int vs) {
+    NodeArgs* n = node_args_find(node);
+    if (n == NULL || index < 0) return;
+    n->copy_arg = index;
+    n->copy_vs = vs;
+}
+
+// Whether codegen must copy this String into a block of its own as it is stored:
+// the value is a view of another collection, so storing it as it is would leave
+// one block under two owners and a release from each -- a double free. Asked of
+// the converged facts, for the argument aif_note_arg_copied recorded.
+int aif_arg_copies_view(const void* node, int index) {
+    NodeArgs* n = node_args_find(node);
+    if (n == NULL || n->copy_arg != index || n->copy_vs < 0) return 0;
+    static Bits stored_views;
+    resolve_views(n->copy_vs, &stored_views);
+    return !bits_is_empty(&stored_views);
 }
 
 static void node_args_reset(void) {
@@ -7955,7 +8005,11 @@ static int call_result_held(const NodeCall* c) {
         int vs = work.v[--work.len];
         for (int i = 0; i < vs_consumers[vs].len; i++) {
             const Constraint* k = &cons[vs_consumers[vs].v[i]];
-            if (k->kind == AIF_CON_RETAIN_IN) { held = 1; break; }
+            if (k->kind == AIF_CON_RETAIN_IN) {
+                if (retain_in_is_copy(k)) continue;
+                held = 1;
+                break;
+            }
             if (key_is_ret(k->a)) continue;
             if (k->a >= 0 && k->a < flow_keys && flow_reaches[k->a]) { held = 1; break; }
         }
@@ -7975,7 +8029,10 @@ static int call_result_held(const NodeCall* c) {
 int aif_call_arg_retained(const void* node, int index) {
     NodeArgs* n = node_args_find(node);
     if (n == NULL || index < 0) return 1;
-    if (n->fn < 0) return (n->retained >> (index < 31 ? index : 31)) & 1u;
+    if (n->fn < 0) {
+        if (index == n->copy_arg && aif_arg_copies_view(node, index)) return 0;
+        return (n->retained >> (index < 31 ? index : 31)) & 1u;
+    }
     flow_build();
     int k = key_find(AIF_KEY_PARAM, n->fn, index);
     return k >= 0 && k < flow_keys && flow_reaches[k];

@@ -295,6 +295,15 @@ private fn generateFunction(func: ASTNode) {
     if (isMain == 1) {
         ir_store_global("i32", "%p_argc", "prismio_argc")
         ir_store_global("ptr", "%p_argv", "prismio_argv")
+        // Windows only: _O_BINARY is 0x8000. See where `_setmode` is declared.
+        if (targetOsCode() == 1) {
+            for fd in 0..<3 {
+                ir_call_begin()
+                ir_call_arg("i32", fd.toString())
+                ir_call_arg("i32", "32768")
+                ir_call_end("i32", "_setmode")
+            }
+        }
     }
 
     // Parameter scope, outside the body block, matching semaFunction.
@@ -1824,6 +1833,17 @@ public fn generateModule(module: ASTNode) {
     if (compiler_library_emission_module().equals("")) {
         ir_global_var("prismio_argc", "i32", "0", 0)
         ir_global_var("prismio_argv", "ptr", "null", 0)
+    }
+
+    // The Windows CRT opens descriptors 0, 1 and 2 in text mode, where `\n` is
+    // written as `\r\n` and a Ctrl-Z in the input ends it. Every program's
+    // `main` switches them to binary (below), so a Prismio program writes exactly
+    // the bytes it was given on every platform. Declared only where it exists.
+    if (targetOsCode() == 1) {
+        ir_declare_function_begin("_setmode", "i32")
+        ir_declare_function_param("i32")
+        ir_declare_function_param("i32")
+        ir_declare_function_end()
     }
 
     // Declare runtime functions

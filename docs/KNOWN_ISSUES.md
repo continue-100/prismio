@@ -73,8 +73,7 @@ before the sweep's fixes and 210 after; test_236 pins the fixed shapes at 0.
 | any | AIF keys locals by (function, name), so a sent `v` and a received `v` in one function share a value set (see Concurrency). |
 
 
-**Copies of a Vec's or a Map's Strings leak only when the program also stores an
-element read.** `take`, `skip`, `concat`, `reversed`, `sorted`, `toVec`, `clone`,
+**Copies of a Vec's or a Map's Strings no longer leak.** `take`, `skip`, `concat`, `reversed`, `sorted`, `toVec`, `clone`,
 `filter`, `extend`, and `out.push(mapKeyAt(m, i).clone())` used to leak every copy
 (273 of 464 in `tests/test_255`; 990 of 1,173 for the Map keys). Cause: every
 caller of `strClone` shares the one allocation inside it, so two containers each
@@ -87,14 +86,16 @@ Measured: 273 -> 0 leaked, 0 violations; `test_162`, `test_166` and `test_167`
 dropped to 0 with it. `Map` still has no `keys()`: the leak that blocked it is
 gone, but the method is a decision of its own.
 
-What is still on the old rule, and leaks (never double frees): **a program that
-pushes an element read as it is** -- `c.push(s[0]); d.push(s[0])` stores one block
-under three owners, so `view_stored` keeps every String site that reaches it
-Shared, and the element key is per type, so that taints the clones of every
-`Vec<String>` in the program (`test_256` pins it at 4 leaked, 0 violations).
-The same goes for a String moved out of one Vec with `pop`, `removeFirst` or
-`swapRemove` and stored in another. Both want the copy-on-store the view rule
-already describes for slices, or a per-container element key.
+**An element read pushed as it is is copied at the push.** `c.push(s[0]);
+d.push(s[0])` stored one block under three owners, and the first version of the
+fix above double-freed it. A String that is a view of another collection and is
+pushed or inserted into a `Vec<String>` now goes in as a copy: codegen marks the
+pair a view (`fatMarkedAsView`, `src/ir/expr.psm`), which `list_push_str` and
+`str_own` already copy out, and the analysis counts that RETAIN_IN as the copy
+(`aif_con_retain_in_string`, `aif_arg_copies_view`): it does not make the source a
+second holder, does not poison the program's other Strings, and does not keep the
+binding it was read from off the drop list. `v[i] = s[j]` (`set`) is not changed:
+it takes the pointer. `test_256` pins 0 leaked, 0 violations.
 
 **One allocation site backs every `concat` in a program, so its ownership is
 decided by the whole program.** When `StringBuilder` first stored `concat`

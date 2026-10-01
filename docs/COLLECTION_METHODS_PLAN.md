@@ -89,16 +89,15 @@ property paths in `src/sema/checker.psm` next to Vec's lowering.
 
 ## 4 · Limits in 0.1
 
-- **Copying a `Vec<String>` is clean unless the program also pushes an element read
-  as it is.** `take`, `skip`, `concat`, `reversed`, `sorted`, `toVec`, `clone`,
+- **Copying a `Vec<String>` is clean.** `take`, `skip`, `concat`, `reversed`, `sorted`, `toVec`, `clone`,
   `filter` and `extend` leaked every copy until 2026-10-01 (273 of 464 in
   `test_255`): all callers share the one allocation in `strClone`, two containers
   holding its results read as one value held twice, and a String cannot be
   counted. A fresh String site is now exempt from that rule
-  (`runtime/aif_support.c`, A-CONTAIN; 273 -> 0, 0 violations). What stays on the
-  old rule, and leaks without ever double freeing: `c.push(s[0]); d.push(s[0])`
-  and a String moved out with `pop`/`removeFirst`/`swapRemove` into another Vec
-  (`test_256`; KNOWN_ISSUES.md). A scalar element type was always clean.
+  (`runtime/aif_support.c`, A-CONTAIN; 273 -> 0, 0 violations), and a String that is
+  a view of another collection (`c.push(s[0])`) is copied at the push, so it stays
+  clean beside the clones (`test_256`; KNOWN_ISSUES.md). A scalar element type was
+  always clean.
 - **An array's in-place changes** need a `let mut` array, and store only elements
   nothing owns (numbers, `Bool`, `Char`, enums without payloads): `reverse` on an
   `Array<String, N>` is refused at the store, as `a[i] = x` is. The reads work for

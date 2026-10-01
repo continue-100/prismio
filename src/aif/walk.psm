@@ -351,7 +351,19 @@ private fn aifCallSites(callPtr: Ptr, fnId: Int, scope: Int) -> Int {
             }
             if (contract >= AIF_FFI_RETAIN_IN_BASE) {
                 let holderIndex = contract - AIF_FFI_RETAIN_IN_BASE
-                aif_con_retain_in(av, aif_argv_get(base, holderIndex))
+                // A String pushed or inserted into a `Vec<String>` is copied by
+                // codegen when it is a view of another collection (an element
+                // read), so the store is a copy and not a second holder of the
+                // block it read. `set` stays out: it takes the pointer.
+                let copiesString = (plain.equals("list_push") or plain.equals("list_insert"))
+                    and aifElementContainerType(aifArgTypeAt(e, holderIndex)).equals("List<String>")
+                    and i != holderIndex
+                if (copiesString) {
+                    aif_con_retain_in_string(av, aif_argv_get(base, holderIndex))
+                    aif_note_arg_copied(callPtr, i, av)
+                } else {
+                    aif_con_retain_in(av, aif_argv_get(base, holderIndex))
+                }
                 // SPEC 5.2.1's obligation 2, container form. `list_push(dest, x)`
                 // on a `dest` this function did not allocate is the counter-
                 // example the summary exists to catch -- and it has to be

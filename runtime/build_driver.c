@@ -8,6 +8,17 @@
 // It does depend on the runtime half (prismio_runtime.h) for plain file and path
 // helpers. That direction is deliberate and one-way: backend -> runtime.
 
+// `nftw` and `FTW_DEPTH`/`FTW_PHYS`/`FTW_DP` are X/Open, which glibc hides under
+// its default feature set -- CI's Linux bootstrap failed here with the names
+// undeclared. `_DEFAULT_SOURCE` keeps everything the file already relied on, and
+// has to be said again because defining `_XOPEN_SOURCE` alone turns it off. Both
+// precede the first system header, which prismio_platform.h includes. macOS and
+// Windows declare what they have without either.
+#ifdef __linux__
+#define _DEFAULT_SOURCE 1
+#define _XOPEN_SOURCE 700
+#endif
+
 #include "prismio_platform.h"
 #include "prismio_runtime.h"
 #include <time.h>
@@ -1946,8 +1957,14 @@ static int link_program_msvc(const char* program_obj, const char* exe_file) {
         // keys each stdlib .plib on the compiler binary's hash, and on Windows an
         // unchanged `prismio build` rebuilt all of them -- ld64 and lld on the other
         // platforms were already deterministic, which is why only Windows missed.
+        // -STACK:16 MiB. A Windows executable's main thread gets 1 MiB unless the
+        // image says otherwise, where macOS and Linux give 8 -- and the compiler is
+        // deeply recursive: a seed-built compiler died with a stack overflow
+        // (0xC00000FD) on its first real input, with no message. It is address
+        // space reserved, not memory committed. tools/bootstrap.ps1 sets the same
+        // value for the generations it links itself.
         snprintf(command, len,
-                 "%s%s -defaultlib:libcmt -defaultlib:oldnames -nologo -Brepro%s %s%s%s",
+                 "%s%s -defaultlib:libcmt -defaultlib:oldnames -nologo -Brepro -STACK:16777216%s %s%s%s",
                  q_link, out_arg, libpaths ? libpaths : "", q_obj, g_link_extra, native);
         result = run_build_command(command);
     }
@@ -2678,7 +2695,7 @@ static char* windows_export_flags(char** objs, int count, const char* exe_file) 
     flags[0] = '\0';
 
     size_t used = 0;
-    int count = 0;
+    int exported = 0;
     char* line = text;
     while (*line) {
         char* end = strchr(line, '\n');
@@ -2688,7 +2705,7 @@ static char* windows_export_flags(char** objs, int count, const char* exe_file) 
         if (name_len > 0) {
             used += (size_t)snprintf(flags + used, flags_size - used,
                                      " -Wl,/EXPORT:%.*s", (int)name_len, line);
-            count++;
+            exported++;
         }
 
         if (!end) break;
@@ -2696,7 +2713,7 @@ static char* windows_export_flags(char** objs, int count, const char* exe_file) 
     }
     free(text);
 
-    if (count == 0) { free(flags); return NULL; }
+    if (exported == 0) { free(flags); return NULL; }
 
     // **Through a response file, not on the command line.** cmd.exe refuses a
     // line longer than 8191 characters, and 191 exports are several thousand on

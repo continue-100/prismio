@@ -158,7 +158,14 @@ function Invoke-Step {
     # NB: not $Args -- that is a PowerShell automatic variable and cannot be bound.
     param([string]$Label, [string]$Exe, [string[]]$CmdArgs)
     Write-Host "[$Label]" -ForegroundColor DarkGray
-    $output = & $Exe @CmdArgs 2>&1
+    # Windows PowerShell 5.1 turns anything a native command writes to stderr
+    # into a terminating error under 'Stop', and clang writes warnings there (the
+    # module's target triple is overridden on purpose), so a bootstrap that
+    # worked failed at its first step. PowerShell 7 does not do this, which is
+    # why CI never saw it. The exit code is what decides.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $output = & $Exe @CmdArgs 2>&1 } finally { $ErrorActionPreference = $previous }
     if ($LASTEXITCODE -ne 0) {
         Write-Host "FAILED: $Label" -ForegroundColor Red
         $output | ForEach-Object { Write-Host "  $_" }
@@ -275,7 +282,11 @@ if ((Test-Path $nm) -and $runtimeObjs.Count -gt 0) {
 }
 
 $llvmArgs = if ($llvm.rsp) { @("@$($llvm.rsp)") } else { @("-L$($llvm.lib)", '-lLLVM-C') }
-Invoke-Step 'link' $llvm.clang ($objs + @('-o', $Out) + $llvmArgs + $exportArgs)
+# 16 MiB of stack, not Windows' default 1: the compiler recurses deeply, and a
+# seed-built one overflowed (0xC00000FD) on its first real input, silently. The
+# same value link_program_msvc passes for everything `prismio build` links.
+$stackArgs = @('-Wl,/STACK:16777216')
+Invoke-Step 'link' $llvm.clang ($objs + @('-o', $Out) + $llvmArgs + $exportArgs + $stackArgs)
 
 # On Windows the compiler needs LLVM-C.dll beside it at runtime; copying beats
 # asking every user to put the LLVM bin directory on PATH.

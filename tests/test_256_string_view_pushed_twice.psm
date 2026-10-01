@@ -1,13 +1,15 @@
-// An element read pushed into two containers, with the one it came from: three
-// holders of one block, with no copy. Releasing the block from each is a double
-// free, so a String that is ever stored as a view keeps the old A-CONTAIN rule
-// (Shared, counted tier, no release) even though test_255 shows a fresh String in
-// two containers is fine. `view_stored` in runtime/aif_support.c is what tells
-// them apart.
+// An element read pushed into two containers, with the one it came from. Stored
+// as it is, that is three holders of one block, and releasing it from each is a
+// double free -- which is what the first version of test_255's rule did. A String
+// pushed or inserted into a `Vec<String>` that is a view of another collection is
+// therefore copied into a block of its own at the push (`fatMarkedAsView` in
+// src/ir/expr.psm marks it a view, which list_push_str and str_own copy out), and
+// the analysis counts that store as the copy (`aif_con_retain_in_string`). The two
+// have to agree: a copy the analysis does not know about leaks the original, and
+// a copy that is not made is a double free. The guard is 0 violations and 0 leaked.
 //
-// The guard is `0 violation(s)`; the leak count is the price of the safe
-// direction and is pinned in run_aif_verify_test. The same goes for a value moved
-// out of one Vec with `pop`, `removeFirst` or `swapRemove` and stored in another.
+// The same holds for a value moved out of one Vec with `pop`, `removeFirst` or
+// `swapRemove` and pushed into another (test_255's neighbours in the probe).
 
 import std.io
 import std.vec

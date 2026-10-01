@@ -451,6 +451,8 @@ internal extern fn aif_note_call_result(node: Ptr, vs: Int, fnId: Int)
 internal extern fn aif_note_call_args(node: Ptr, fnId: Int)
 internal extern fn aif_note_arg_retained(node: Ptr, index: Int)
 internal extern fn aif_note_arg_aliased(node: Ptr, index: Int)
+internal extern fn aif_note_arg_copied(node: Ptr, index: Int, vs: Int)
+internal extern fn aif_con_retain_in_string(vs: Int, holder: Int)
 internal extern fn aif_site_is_rc(site: Int) -> Int
 
 internal extern fn aif_order_add(symbol: String, site: Int)

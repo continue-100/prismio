@@ -92,14 +92,16 @@ int make_directory(const char* path) {
 
 // Writes `content` over `path`, creating it if absent. 0 on success.
 //
-// Text mode is deliberate on Windows: a lockfile is read back by people and by
-// `read_file`, and "wb" here against a text-mode read elsewhere is how a file
-// grows a \r nobody asked for.
+// Binary on every platform, as `read_file` ("rb") and `append_file` ("ab") are:
+// the bytes written are the bytes read back. This was text mode on Windows, which
+// wrote each `\n` as `\r\n` -- so a string written and read back came out
+// different, and `\r\n` in the content became `\r\r\n`
+// (tests/test_194_file_lines on Windows CI).
 int write_file(const char* path, const char* content) {
     if (!path || !path[0]) return 1;
     if (!content) content = "";
 
-    FILE* file = fopen(path, "w");
+    FILE* file = fopen(path, "wb");
     if (!file) return 1;
 
     size_t n = strlen(content);
@@ -221,6 +223,12 @@ static void append_module_name(char*** names, int* count, int* capacity,
     size_t len = strlen(filename);
     if (len <= 4 || (strcmp(filename + len - 4, ".psm") != 0
                     && strcmp(filename + len - 5, ".plib") != 0)) return;
+    // A module name is an identifier, so a dotfile is never one. macOS writes an
+    // AppleDouble `._name.psm` beside every file it copies to a volume that has no
+    // extended attributes (exFAT, a network share, or `tar` unpacked elsewhere),
+    // and `import pkg.*` took each for a module: "cannot read imported module
+    // `parse.._decl`".
+    if (filename[0] == '.') return;
 
     size_t suffix = strcmp(filename + len - 4, ".psm") == 0 ? 4 : 5;
     size_t stem_len = len - suffix;
@@ -1011,13 +1019,42 @@ int proc_close(int fd) {
 //
 // The C library's environment is process-global and not thread-safe on any
 // platform: a `setEnv` racing a read on another task is undefined, as it is in C.
+//
+// **On Windows these use the Win32 environment, not the CRT's.** `_putenv_s(name,
+// "")` does not set an empty value: it removes the variable, so the CRT cannot
+// say "set, and empty" at all, and `Some("")` was unreachable
+// (tests/test_183_process_env). `SetEnvironmentVariableA` can, and a
+// `GetEnvironmentVariableA` of size zero answers the stored length plus one, so
+// an empty value is 1 and an unset name is 0.
+#ifdef _WIN32
+static DWORD win_env_size(const char* name) {
+    return (name && *name) ? GetEnvironmentVariableA(name, NULL, 0) : 0;
+}
+
+int proc_env_has(const char* name) {
+    return win_env_size(name) > 0 ? 1 : 0;
+}
+#else
 int proc_env_has(const char* name) {
     return (name && *name && getenv(name) != NULL) ? 1 : 0;
 }
+#endif
 
 // `rt_base_alloc` on every path, the empty one included: a literal return would
 // make the whole function's result unowned (see `proc_read_all` below).
 char* proc_env_get(const char* name) {
+#ifdef _WIN32
+    DWORD size = win_env_size(name);
+    char* out = (char*)rt_base_alloc((size_t)size + 1);
+    if (!out) return NULL;
+    out[0] = '\0';
+    if (size > 0) {
+        DWORD got = GetEnvironmentVariableA(name, out, size);
+        // Changed between the two calls: answer empty rather than a torn value.
+        if (got == 0 || got >= size) out[0] = '\0';
+    }
+    return out;
+#else
     const char* value = (name && *name) ? getenv(name) : NULL;
     if (!value) value = "";
     size_t length = strlen(value);
@@ -1025,6 +1062,7 @@ char* proc_env_get(const char* name) {
     if (!out) return NULL;
     memcpy(out, value, length + 1);
     return out;
+#endif
 }
 
 // 1 on success. A name that is empty or contains `=` is refused, as setenv
@@ -1032,18 +1070,18 @@ char* proc_env_get(const char* name) {
 int proc_env_set(const char* name, const char* value) {
     if (!name || !*name || strchr(name, '=') || !value) return 0;
 #ifdef _WIN32
-    return _putenv_s(name, value) == 0 ? 1 : 0;
+    return SetEnvironmentVariableA(name, value) ? 1 : 0;
 #else
     return setenv(name, value, 1) == 0 ? 1 : 0;
 #endif
 }
 
 // 1 when the name is unset afterwards, whether or not it was set before.
-// Windows spells removal as setting the empty value.
 int proc_env_remove(const char* name) {
     if (!name || !*name || strchr(name, '=')) return 0;
 #ifdef _WIN32
-    return _putenv_s(name, "") == 0 ? 1 : 0;
+    SetEnvironmentVariableA(name, NULL);
+    return win_env_size(name) == 0 ? 1 : 0;
 #else
     return unsetenv(name) == 0 ? 1 : 0;
 #endif

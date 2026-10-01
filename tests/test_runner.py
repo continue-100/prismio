@@ -416,7 +416,7 @@ def _timed(fn, item):
 
 def run_command(cmd, capture=True):
     if capture:
-        return subprocess.run(cmd, capture_output=True, text=True)
+        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     return subprocess.run(cmd)
 
 
@@ -950,7 +950,7 @@ def run_ums_project_test():
 
         def prismio(*args, cwd=project):
             return subprocess.run([str(PRISMIO_EXE), *args], capture_output=True,
-                                  text=True, cwd=str(cwd), env=env)
+                                  text=True, encoding="utf-8", errors="replace", cwd=str(cwd), env=env)
 
         created = prismio("init", "app", cwd=Path(temp_dir))
         if created.returncode != 0:
@@ -1108,7 +1108,7 @@ def run_ums_test():
 
         # subprocess directly rather than run_command: the fixture paths inside
         # test_ums.psm are relative to the project root, and run_command has no cwd.
-        ran = subprocess.run([str(exe)], capture_output=True, text=True,
+        ran = subprocess.run([str(exe)], capture_output=True, text=True, encoding="utf-8", errors="replace",
                              cwd=str(PROJECT_ROOT))
         if ran.returncode != 0 or "PASS:" not in (ran.stdout or ""):
             print(f"{RED}[FAIL] ums: manifest, resolution or lockfile assertions failed{RESET}")
@@ -1181,14 +1181,14 @@ def run_ums_test():
             [clang, "-c", str(native / "bonus.c"), "-o", str(bonus_object)],
         ]
         for command in native_steps:
-            step = subprocess.run(command, capture_output=True, text=True)
+            step = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
             if step.returncode != 0:
                 print(f"{RED}[FAIL] ums: native link fixture setup failed{RESET}")
                 show_run(step)
                 return False
 
         native_build = subprocess.run(
-            [str(PRISMIO_EXE), "build"], capture_output=True, text=True,
+            [str(PRISMIO_EXE), "build"], capture_output=True, text=True, encoding="utf-8", errors="replace",
             cwd=str(project),
         )
         native_exe = (project / ".prismio" / "build" / "debug"
@@ -1197,7 +1197,7 @@ def run_ums_test():
             print(f"{RED}[FAIL] ums: declared native inputs did not link{RESET}")
             show_run(native_build)
             return False
-        native_run = subprocess.run([str(native_exe)], capture_output=True, text=True)
+        native_run = subprocess.run([str(native_exe)], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if native_run.returncode != 0:
             print(f"{RED}[FAIL] ums: native-linked executable returned the wrong result{RESET}")
             show_run(native_run)
@@ -1229,7 +1229,7 @@ def run_ums_test():
         with preserved_project_host() as (compiler_artifact, compiler_candidate):
 
             project_build = subprocess.run(
-                [str(launcher), "build"], capture_output=True, text=True,
+                [str(launcher), "build"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(PROJECT_ROOT / "ums"), env=launcher_env,
             )
             if (project_build.returncode != 0 or not compiler_artifact.exists()
@@ -1242,7 +1242,7 @@ def run_ums_test():
                 return False
 
             local_build = subprocess.run(
-                [str(launcher), "build"], capture_output=True, text=True,
+                [str(launcher), "build"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(PROJECT_ROOT / "ums"), env=launcher_env,
             )
             if (local_build.returncode != 0
@@ -1316,7 +1316,7 @@ def run_ums_test():
 
             def toolchain_trace(env):
                 run = subprocess.run(
-                    [str(launcher), "build"], capture_output=True, text=True,
+                    [str(launcher), "build"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                     cwd=str(PROJECT_ROOT / "ums"), env=env,
                 )
                 reused, rebuilt = set(), set()
@@ -1429,7 +1429,7 @@ def run_ums_test():
                         # `; ModuleID` is llvm-dis naming its input file.
                         listings = [[line for line in subprocess.run(
                                          [str(llvm_dis), str(bc), "-o", "-"],
-                                         capture_output=True, text=True).stdout.splitlines()
+                                         capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.splitlines()
                                      if not line.startswith("; ModuleID")]
                                     for bc in (produced_bc, packaged_bc)]
                         diff = list(difflib.unified_diff(
@@ -1461,9 +1461,9 @@ def run_ums_test():
                 outside_build = subprocess.run(
                     [str(compiler_artifact), "build", str(outside),
                      "-o", str(outside_exe)],
-                    capture_output=True, text=True, cwd=outside_dir, env=launcher_env)
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=outside_dir, env=launcher_env)
                 outside_run = (subprocess.run([str(outside_exe)], capture_output=True,
-                                              text=True)
+                                              text=True, encoding="utf-8", errors="replace")
                                if outside_exe.is_file() else None)
                 if (outside_build.returncode != 0 or outside_run is None
                         or outside_run.stdout.strip() != "local-toolchain"):
@@ -1482,16 +1482,16 @@ def run_ums_test():
             # compiler that emitted them.
             abi = subprocess.run(
                 [str(launcher), "--internal-host-abi"], capture_output=True,
-                text=True, cwd=str(PROJECT_ROOT), env=launcher_env,
+                text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT), env=launcher_env,
             )
             token = abi.stdout.strip()
             agrees = subprocess.run(
                 [str(launcher), "--internal-host-abi", token], capture_output=True,
-                text=True, cwd=str(PROJECT_ROOT), env=launcher_env,
+                text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT), env=launcher_env,
             )
             disagrees = subprocess.run(
                 [str(launcher), "--internal-host-abi", token + "-other"],
-                capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+                capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT),
                 env=launcher_env,
             )
             # Asked in a project with a host, and answered by the binary asked.
@@ -1530,7 +1530,7 @@ def run_ums_test():
             stale_host = Path(launcher_dir) / ("stale.exe" if os.name == "nt" else "stale")
             stale_built = subprocess.run(
                 [clang_path, str(stale_source), "-o", str(stale_host)],
-                capture_output=True, text=True)
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
             if stale_built.returncode != 0:
                 print(f"{RED}[FAIL] ums: could not build the stale-host stand-in{RESET}")
                 show_run(stale_built)
@@ -1558,7 +1558,7 @@ def run_ums_test():
                 return False
             shutil.copy2(marker_host, compiler_artifact)
             untrusted = subprocess.run(
-                [str(launcher), "--version"], capture_output=True, text=True,
+                [str(launcher), "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(PROJECT_ROOT), env=launcher_env,
             )
             if (marker.exists() or "P1077" not in untrusted.stderr
@@ -1574,7 +1574,7 @@ def run_ums_test():
             shutil.copy2(stale_host, compiler_artifact)
             trust_host(compiler_artifact)
             stale_clean = subprocess.run(
-                [str(launcher), "clean"], capture_output=True, text=True,
+                [str(launcher), "clean"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(PROJECT_ROOT / "ums"), env=launcher_env,
             )
             stale_clean_output = stale_clean.stdout + stale_clean.stderr
@@ -1592,7 +1592,7 @@ def run_ums_test():
             shutil.copy2(stale_host, compiler_artifact)
             trust_host(compiler_artifact)
             repaired = subprocess.run(
-                [str(launcher), "--version"], capture_output=True, text=True,
+                [str(launcher), "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(PROJECT_ROOT), env=launcher_env,
             )
             repaired_output = repaired.stdout + repaired.stderr
@@ -1607,7 +1607,7 @@ def run_ums_test():
                 return False
 
             forwarded_version = subprocess.run(
-                [str(launcher), "--version"], capture_output=True, text=True,
+                [str(launcher), "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(PROJECT_ROOT), env=launcher_env,
             )
             # The repair is not a per-command tax: the host it promoted answers
@@ -1627,7 +1627,7 @@ def run_ums_test():
             # A direct local invocation has no global parent waiting to promote its
             # sibling candidate, so it must fail rather than overwrite itself.
             self_build = subprocess.run(
-                [str(compiler_artifact), "build"], capture_output=True, text=True,
+                [str(compiler_artifact), "build"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(PROJECT_ROOT), env=launcher_env,
             )
             if self_build.returncode == 0 or "P1051" not in (self_build.stdout + self_build.stderr):
@@ -1643,7 +1643,7 @@ def run_ums_test():
             compiler_artifact.write_bytes(b"not a Prismio compiler\n")
             trust_host(compiler_artifact)
             fallback_build = subprocess.run(
-                [str(launcher), "build"], capture_output=True, text=True,
+                [str(launcher), "build"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(PROJECT_ROOT), env=launcher_env,
             )
             fallback_output = fallback_build.stdout + fallback_build.stderr
@@ -1654,7 +1654,7 @@ def run_ums_test():
                 return False
 
             clean = subprocess.run(
-                [str(launcher), "clean"], capture_output=True, text=True,
+                [str(launcher), "clean"], capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(PROJECT_ROOT / "ums"), env=launcher_env,
             )
             if (clean.returncode != 0 or compiler_artifact.exists()
@@ -1725,7 +1725,7 @@ def run_check_overlay_test():
         # overlay absolute, as a person typing the command may well write them.
         buffer.write_text(area.read_text())
         mixed = subprocess.run([str(PRISMIO_EXE), "check", "src/main.psm", "--diagnostic-format=json",
-                                "--overlay", str(area), str(buffer)], cwd=root, capture_output=True, text=True)
+                                "--overlay", str(area), str(buffer)], cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if mixed.returncode != 0 or "P1075" in mixed.stderr:
             problems.append(f"a relative entry did not match the absolute overlay: {mixed.stderr.strip()[:300]}")
 
@@ -2691,7 +2691,7 @@ def run_nonlexical_extent_test():
     env = dict(os.environ)
     env["AIF_STMT_TRACE"] = "1"
     traced = subprocess.run([str(PRISMIO_EXE), "aif", str(fixture)],
-                            capture_output=True, text=True, env=env)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     extents = [(int(m.group(1)), int(m.group(2)), int(m.group(3)))
                for m in re.finditer(r"arena scope (\d+) emit \[(\d+),(\d+)\]",
                                     traced.stderr)]
@@ -3203,7 +3203,7 @@ def run_object_cache_test():
             env["PRISMIO_OBJ_CACHE_TRACE"] = "1"
             env.update(extra_env or {})
             cmd = [str(Path(PRISMIO_EXE).resolve()), "build", str(fixture), "-o", str(out)]
-            r = subprocess.run(cmd + (extra_args or []), capture_output=True, text=True, env=env)
+            r = subprocess.run(cmd + (extra_args or []), capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
             return r, (r.stdout or "") + (r.stderr or "")
 
         cold, cold_text = build()
@@ -3320,7 +3320,7 @@ def run_bootstrap_cache_key_test():
             env["PRISMIO_LLVM_DIR"] = "/fixed/llvm"
             env.pop("PRISMIO_OBJ_CACHE", None)
             r = subprocess.run(script + [key_flag, source, repo_flag, tree],
-                               capture_output=True, text=True, env=env)
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
             if r.returncode != 0:
                 problems.append(f"printing the cache key for {source} failed: "
                                 f"{(r.stderr or r.stdout).strip()[:200]}")
@@ -4149,7 +4149,7 @@ def run_loop_range_proofs_test():
         env["PRISMIO_RANGE_TRACE"] = "1"
         built = subprocess.run([str(PRISMIO_EXE), "build", str(source), "-o",
                                 str(Path(tmp) / "ranges.ll")],
-                               cwd=PROJECT_ROOT, env=env, capture_output=True, text=True)
+                               cwd=PROJECT_ROOT, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if built.returncode != 0:
             print(f"{RED}[FAIL] loop range proofs: {built.stdout} {built.stderr}{RESET}")
             return False
@@ -4265,7 +4265,7 @@ def run_range_direction_test():
         if built.returncode != 0:
             problems.append(f"build failed: {built.stdout} {built.stderr}")
         else:
-            ran = subprocess.run([str(exe)], cwd=PROJECT_ROOT, capture_output=True, text=True)
+            ran = subprocess.run([str(exe)], cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
             if ran.stdout.strip() != "012332100122210012":
                 problems.append(f"loops printed {ran.stdout.strip()!r}")
             if ran.returncode == 0:
@@ -4342,8 +4342,7 @@ def run_ownership_probes_test():
                 continue
             # Not run_command: a read of freed memory prints bytes that are not
             # UTF-8, and that has to be a failure here rather than a traceback.
-            ran = subprocess.run([str(exe)], capture_output=True, text=True,
-                                 errors="replace")
+            ran = subprocess.run([str(exe)], capture_output=True, text=True, encoding="utf-8", errors="replace")
             output = (ran.stdout or "") + (ran.stderr or "")
             if ran.returncode != 0 or want not in (ran.stdout or ""):
                 problems.append(f"{name} exited {ran.returncode} without {want!r}: "
@@ -4392,14 +4391,14 @@ def run_failure_builtins_test():
             ("exit", 7, "", "before exit"),
         )
         for mode, status, err, out in cases:
-            ran = subprocess.run([str(probe), mode], cwd=PROJECT_ROOT, capture_output=True, text=True)
+            ran = subprocess.run([str(probe), mode], cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
             if ran.returncode != status:
                 problems.append(f"{mode}: exit status {ran.returncode}, expected {status}")
             if err and err not in ran.stderr:
                 problems.append(f"{mode}: stderr {ran.stderr.strip()[:200]!r} lacks {err!r}")
             if ran.stdout.strip() != out:
                 problems.append(f"{mode}: stdout {ran.stdout.strip()!r}, expected {out!r}")
-        ran = subprocess.run([str(probe), "panic"], cwd=PROJECT_ROOT, capture_output=True, text=True)
+        ran = subprocess.run([str(probe), "panic"], cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if "failure_builtins_probe.psm:9:5" not in ran.stderr:
             problems.append(f"panic does not name line 9 column 5: {ran.stderr.strip()[:200]!r}")
 
@@ -4409,7 +4408,7 @@ def run_failure_builtins_test():
         if built.returncode != 0:
             problems.append(f"a program's own assert/exit did not build: {built.stdout} {built.stderr}")
         else:
-            ran = subprocess.run([str(owned)], cwd=PROJECT_ROOT, capture_output=True, text=True)
+            ran = subprocess.run([str(owned)], cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
             if ran.stdout.strip() != "42" or ran.returncode != 3:
                 problems.append(f"own assert/exit: stdout {ran.stdout.strip()!r}, status {ran.returncode}")
 
@@ -4465,7 +4464,7 @@ def run_scalar_optional_test():
         if built.returncode != 0:
             problems.append(f"expect probe did not build: {built.stdout} {built.stderr}")
         else:
-            ran = subprocess.run([str(probe)], cwd=PROJECT_ROOT, capture_output=True, text=True)
+            ran = subprocess.run([str(probe)], cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
             if ran.returncode != 101:
                 problems.append(f"expect(none): exit status {ran.returncode}, expected 101")
             if ran.stdout.strip() != "7":
@@ -4551,7 +4550,7 @@ def run_channel_copies_test():
             if built.returncode != 0:
                 problems.append(f"verify build of {program.name} failed: {built.stdout} {built.stderr}")
                 continue
-            ran = subprocess.run([str(exe)], cwd=PROJECT_ROOT, capture_output=True, text=True)
+            ran = subprocess.run([str(exe)], cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
             output = ran.stdout + ran.stderr
             if ran.returncode or "PASS:" not in output:
                 problems.append(f"{program.name} run: {output}")
@@ -4616,7 +4615,7 @@ def run_counted_fill_codegen_test():
             # changed the representation after the compiler had decided the
             # element disposition, which is why boxed runs leaked.
             ran = subprocess.run([str(exe)], cwd=PROJECT_ROOT,
-                                 capture_output=True, text=True)
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace")
             output = ran.stdout + ran.stderr
             if ran.returncode or "PASS:" not in output:
                 problems.append(f"run: {output}")
@@ -5405,12 +5404,12 @@ def run_target_test():
                    PRISMIO_OBJ_CACHE_TRACE="1")
         exe = TEST_DIR / ("target_cache" + (".exe" if os.name == "nt" else ""))
         host = subprocess.run([str(PRISMIO_EXE), "build", str(source),
-                              "-o", str(exe)], capture_output=True, text=True,
+                              "-o", str(exe)], capture_output=True, text=True, encoding="utf-8", errors="replace",
                               env=env)
         cross = subprocess.run(
             [str(PRISMIO_EXE), "build", str(source), "-o", str(exe),
              "--target", "wasm32-unknown-unknown"],
-            capture_output=True, text=True, env=env)
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
         cleanup_files(exe)
         cross_output = (cross.stdout or "") + (cross.stderr or "")
         if host.returncode != 0:
@@ -5484,7 +5483,7 @@ def run_target_test():
         def clang_layout(extra):
             r = subprocess.run(["clang"] + extra + ["-S", "-emit-llvm", "-x", "c",
                                                     "-", "-o", "-"],
-                               input="", capture_output=True, text=True)
+                               input="", capture_output=True, text=True, encoding="utf-8", errors="replace")
             m = re.search(r'target datalayout = "([^"]*)"', r.stdout or "")
             return m.group(1) if m else None
 
@@ -5675,7 +5674,7 @@ def run_incremental_manifest_test():
     script = PROJECT_ROOT / "tools" / "incremental_manifest.py"
     r = subprocess.run([sys.executable, str(script),
                         "--compiler", str(Path(PRISMIO_EXE).resolve())],
-                       capture_output=True, text=True, cwd=str(PROJECT_ROOT))
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT))
     said = (r.stdout or "") + (r.stderr or "")
     if r.returncode != 0 or "OK" not in said:
         print(f"{RED}[FAIL] incremental manifest{RESET}")
@@ -5952,7 +5951,7 @@ def run_runtime_library_test():
         # failed there against tools/package.py.
         package += ["--compiler", str(compiler), "--out", str(dist)]
 
-        packaged = subprocess.run(package, capture_output=True, text=True,
+        packaged = subprocess.run(package, capture_output=True, text=True, encoding="utf-8", errors="replace",
                                   cwd=str(PROJECT_ROOT))
         installed = dist / "bin" / ("prismio.exe" if os.name == "nt" else "prismio")
         lib = dist / "lib"
@@ -5987,7 +5986,7 @@ def run_runtime_library_test():
             env = dict(os.environ, PRISMIO_OBJ_CACHE_DIR=str(cache),
                        PRISMIO_OBJ_CACHE_TRACE="1")
             return subprocess.run([str(compiler or installed), "build", str(source or probe)] + args,
-                                  capture_output=True, text=True, cwd=str(cwd),
+                                  capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(cwd),
                                   env=env)
 
         # One line per toolchain source the fallback compiled -- hit, miss or
@@ -6201,7 +6200,7 @@ def run_runtime_library_test():
             # check, so the two are told apart here rather than by its exit code.
             separation = "skipped -- no nm or llvm-nm on PATH"
         else:
-            ran = subprocess.run(command, capture_output=True, text=True,
+            ran = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
                                  cwd=str(PROJECT_ROOT))
             said = (ran.stdout or "") + (ran.stderr or "")
             if ran.returncode != 0:
@@ -7438,19 +7437,27 @@ def run_aif_verify_test():
         # is a copy-on-keep landing; a rise is a keeper the guards stopped seeing.
         # 18 since 2026-09-30 (was 22): four of the kept Strings were declined
         # only because a literal could reach the same place.
-        "test_185_view_outlives_binding": 18,
+        # 13 since 2026-10-01 (was 18): a String view pushed into a Vec<String> is
+        # now copied at the push (fatMarkedAsView), the copy-on-keep this comment
+        # names, so the Vec owns the copy and frees it. The rest are views of a
+        # binding's own storage that are kept, and still leak by design.
+        "test_185_view_outlives_binding": 13,
         # The same, pushed with no binding in between, including a temporary the
-        # hoist gave one. Each Vec may be handed the literal fallback, so neither
-        # frees its elements.
-        "test_186_view_pushed_directly": 18,
+        # hoist gave one. 18 until the push copied the view (2026-10-01): each Vec
+        # was declined for a view that might be a literal, so neither freed its
+        # elements; a copy is an owned block and is freed. A rise is that copy
+        # no longer being made, and the violations would follow.
+        "test_186_view_pushed_directly": 0,
         # Copying a Vec<String>: take, skip, concat, reversed, sorted, toVec, clone,
         # filter, extend and a Map's keys. 273 leaked until a fresh String stored in
         # two containers stopped counting as one value held twice (A-CONTAIN).
         "test_255_string_vec_copies": 0,
         # The shape that rule must not reach: an element read pushed into two
-        # containers is one block held three times. 0 violations is the guard; the
-        # 4 are the safe direction, and a drop to 0 would be a double free.
-        "test_256_string_view_pushed_twice": 4,
+        # containers is one block held three times. Codegen copies it into a block
+        # of its own at the push (fatMarkedAsView), and the analysis counts the
+        # store as that copy; 0 violations is the guard, and a leak here is the two
+        # sides disagreeing about whether the copy is made.
+        "test_256_string_view_pushed_twice": 0,
     }
 
     max_allocations = {
@@ -7779,7 +7786,7 @@ def run_inline_runtime_default_test():
 
             built = subprocess.run(
                 [str(PRISMIO_EXE), "build", str(fixture), "-o", str(exe)],
-                capture_output=True, text=True, env=env)
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
             output = f"{built.stdout}\n{built.stderr}"
             if built.returncode != 0 or not exe.is_file():
                 print(f"{RED}[FAIL] inline runtime {label}: build failed{RESET}")
@@ -7795,7 +7802,7 @@ def run_inline_runtime_default_test():
                 print(output[:1200])
                 return False
 
-            ran = subprocess.run([str(exe)], capture_output=True, text=True)
+            ran = subprocess.run([str(exe)], capture_output=True, text=True, encoding="utf-8", errors="replace")
             if ran.returncode != 0 or "PASS: list" not in ran.stdout:
                 print(f"{RED}[FAIL] inline runtime {label}: compiled program failed{RESET}")
                 print(f"{ran.stdout}\n{ran.stderr}"[:1200])
@@ -8052,7 +8059,7 @@ def run_byte_loop_vectorise_test():
         env["PRISMIO_LLVM_ARGS"] = ("-print-after=loop-vectorize "
                                     "-filter-print-funcs=sumBytes__String,main")
         opt = subprocess.run([str(PRISMIO_EXE), "build", str(src), "-o", str(exe)],
-                             capture_output=True, text=True, errors="replace", env=env)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
         dump = (opt.stdout or "") + (opt.stderr or "")
         if opt.returncode != 0:
             problems.append(f"optimised build failed: {elide_middle(dump)}")
@@ -8153,7 +8160,7 @@ def run_identifier_security_test():
     with tempfile.TemporaryDirectory(prefix="prismio-idsec-") as td:
         exe = Path(td) / ("probe" + (".exe" if os.name == "nt" else ""))
         built = subprocess.run([str(PRISMIO_EXE), "build", str(probe), "-o", str(exe)],
-                               capture_output=True, text=True, errors="replace")
+                               capture_output=True, text=True, encoding="utf-8", errors="replace")
         text = (built.stdout or "") + (built.stderr or "")
         if built.returncode != 0:
             problems.append(f"the probe did not build; warnings must not fail it: {elide_middle(text)}")
@@ -8170,7 +8177,7 @@ def run_identifier_security_test():
 
     def json_diagnostics(src):
         r = subprocess.run([str(PRISMIO_EXE), "check", str(src), "--diagnostic-format=json"],
-                           capture_output=True, text=True, errors="replace")
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
         records = []
         for line in ((r.stdout or "") + (r.stderr or "")).splitlines():
             if line.startswith("{"):
@@ -8229,7 +8236,7 @@ def run_task_release_test():
         ll = Path(td) / "task.ll"
         built = subprocess.run(
             [str(PRISMIO_EXE), "build", str(fixture), "-o", str(ll)],
-            capture_output=True, text=True)
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
         if built.returncode != 0 or not ll.is_file():
             print(f"{RED}[FAIL] task release: build failed{RESET}")
             print(f"{built.stdout}\n{built.stderr}"[:1200])
@@ -8361,13 +8368,13 @@ def run_runtime_object_from_ir_test():
 
             built = subprocess.run(
                 [str(PRISMIO_EXE), "build", str(fixture), "-o", str(exe)],
-                capture_output=True, text=True, env=env)
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
             output = f"{built.stdout}\n{built.stderr}"
             if built.returncode != 0 or not exe.is_file():
                 print(f"{RED}[FAIL] runtime object {label}: build failed{RESET}")
                 print(output[:1200])
                 return None
-            ran = subprocess.run([str(exe)], capture_output=True, text=True)
+            ran = subprocess.run([str(exe)], capture_output=True, text=True, encoding="utf-8", errors="replace")
             if ran.returncode != 0 or "PASS: list" not in ran.stdout:
                 print(f"{RED}[FAIL] runtime object {label}: compiled program failed{RESET}")
                 print(f"{ran.stdout}\n{ran.stderr}"[:1200])
@@ -8550,7 +8557,7 @@ def run_curated_closure_test():
             [clang, "-O2", "-Wno-deprecated-declarations",
              "-I", str(PROJECT_ROOT / "runtime"),
              "-S", "-emit-llvm", str(runtime_c), "-o", str(ll)],
-            capture_output=True, text=True)
+            capture_output=True, text=True, encoding="utf-8", errors="replace")
         if proc.returncode != 0:
             print(f"{RED}[FAIL] curated closure: could not compile lang_runtime.c to IR{RESET}")
             print(proc.stderr[:600])
@@ -8644,7 +8651,7 @@ def run_plib_triple_sections(compiler_source, work, env, llvm_dis, problems):
     target = "x86_64-apple-macos"
     sdk = ""
     if sys.platform == "darwin" and shutil.which("xcrun"):
-        probe = subprocess.run(["xcrun", "--show-sdk-path"], capture_output=True, text=True)
+        probe = subprocess.run(["xcrun", "--show-sdk-path"], capture_output=True, text=True, encoding="utf-8", errors="replace")
         sdk = probe.stdout.strip() if probe.returncode == 0 else ""
     if not sdk:
         return "skipped: no second-architecture SDK on this host"
@@ -8654,7 +8661,7 @@ def run_plib_triple_sections(compiler_source, work, env, llvm_dis, problems):
         [sys.executable, str(PROJECT_ROOT / "tools" / "package.py"),
          "--compiler", str(compiler_source), "--out", str(dist),
          "--target", target, "--sysroot", f"{target}={sdk}"],
-        capture_output=True, text=True, cwd=str(PROJECT_ROOT), env=env)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT), env=env)
     if packaged.returncode != 0:
         problems.append(f"packaging with --target {target} failed: "
                         + (packaged.stderr or packaged.stdout).strip()[-300:])
@@ -8675,7 +8682,7 @@ def run_plib_triple_sections(compiler_source, work, env, llvm_dis, problems):
         bitcode = work / "io-cross.bc"
         bitcode.write_bytes(sections[1][1])
         shown = subprocess.run([str(llvm_dis), str(bitcode), "-o", "-"],
-                               capture_output=True, text=True)
+                               capture_output=True, text=True, encoding="utf-8", errors="replace")
         if not re.search(r'^target triple = "x86_64-', shown.stdout, re.M):
             problems.append(f"io.plib's {target} section is not x86_64 bitcode")
 
@@ -8687,7 +8694,7 @@ def run_plib_triple_sections(compiler_source, work, env, llvm_dis, problems):
                      '    return 0\n}\n')
     built = subprocess.run([str(compiler), "build", str(asker), "--target", target,
                             "--sysroot", sdk, "-o", str(work / "cross-asker")],
-                           capture_output=True, text=True, cwd=str(work), env=env)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(work), env=env)
     said = (built.stdout or "") + (built.stderr or "")
     if built.returncode != 0:
         problems.append(f"a {target} build against its packaged sections failed: "
@@ -8696,7 +8703,7 @@ def run_plib_triple_sections(compiler_source, work, env, llvm_dis, problems):
         problems.append(f"a {target} build still merged bitcode for another target: "
                         + said.strip()[-300:])
     elif "x86_64" not in subprocess.run(["file", str(work / "cross-asker")],
-                                        capture_output=True, text=True).stdout:
+                                        capture_output=True, text=True, encoding="utf-8", errors="replace").stdout:
         problems.append(f"the {target} build did not produce an x86_64 binary")
 
     # Runtime bitcode for a triple the PLIBs were not packaged for: the build
@@ -8706,7 +8713,7 @@ def run_plib_triple_sections(compiler_source, work, env, llvm_dis, problems):
                     dist / "lib" / "runtime" / unpackaged)
     refused = subprocess.run([str(compiler), "build", str(asker), "--target", unpackaged,
                               "--sysroot", sdk, "-o", str(work / "refused")],
-                             capture_output=True, text=True, cwd=str(work), env=env)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(work), env=env)
     said = (refused.stdout or "") + (refused.stderr or "")
     if refused.returncode == 0 or \
             f"Missing standard-library bitcode for {unpackaged}" not in said:
@@ -8725,7 +8732,7 @@ def run_module_artifact_test():
         package = subprocess.run(
             [sys.executable, str(PROJECT_ROOT / "tools" / "package.py"),
              "--compiler", str(Path(PRISMIO_EXE).resolve()), "--out", str(dist)],
-            capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(PROJECT_ROOT),
             env=dict(os.environ, PRISMIO_INTERNAL_HOSTED="1"))
         if package.returncode != 0:
             print(f"{RED}[FAIL] module artifacts: packaging failed{RESET}")
@@ -8771,7 +8778,7 @@ def run_module_artifact_test():
         def build(output, extra=None):
             return subprocess.run(
                 [str(compiler), "build", str(source), *(extra or []),
-                 "-o", str(output)], capture_output=True, text=True,
+                 "-o", str(output)], capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(wd), env=env)
 
         # The allocation contract must be semantic LLVM IR, not a string that
@@ -8803,7 +8810,7 @@ def run_module_artifact_test():
             runtime_ir = wd / "lang_runtime.ll"
             disassembled = subprocess.run(
                 [str(llvm_dis), str(runtime / "lang_runtime.bc"), "-o", str(runtime_ir)],
-                capture_output=True, text=True)
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
             runtime_text = runtime_ir.read_text() if runtime_ir.exists() else ""
             if (disassembled.returncode != 0
                     or not re.search(r'^define[^@]*@list_new_inline\(', runtime_text, re.M)
@@ -8813,7 +8820,7 @@ def run_module_artifact_test():
         for name, extra in (("normal", []), ("verify", ["--verify"])):
             executable = wd / (name + (".exe" if os.name == "nt" else ""))
             made = build(executable, extra)
-            ran = (subprocess.run([str(executable)], capture_output=True, text=True)
+            ran = (subprocess.run([str(executable)], capture_output=True, text=True, encoding="utf-8", errors="replace")
                    if executable.exists() else None)
             if (made.returncode != 0 or ran is None or ran.returncode != 0
                     or ran.stdout.strip() != "module-wise"):
@@ -8826,7 +8833,7 @@ def run_module_artifact_test():
         normal_exe = wd / ("normal" + (".exe" if os.name == "nt" else ""))
         if nm and normal_exe.exists():
             symbols = subprocess.run(
-                [nm, str(normal_exe)], capture_output=True, text=True).stdout
+                [nm, str(normal_exe)], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
             if "data_view_to_list" in symbols:
                 problems.append("an unreachable runtime function survived whole-program pruning")
 
@@ -8851,7 +8858,7 @@ def run_module_artifact_test():
 
         separation = subprocess.run(
             [sys.executable, str(PROJECT_ROOT / "tools" / "verify_separation.py"),
-             "--dist", str(dist)], capture_output=True, text=True,
+             "--dist", str(dist)], capture_output=True, text=True, encoding="utf-8", errors="replace",
             cwd=str(PROJECT_ROOT), env=env)
         if separation.returncode != 0:
             problems.append("verify_separation.py rejected the packaged artifacts")
@@ -8872,8 +8879,8 @@ def run_module_artifact_test():
                          '    return 0\n}\n')
         asker_exe = wd / ("asker" + (".exe" if os.name == "nt" else ""))
         asked = subprocess.run([str(compiler), "build", str(asker), "-o", str(asker_exe)],
-                               capture_output=True, text=True, cwd=str(wd), env=env)
-        answered = (subprocess.run([str(asker_exe)], capture_output=True, text=True)
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(wd), env=env)
+        answered = (subprocess.run([str(asker_exe)], capture_output=True, text=True, encoding="utf-8", errors="replace")
                     if asker_exe.exists() else None)
         named = (answered.stdout or "").split() if answered else []
         if asked.returncode != 0 or answered is None or len(named) != 1:
@@ -8884,7 +8891,7 @@ def run_module_artifact_test():
         asker_ll = wd / "asker-windows.ll"
         cross = subprocess.run([str(compiler), "build", str(asker), "--target",
                                 "x86_64-pc-windows-msvc", "-o", str(asker_ll)],
-                               capture_output=True, text=True, cwd=str(wd), env=env)
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(wd), env=env)
         body = None
         if cross.returncode == 0 and asker_ll.exists():
             body = re.search(r'define i1 @"?isWindows__[^\n]*\{(.*?)\n\}',
@@ -8912,8 +8919,8 @@ def run_module_artifact_test():
                           '    return 0\n}\n')
         sorter_exe = wd / ("sorter" + (".exe" if os.name == "nt" else ""))
         sorted_build = subprocess.run([str(compiler), "build", str(sorter), "-o", str(sorter_exe)],
-                                      capture_output=True, text=True, cwd=str(wd), env=env)
-        sorted_run = (subprocess.run([str(sorter_exe)], capture_output=True, text=True)
+                                      capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(wd), env=env)
+        sorted_run = (subprocess.run([str(sorter_exe)], capture_output=True, text=True, encoding="utf-8", errors="replace")
                       if sorter_exe.exists() else None)
         if (sorted_build.returncode != 0 or sorted_run is None
                 or (sorted_run.stdout or "").strip() != "sorted"):
@@ -8959,8 +8966,8 @@ def run_module_artifact_test():
         crossing_exe = wd / ("crossing" + (".exe" if os.name == "nt" else ""))
         crossed_build = subprocess.run([str(compiler), "build", str(crossing),
                                         "-o", str(crossing_exe)],
-                                       capture_output=True, text=True, cwd=str(wd), env=env)
-        crossed = (subprocess.run([str(crossing_exe)], capture_output=True, text=True)
+                                       capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(wd), env=env)
+        crossed = (subprocess.run([str(crossing_exe)], capture_output=True, text=True, encoding="utf-8", errors="replace")
                    if crossing_exe.exists() else None)
         if (crossed_build.returncode != 0 or crossed is None
                 or (crossed.stdout or "").strip() != "status=0 out=piped"):
@@ -9175,4 +9182,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # The same reason tools/run_suite.py passes `-X utf8`, for a direct run.
+    if sys.platform == "win32" and not sys.flags.utf8_mode:
+        sys.exit(subprocess.call([sys.executable, "-X", "utf8"] + sys.argv))
     main()

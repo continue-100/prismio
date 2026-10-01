@@ -102,7 +102,11 @@ def main() -> int:
 
         print(f"suite: testing a copy of {shown_root(source)}")
         result = subprocess.run(
-            [sys.executable, "-u", str(REPO / "tests" / "test_runner.py"),
+            # -X utf8: the compiler and every program under test write UTF-8, and
+            # on Windows Python otherwise reads and writes with the ANSI code page,
+            # so a diagnostic with a combining mark read as "no diagnostic" and a
+            # test that wrote U+017F crashed the harness.
+            [sys.executable, "-X", "utf8", "-u", str(REPO / "tests" / "test_runner.py"),
              "--compiler", str(copy), *forwarded],
             cwd=str(REPO),
         )

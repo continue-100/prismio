@@ -1309,6 +1309,18 @@ private fn fatWithLengthFlag(raw: String, len: String, flag: String) -> String {
     return ir_get_temp_name(ir_insert_value("struct:prismio.str", withPtr, word, "i64", 1))
 }
 
+// The pair with the view class set, so whatever stores it copies it out. An
+// inline pair is left alone: bits 32 to 62 of its word are string bytes, and an
+// inline String owns no block to share in any case.
+private fn fatMarkedAsView(pair: String) -> String {
+    let word = ir_get_temp_name(ir_extract_value("struct:prismio.str", pair, 1))
+    let inlineBit = ir_get_temp_name(ir_and("i64", word, "2147483648"))
+    let isInline = ir_get_temp_name(ir_icmp_ne("i64", inlineBit, "0"))
+    let tag = ir_get_temp_name(ir_select("i64", isInline, "0", "4294967296"))
+    let marked = ir_get_temp_name(ir_or("i64", word, tag))
+    return ir_get_temp_name(ir_insert_value("struct:prismio.str", pair, marked, "i64", 1))
+}
+
 private fn callIsPrismioFn(funcName: String) -> Bool {
     let n = ir_decl_count(funcName)
     for i in 0..<n {
@@ -5003,6 +5015,14 @@ private fn generateCall(expr: ASTNode) -> String {
                 let mut element = argVal.clone()
                 if (nodeIsStringLiteralExpr(argPtr)) {
                     element = generateOwnedStringLiteral(element, argPtr)
+                } else if (aif_arg_copies_view(node_to_ptr(expr), argIndex) == 1) {
+                    // An element read pushed as it is would put the block it read
+                    // under a second owner, and both containers release theirs.
+                    // Marked a view, it is copied into a block of its own on the
+                    // way in -- as a `slice` already is -- by list_push_str's slow
+                    // path, or by str_own for a boxed list. The analysis counted
+                    // this store as that copy (aif_con_retain_in_string).
+                    element = fatMarkedAsView(element)
                 }
                 if (stringListOp) {
                     // A `List<String>` keeps the pair itself; list_push_str.
