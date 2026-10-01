@@ -158,14 +158,17 @@ processes and the environment, time, math, strings, and collections.
 
 ## Building from source
 
-Requirements: a C toolchain (Xcode Command Line Tools, `build-essential`, or Visual
-Studio's C++ tools) and Python 3.8 or later. LLVM is pinned and downloaded by the
-setup script; nothing on the system is used.
+Requirements: Python 3.8 or later, which is the one thing you install yourself, and a
+C toolchain (Xcode Command Line Tools, `build-essential`, or Visual Studio's C++
+tools). `tools/setup.py` checks the toolchain by compiling and linking a program with
+it, says exactly what is missing, and can install it (`--install-system-deps`, which
+asks first). LLVM is pinned and downloaded by the same script; nothing on the system
+is used.
 
 ```bash
 git clone https://github.com/prismio-lang/prismio.git
 cd prismio
-python3 tools/setup_llvm.py                              # LLVM 23.1.1 into third_party/llvm
+python3 tools/setup.py                                   # check this machine, then LLVM 23.1.1 into third_party/llvm
 tools/bootstrap.sh --seed --out build/gen0               # first compiler, from the committed seed
 tools/bootstrap.sh --compiler build/gen0 --out build/gen1
 python3 tools/package.py --compiler build/gen1 --out build/dist

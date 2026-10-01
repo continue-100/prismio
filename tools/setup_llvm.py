@@ -152,6 +152,27 @@ def sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
+def trust_failure(err: BaseException) -> bool:
+    return "CERTIFICATE_VERIFY_FAILED" in str(err)
+
+
+def powershell_download(url: str, dest: Path) -> bool:
+    """Fetch `url` with Windows' own TLS stack; True when the file arrived.
+
+    A fresh Windows machine has not met every root CA yet -- it installs them on
+    demand, inside its own stack -- so Python's reading of the certificate store
+    fails (`CERTIFICATE_VERIFY_FAILED`) for a host PowerShell reaches without a
+    word. Only used after that failure, and only for downloads whose content is
+    checked afterwards (the pinned SHA-256, or the installer's signature).
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    script = ("$ProgressPreference='SilentlyContinue'; "
+              "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
+              f"Invoke-WebRequest -Uri '{url}' -OutFile '{dest}' -UseBasicParsing")
+    result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script])
+    return result.returncode == 0 and dest.is_file()
+
+
 def download(url: str, dest: Path, sha256: str) -> None:
     """Fetch `url` to `dest`, resuming a partial file, and verify it.
 
@@ -192,6 +213,13 @@ def download(url: str, dest: Path, sha256: str) -> None:
             break
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
             print()
+            if sys.platform == "win32" and trust_failure(e):
+                log("  Python does not trust this machine's certificate for the host; "
+                    "downloading with Windows' own stack (the SHA-256 still decides)")
+                dest.unlink(missing_ok=True)
+                if powershell_download(url, dest):
+                    break
+                raise SystemExit(f"Could not download {url} with PowerShell either")
             if isinstance(e, urllib.error.HTTPError) and e.code == 416:
                 break  # nothing left to fetch; the digest decides
             if isinstance(e, urllib.error.HTTPError) and e.code < 500:
