@@ -6593,7 +6593,7 @@ source_filename = "prismio_generated"
 @.arr.3 = private unnamed_addr constant [326 x i32] [i32 65, i32 90, i32 97, i32 122, i32 170, i32 170, i32 181, i32 181, i32 186, i32 186, i32 192, i32 214, i32 216, i32 246, i32 248, i32 442, i32 444, i32 447, i32 452, i32 659, i32 662, i32 696, i32 704, i32 705, i32 736, i32 740, i32 837, i32 837, i32 880, i32 883, i32 886, i32 887, i32 890, i32 893, i32 895, i32 895, i32 902, i32 902, i32 904, i32 906, i32 908, i32 908, i32 910, i32 929, i32 931, i32 1013, i32 1015, i32 1153, i32 1162, i32 1327, i32 1329, i32 1366, i32 1368, i32 1368, i32 1376, i32 1416, i32 1419, i32 1420, i32 4256, i32 4293, i32 4295, i32 4295, i32 4301, i32 4301, i32 4304, i32 4346, i32 4348, i32 4351, i32 5024, i32 5109, i32 5112, i32 5117, i32 7296, i32 7306, i32 7312, i32 7354, i32 7357, i32 7359, i32 7424, i32 7615, i32 7680, i32 7957, i32 7960, i32 7965, i32 7968, i32 8005, i32 8008, i32 8013, i32 8016, i32 8023, i32 8025, i32 8025, i32 8027, i32 8027, i32 8029, i32 8029, i32 8031, i32 8061, i32 8064, i32 8116, i32 8118, i32 8124, i32 8126, i32 8126, i32 8130, i32 8132, i32 8134, i32 8140, i32 8144, i32 8147, i32 8150, i32 8155, i32 8160, i32 8172, i32 8178, i32 8180, i32 8182, i32 8188, i32 8305, i32 8305, i32 8319, i32 8319, i32 8336, i32 8351, i32 8450, i32 8450, i32 8455, i32 8455, i32 8458, i32 8467, i32 8469, i32 8469, i32 8473, i32 8477, i32 8484, i32 8484, i32 8486, i32 8486, i32 8488, i32 8488, i32 8490, i32 8493, i32 8495, i32 8500, i32 8505, i32 8505, i32 8508, i32 8511, i32 8517, i32 8521, i32 8526, i32 8526, i32 8544, i32 8575, i32 8579, i32 8580, i32 9398, i32 9449, i32 11264, i32 11492, i32 11499, i32 11502, i32 11506, i32 11507, i32 11520, i32 11557, i32 11559, i32 11559, i32 11565, i32 11565, i32 42560, i32 42605, i32 42624, i32 42653, i32 42786, i32 42887, i32 42891, i32 42894, i32 42896, i32 42973, i32 42978, i32 42978, i32 42993, i32 42998, i32 43000, i32 43002, i32 43824, i32 43866, i32 43868, i32 43881, i32 43884, i32 43885, i32 43888, i32 43967, i32 64256, i32 64262, i32 64275, i32 64279, i32 65313, i32 65338, i32 65345, i32 65370, i32 66560, i32 66639, i32 66736, i32 66771, i32 66776, i32 66811, i32 66928, i32 66938, i32 66940, i32 66954, i32 66956, i32 66962, i32 66964, i32 66965, i32 66967, i32 66977, i32 66979, i32 66993, i32 66995, i32 67001, i32 67003, i32 67004, i32 67456, i32 67456, i32 67459, i32 67461, i32 67463, i32 67504, i32 67506, i32 67519, i32 68736, i32 68786, i32 68800, i32 68850, i32 68944, i32 68965, i32 68976, i32 68997, i32 71840, i32 71903, i32 93760, i32 93823, i32 93856, i32 93880, i32 93883, i32 93907, i32 119808, i32 119892, i32 119894, i32 119964, i32 119966, i32 119967, i32 119970, i32 119970, i32 119973, i32 119974, i32 119977, i32 119980, i32 119982, i32 119993, i32 119995, i32 119995, i32 119997, i32 120003, i32 120005, i32 120069, i32 120071, i32 120074, i32 120077, i32 120084, i32 120086, i32 120092, i32 120094, i32 120121, i32 120123, i32 120126, i32 120128, i32 120132, i32 120134, i32 120134, i32 120138, i32 120144, i32 120146, i32 120486, i32 120488, i32 120512, i32 120514, i32 120538, i32 120540, i32 120570, i32 120572, i32 120596, i32 120598, i32 120628, i32 120630, i32 120654, i32 120656, i32 120686, i32 120688, i32 120712, i32 120714, i32 120744, i32 120746, i32 120770, i32 120772, i32 120779, i32 122624, i32 122633, i32 122635, i32 122751, i32 122768, i32 122774, i32 122829, i32 122879, i32 122928, i32 122989, i32 125184, i32 125251, i32 127280, i32 127305, i32 127312, i32 127337, i32 127344, i32 127369]
 @.arr.4 = private unnamed_addr constant [936 x i32] [i32 39, i32 39, i32 46, i32 46, i32 58, i32 58, i32 94, i32 94, i32 96, i32 96, i32 168, i32 168, i32 173, i32 173, i32 175, i32 175, i32 180, i32 180, i32 183, i32 184, i32 688, i32 879, i32 884, i32 885, i32 890, i32 890, i32 900, i32 901, i32 903, i32 903, i32 1155, i32 1161, i32 1368, i32 1369, i32 1375, i32 1375, i32 1419, i32 1420, i32 1425, i32 1469, i32 1471, i32 1471, i32 1473, i32 1474, i32 1476, i32 1477, i32 1479, i32 1481, i32 1524, i32 1524, i32 1536, i32 1541, i32 1552, i32 1562, i32 1564, i32 1564, i32 1600, i32 1600, i32 1611, i32 1631, i32 1648, i32 1648, i32 1750, i32 1757, i32 1759, i32 1768, i32 1770, i32 1773, i32 1807, i32 1807, i32 1809, i32 1809, i32 1840, i32 1866, i32 1958, i32 1968, i32 2027, i32 2037, i32 2042, i32 2042, i32 2045, i32 2045, i32 2070, i32 2093, i32 2137, i32 2139, i32 2184, i32 2184, i32 2192, i32 2193, i32 2199, i32 2207, i32 2249, i32 2306, i32 2362, i32 2362, i32 2364, i32 2364, i32 2369, i32 2376, i32 2381, i32 2381, i32 2385, i32 2391, i32 2402, i32 2403, i32 2417, i32 2417, i32 2433, i32 2433, i32 2492, i32 2492, i32 2497, i32 2500, i32 2509, i32 2509, i32 2530, i32 2531, i32 2558, i32 2558, i32 2561, i32 2562, i32 2620, i32 2620, i32 2625, i32 2626, i32 2631, i32 2632, i32 2635, i32 2637, i32 2641, i32 2641, i32 2672, i32 2673, i32 2677, i32 2677, i32 2689, i32 2690, i32 2748, i32 2748, i32 2753, i32 2757, i32 2759, i32 2760, i32 2765, i32 2765, i32 2786, i32 2787, i32 2810, i32 2815, i32 2817, i32 2817, i32 2876, i32 2876, i32 2879, i32 2879, i32 2881, i32 2884, i32 2893, i32 2893, i32 2899, i32 2902, i32 2914, i32 2915, i32 2946, i32 2946, i32 3008, i32 3008, i32 3021, i32 3021, i32 3072, i32 3072, i32 3076, i32 3076, i32 3132, i32 3132, i32 3134, i32 3136, i32 3142, i32 3144, i32 3146, i32 3149, i32 3157, i32 3158, i32 3170, i32 3171, i32 3201, i32 3201, i32 3260, i32 3260, i32 3263, i32 3263, i32 3270, i32 3270, i32 3276, i32 3277, i32 3298, i32 3299, i32 3328, i32 3329, i32 3387, i32 3388, i32 3393, i32 3396, i32 3405, i32 3405, i32 3426, i32 3427, i32 3457, i32 3457, i32 3530, i32 3530, i32 3538, i32 3540, i32 3542, i32 3542, i32 3633, i32 3633, i32 3636, i32 3642, i32 3654, i32 3662, i32 3761, i32 3761, i32 3764, i32 3772, i32 3782, i32 3782, i32 3784, i32 3790, i32 3864, i32 3865, i32 3893, i32 3893, i32 3895, i32 3895, i32 3897, i32 3897, i32 3953, i32 3966, i32 3968, i32 3972, i32 3974, i32 3975, i32 3981, i32 3991, i32 3993, i32 4028, i32 4038, i32 4038, i32 4141, i32 4144, i32 4146, i32 4151, i32 4153, i32 4154, i32 4157, i32 4158, i32 4184, i32 4185, i32 4190, i32 4192, i32 4209, i32 4212, i32 4226, i32 4226, i32 4229, i32 4230, i32 4237, i32 4237, i32 4253, i32 4253, i32 4348, i32 4348, i32 4957, i32 4959, i32 5906, i32 5908, i32 5938, i32 5939, i32 5970, i32 5971, i32 6002, i32 6003, i32 6068, i32 6069, i32 6071, i32 6077, i32 6086, i32 6086, i32 6089, i32 6099, i32 6103, i32 6103, i32 6109, i32 6109, i32 6155, i32 6159, i32 6211, i32 6211, i32 6277, i32 6278, i32 6313, i32 6313, i32 6432, i32 6434, i32 6439, i32 6440, i32 6450, i32 6450, i32 6457, i32 6459, i32 6679, i32 6680, i32 6683, i32 6683, i32 6742, i32 6742, i32 6744, i32 6750, i32 6752, i32 6752, i32 6754, i32 6754, i32 6757, i32 6764, i32 6771, i32 6780, i32 6783, i32 6783, i32 6823, i32 6823, i32 6832, i32 6896, i32 6912, i32 6915, i32 6964, i32 6964, i32 6966, i32 6970, i32 6972, i32 6972, i32 6978, i32 6978, i32 7019, i32 7027, i32 7040, i32 7041, i32 7074, i32 7077, i32 7080, i32 7081, i32 7083, i32 7085, i32 7142, i32 7142, i32 7144, i32 7145, i32 7149, i32 7149, i32 7151, i32 7153, i32 7212, i32 7219, i32 7222, i32 7223, i32 7288, i32 7293, i32 7376, i32 7378, i32 7380, i32 7392, i32 7394, i32 7400, i32 7405, i32 7405, i32 7412, i32 7412, i32 7416, i32 7417, i32 7468, i32 7530, i32 7544, i32 7544, i32 7579, i32 7679, i32 8125, i32 8125, i32 8127, i32 8129, i32 8141, i32 8143, i32 8157, i32 8159, i32 8173, i32 8175, i32 8189, i32 8190, i32 8203, i32 8207, i32 8216, i32 8217, i32 8228, i32 8228, i32 8231, i32 8231, i32 8234, i32 8238, i32 8288, i32 8292, i32 8294, i32 8303, i32 8305, i32 8305, i32 8319, i32 8319, i32 8335, i32 8351, i32 8400, i32 8432, i32 11388, i32 11389, i32 11503, i32 11505, i32 11631, i32 11631, i32 11647, i32 11647, i32 11744, i32 11775, i32 11823, i32 11823, i32 12293, i32 12293, i32 12330, i32 12333, i32 12337, i32 12341, i32 12347, i32 12347, i32 12441, i32 12446, i32 12540, i32 12542, i32 40981, i32 40981, i32 42232, i32 42237, i32 42508, i32 42508, i32 42607, i32 42610, i32 42612, i32 42621, i32 42623, i32 42623, i32 42652, i32 42655, i32 42736, i32 42737, i32 42752, i32 42785, i32 42864, i32 42864, i32 42888, i32 42890, i32 42993, i32 42996, i32 43000, i32 43001, i32 43010, i32 43010, i32 43014, i32 43014, i32 43019, i32 43019, i32 43045, i32 43046, i32 43052, i32 43052, i32 43204, i32 43205, i32 43232, i32 43249, i32 43263, i32 43263, i32 43302, i32 43309, i32 43335, i32 43345, i32 43392, i32 43394, i32 43443, i32 43443, i32 43446, i32 43449, i32 43452, i32 43453, i32 43471, i32 43471, i32 43493, i32 43494, i32 43561, i32 43566, i32 43569, i32 43570, i32 43573, i32 43574, i32 43587, i32 43587, i32 43596, i32 43596, i32 43632, i32 43632, i32 43644, i32 43644, i32 43696, i32 43696, i32 43698, i32 43700, i32 43703, i32 43704, i32 43710, i32 43711, i32 43713, i32 43713, i32 43741, i32 43741, i32 43756, i32 43757, i32 43763, i32 43764, i32 43766, i32 43766, i32 43867, i32 43871, i32 43881, i32 43883, i32 44005, i32 44005, i32 44008, i32 44008, i32 44013, i32 44013, i32 64286, i32 64286, i32 64434, i32 64450, i32 65024, i32 65039, i32 65043, i32 65043, i32 65056, i32 65071, i32 65106, i32 65106, i32 65109, i32 65109, i32 65279, i32 65279, i32 65287, i32 65287, i32 65294, i32 65294, i32 65306, i32 65306, i32 65342, i32 65342, i32 65344, i32 65344, i32 65392, i32 65392, i32 65438, i32 65439, i32 65507, i32 65507, i32 65529, i32 65531, i32 66045, i32 66045, i32 66272, i32 66272, i32 66422, i32 66426, i32 67456, i32 67461, i32 67463, i32 67504, i32 67506, i32 67519, i32 68097, i32 68099, i32 68101, i32 68102, i32 68108, i32 68111, i32 68152, i32 68154, i32 68159, i32 68159, i32 68325, i32 68326, i32 68900, i32 68903, i32 68942, i32 68942, i32 68969, i32 68973, i32 68975, i32 68975, i32 69291, i32 69292, i32 69317, i32 69317, i32 69321, i32 69327, i32 69360, i32 69375, i32 69446, i32 69456, i32 69506, i32 69509, i32 69633, i32 69633, i32 69688, i32 69702, i32 69744, i32 69744, i32 69747, i32 69748, i32 69759, i32 69761, i32 69811, i32 69814, i32 69817, i32 69818, i32 69821, i32 69821, i32 69826, i32 69826, i32 69837, i32 69837, i32 69888, i32 69890, i32 69927, i32 69931, i32 69933, i32 69940, i32 70003, i32 70003, i32 70016, i32 70017, i32 70070, i32 70078, i32 70089, i32 70092, i32 70095, i32 70095, i32 70191, i32 70193, i32 70196, i32 70196, i32 70198, i32 70199, i32 70206, i32 70206, i32 70209, i32 70209, i32 70367, i32 70367, i32 70371, i32 70378, i32 70400, i32 70401, i32 70459, i32 70460, i32 70464, i32 70464, i32 70502, i32 70508, i32 70512, i32 70516, i32 70587, i32 70592, i32 70606, i32 70606, i32 70608, i32 70608, i32 70610, i32 70610, i32 70625, i32 70626, i32 70712, i32 70719, i32 70722, i32 70724, i32 70726, i32 70726, i32 70750, i32 70750, i32 70835, i32 70840, i32 70842, i32 70842, i32 70847, i32 70848, i32 70850, i32 70851, i32 71090, i32 71093, i32 71100, i32 71101, i32 71103, i32 71104, i32 71132, i32 71133, i32 71219, i32 71226, i32 71229, i32 71229, i32 71231, i32 71232, i32 71339, i32 71339, i32 71341, i32 71341, i32 71344, i32 71349, i32 71351, i32 71351, i32 71453, i32 71453, i32 71455, i32 71455, i32 71458, i32 71461, i32 71463, i32 71467, i32 71727, i32 71735, i32 71737, i32 71738, i32 71995, i32 71996, i32 71998, i32 71998, i32 72003, i32 72003, i32 72148, i32 72151, i32 72154, i32 72155, i32 72160, i32 72160, i32 72193, i32 72202, i32 72243, i32 72248, i32 72251, i32 72254, i32 72263, i32 72263, i32 72273, i32 72278, i32 72281, i32 72283, i32 72330, i32 72342, i32 72344, i32 72345, i32 72544, i32 72544, i32 72546, i32 72548, i32 72550, i32 72550, i32 72752, i32 72758, i32 72760, i32 72765, i32 72767, i32 72767, i32 72850, i32 72871, i32 72874, i32 72880, i32 72882, i32 72883, i32 72885, i32 72886, i32 73009, i32 73014, i32 73018, i32 73018, i32 73020, i32 73021, i32 73023, i32 73029, i32 73031, i32 73031, i32 73104, i32 73105, i32 73109, i32 73109, i32 73111, i32 73111, i32 73177, i32 73177, i32 73200, i32 73200, i32 73459, i32 73460, i32 73472, i32 73473, i32 73526, i32 73530, i32 73536, i32 73536, i32 73538, i32 73538, i32 73562, i32 73562, i32 78896, i32 78912, i32 78919, i32 78933, i32 90398, i32 90409, i32 90413, i32 90415, i32 92912, i32 92916, i32 92976, i32 92982, i32 92992, i32 92995, i32 93504, i32 93506, i32 93547, i32 93548, i32 94031, i32 94031, i32 94095, i32 94111, i32 94176, i32 94177, i32 94179, i32 94180, i32 94194, i32 94195, i32 110576, i32 110579, i32 110581, i32 110587, i32 110589, i32 110590, i32 113821, i32 113822, i32 113824, i32 113827, i32 118528, i32 118573, i32 118576, i32 118598, i32 119079, i32 119080, i32 119143, i32 119145, i32 119155, i32 119170, i32 119173, i32 119179, i32 119210, i32 119213, i32 119362, i32 119364, i32 119387, i32 119388, i32 121344, i32 121398, i32 121403, i32 121452, i32 121461, i32 121461, i32 121476, i32 121476, i32 121499, i32 121503, i32 121505, i32 121519, i32 122829, i32 122886, i32 122888, i32 122904, i32 122907, i32 122913, i32 122915, i32 122916, i32 122918, i32 122922, i32 122928, i32 122989, i32 123023, i32 123023, i32 123184, i32 123197, i32 123566, i32 123566, i32 123628, i32 123631, i32 124139, i32 124143, i32 124398, i32 124399, i32 124643, i32 124643, i32 124646, i32 124646, i32 124654, i32 124655, i32 124661, i32 124661, i32 124671, i32 124671, i32 125136, i32 125142, i32 125252, i32 125259, i32 127995, i32 127999, i32 917505, i32 917505, i32 917536, i32 917631, i32 917760, i32 917999]
 @.aifprof.812f9c79.33 = private unnamed_addr constant [34 x i8] c"expect() called on a `none` value\00"
-@.aifprof.11792409.62 = private unnamed_addr constant [63 x i8] c"/Users/vibrant/Desktop/Projects/Prismio/prismio/std/string.psm\00"
+@.aifprof.b0dfdc4f.65 = private unnamed_addr constant [66 x i8] c"/Users/vibrant/Desktop/Projects/Prismio/prismio-rc/std/string.psm\00"
 @str.dispatch = private unnamed_addr constant [7 x i8] c"import\00", align 1
 @str.dispatch.5 = private unnamed_addr constant [7 x i8] c"return\00", align 1
 @str.dispatch.6 = private unnamed_addr constant [7 x i8] c"region\00", align 1
@@ -6660,7 +6660,7 @@ source_filename = "prismio_generated"
 @str.dispatch.67 = private unnamed_addr constant [6 x i8] c"trait\00", align 1
 @str.dispatch.68 = private unnamed_addr constant [6 x i8] c"while\00", align 1
 @str.dispatch.69 = private unnamed_addr constant [6 x i8] c"match\00", align 1
-@.aifprof.2dcaae61.65 = private unnamed_addr constant [66 x i8] c"/Users/vibrant/Desktop/Projects/Prismio/prismio/src/ast/types.psm\00"
+@.aifprof.28eedda7.68 = private unnamed_addr constant [69 x i8] c"/Users/vibrant/Desktop/Projects/Prismio/prismio-rc/src/ast/types.psm\00"
 @str.dispatch.70 = private unnamed_addr constant [4 x i8] c"i32\00", align 1
 @str.dispatch.71 = private unnamed_addr constant [4 x i8] c"ptr\00", align 1
 @str.dispatch.72 = private unnamed_addr constant [7 x i8] c"double\00", align 1
@@ -6714,7 +6714,7 @@ source_filename = "prismio_generated"
 @str.dispatch.120 = private unnamed_addr constant [22 x i8] c"__builtin_errno_again\00", align 1
 @str.dispatch.121 = private unnamed_addr constant [22 x i8] c"__builtin_target_arch\00", align 1
 @str.dispatch.122 = private unnamed_addr constant [20 x i8] c"__builtin_target_os\00", align 1
-@.aifprof.fe9020bc.58 = private unnamed_addr constant [59 x i8] c"/Users/vibrant/Desktop/Projects/Prismio/prismio/std/io.psm\00"
+@.aifprof.c0a4db7e.61 = private unnamed_addr constant [62 x i8] c"/Users/vibrant/Desktop/Projects/Prismio/prismio-rc/std/io.psm\00"
 @str.dispatch.123 = private unnamed_addr constant [12 x i8] c"list_insert\00", align 1
 @str.dispatch.124 = private unnamed_addr constant [14 x i8] c"list_capacity\00", align 1
 @str.dispatch.125 = private unnamed_addr constant [14 x i8] c"list_truncate\00", align 1
@@ -6861,7 +6861,7 @@ source_filename = "prismio_generated"
 @str.dispatch.266 = private unnamed_addr constant [6 x i8] c"share\00", align 1
 @str.dispatch.267 = private unnamed_addr constant [6 x i8] c"close\00", align 1
 @str.dispatch.268 = private unnamed_addr constant [7 x i8] c"length\00", align 1
-@.aifprof.90244a17.68 = private unnamed_addr constant [69 x i8] c"/Users/vibrant/Desktop/Projects/Prismio/prismio/src/sema/checker.psm\00"
+@.aifprof.9d14bb0d.71 = private unnamed_addr constant [72 x i8] c"/Users/vibrant/Desktop/Projects/Prismio/prismio-rc/src/sema/checker.psm\00"
 @str.dispatch.269 = private unnamed_addr constant [6 x i8] c"print\00", align 1
 @str.dispatch.270 = private unnamed_addr constant [8 x i8] c"println\00", align 1
 @str.dispatch.271 = private unnamed_addr constant [7 x i8] c"eprint\00", align 1
@@ -7035,7 +7035,7 @@ source_filename = "prismio_generated"
 @str.dispatch.439 = private unnamed_addr constant [3 x i8] c"T3\00", align 1
 @str.dispatch.440 = private unnamed_addr constant [4 x i8] c"T4b\00", align 1
 @str.dispatch.441 = private unnamed_addr constant [4 x i8] c"T4a\00", align 1
-@.aifprof.72c18257.59 = private unnamed_addr constant [60 x i8] c"/Users/vibrant/Desktop/Projects/Prismio/prismio/std/ord.psm\00"
+@.aifprof.76fcc039.62 = private unnamed_addr constant [63 x i8] c"/Users/vibrant/Desktop/Projects/Prismio/prismio-rc/std/ord.psm\00"
 @str.dispatch.442 = private unnamed_addr constant [13 x i8] c"runtime-hash\00", align 1
 @str.dispatch.443 = private unnamed_addr constant [6 x i8] c"check\00", align 1
 @str.dispatch.444 = private unnamed_addr constant [9 x i8] c"dump-ast\00", align 1
@@ -17137,7 +17137,7 @@ label_1278:                                       ; preds = %label_1276
   ret { i1, i32 } %12
 
 label_1277:                                       ; preds = %label_1276
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2570, i32 12)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2570, i32 12)
   unreachable
 }
 
@@ -22171,7 +22171,7 @@ label_1243:                                       ; preds = %label_1241
   br i1 %36, label %label_1244, label %label_1246
 
 label_1242:                                       ; preds = %label_1241
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2529, i32 17)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2529, i32 17)
   unreachable
 
 label_1244:                                       ; preds = %label_1243
@@ -22270,7 +22270,7 @@ label_1260:                                       ; preds = %label_1258
   br i1 %15, label %label_1265, label %label_1264
 
 label_1259:                                       ; preds = %label_1258
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2554, i32 17)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2554, i32 17)
   unreachable
 
 label_1265:                                       ; preds = %label_1264, %label_1260
@@ -22329,7 +22329,7 @@ label_1270:                                       ; preds = %label_1268
   br i1 %14, label %label_1271, label %label_1273
 
 label_1269:                                       ; preds = %label_1268
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2562, i32 17)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2562, i32 17)
   unreachable
 
 label_1271:                                       ; preds = %label_1270
@@ -22372,7 +22372,7 @@ label_1283:                                       ; preds = %label_1281
   ret { i1, i8 } %12
 
 label_1282:                                       ; preds = %label_1281
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2576, i32 12)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2576, i32 12)
   unreachable
 }
 
@@ -22407,7 +22407,7 @@ label_1288:                                       ; preds = %label_1286
   ret { i1, i16 } %12
 
 label_1287:                                       ; preds = %label_1286
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2582, i32 12)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2582, i32 12)
   unreachable
 }
 
@@ -22441,7 +22441,7 @@ label_1293:                                       ; preds = %label_1291
   ret { i1, i64 } %11
 
 label_1292:                                       ; preds = %label_1291
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2589, i32 12)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2589, i32 12)
   unreachable
 }
 
@@ -22476,7 +22476,7 @@ label_1298:                                       ; preds = %label_1296
   ret { i1, i8 } %12
 
 label_1297:                                       ; preds = %label_1296
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2595, i32 12)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2595, i32 12)
   unreachable
 }
 
@@ -22511,7 +22511,7 @@ label_1303:                                       ; preds = %label_1301
   ret { i1, i16 } %12
 
 label_1302:                                       ; preds = %label_1301
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2601, i32 12)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2601, i32 12)
   unreachable
 }
 
@@ -22546,7 +22546,7 @@ label_1308:                                       ; preds = %label_1306
   ret { i1, i32 } %12
 
 label_1307:                                       ; preds = %label_1306
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2607, i32 12)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2607, i32 12)
   unreachable
 }
 
@@ -22580,7 +22580,7 @@ label_1313:                                       ; preds = %label_1311
   ret { i1, i64 } %11
 
 label_1312:                                       ; preds = %label_1311
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.11792409.62, i32 2613, i32 12)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.b0dfdc4f.65, i32 2613, i32 12)
   unreachable
 }
 
@@ -49968,7 +49968,7 @@ label_4306:                                       ; preds = %label_4304
   br i1 %31, label %label_4307, label %label_4309
 
 label_4305:                                       ; preds = %label_4304
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.2dcaae61.65, i32 171, i32 21)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.28eedda7.68, i32 171, i32 21)
   unreachable
 
 label_4307:                                       ; preds = %label_4306
@@ -50224,7 +50224,7 @@ label_4351:                                       ; preds = %label_4349
   br i1 %20, label %label_4352, label %label_4354
 
 label_4350:                                       ; preds = %label_4349
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.2dcaae61.65, i32 207, i32 17)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.28eedda7.68, i32 207, i32 17)
   unreachable
 
 label_4352:                                       ; preds = %label_4351
@@ -156438,7 +156438,7 @@ label_9845:                                       ; preds = %label_9842
   br label %label_9843
 
 label_9844:                                       ; preds = %label_9842
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 503, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 503, i32 65)
   unreachable
 }
 
@@ -156469,7 +156469,7 @@ label_9850:                                       ; preds = %label_9847
   br label %label_9848
 
 label_9849:                                       ; preds = %label_9847
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 506, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 506, i32 65)
   unreachable
 }
 
@@ -156500,7 +156500,7 @@ label_9855:                                       ; preds = %label_9852
   br label %label_9853
 
 label_9854:                                       ; preds = %label_9852
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 509, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 509, i32 65)
   unreachable
 }
 
@@ -156531,7 +156531,7 @@ label_9860:                                       ; preds = %label_9857
   br label %label_9858
 
 label_9859:                                       ; preds = %label_9857
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 512, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 512, i32 65)
   unreachable
 }
 
@@ -156562,7 +156562,7 @@ label_9865:                                       ; preds = %label_9862
   br label %label_9863
 
 label_9864:                                       ; preds = %label_9862
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 515, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 515, i32 65)
   unreachable
 }
 
@@ -156593,7 +156593,7 @@ label_9870:                                       ; preds = %label_9867
   br label %label_9868
 
 label_9869:                                       ; preds = %label_9867
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 518, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 518, i32 65)
   unreachable
 }
 
@@ -156624,7 +156624,7 @@ label_9875:                                       ; preds = %label_9872
   br label %label_9873
 
 label_9874:                                       ; preds = %label_9872
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 521, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 521, i32 65)
   unreachable
 }
 
@@ -156655,7 +156655,7 @@ label_9880:                                       ; preds = %label_9877
   br label %label_9878
 
 label_9879:                                       ; preds = %label_9877
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 524, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 524, i32 65)
   unreachable
 }
 
@@ -156686,7 +156686,7 @@ label_9885:                                       ; preds = %label_9882
   br label %label_9883
 
 label_9884:                                       ; preds = %label_9882
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 527, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 527, i32 65)
   unreachable
 }
 
@@ -156717,7 +156717,7 @@ label_9890:                                       ; preds = %label_9887
   br label %label_9888
 
 label_9889:                                       ; preds = %label_9887
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 530, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 530, i32 65)
   unreachable
 }
 
@@ -156748,7 +156748,7 @@ label_9895:                                       ; preds = %label_9892
   br label %label_9893
 
 label_9894:                                       ; preds = %label_9892
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 533, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 533, i32 65)
   unreachable
 }
 
@@ -156779,7 +156779,7 @@ label_9900:                                       ; preds = %label_9897
   br label %label_9898
 
 label_9899:                                       ; preds = %label_9897
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 536, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 536, i32 65)
   unreachable
 }
 
@@ -156810,7 +156810,7 @@ label_9905:                                       ; preds = %label_9902
   br label %label_9903
 
 label_9904:                                       ; preds = %label_9902
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 539, i32 65)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 539, i32 65)
   unreachable
 }
 
@@ -156841,7 +156841,7 @@ label_9910:                                       ; preds = %label_9907
   br label %label_9908
 
 label_9909:                                       ; preds = %label_9907
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 543, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 543, i32 69)
   unreachable
 }
 
@@ -156872,7 +156872,7 @@ label_9915:                                       ; preds = %label_9912
   br label %label_9913
 
 label_9914:                                       ; preds = %label_9912
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 546, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 546, i32 69)
   unreachable
 }
 
@@ -156903,7 +156903,7 @@ label_9920:                                       ; preds = %label_9917
   br label %label_9918
 
 label_9919:                                       ; preds = %label_9917
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 549, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 549, i32 69)
   unreachable
 }
 
@@ -156934,7 +156934,7 @@ label_9925:                                       ; preds = %label_9922
   br label %label_9923
 
 label_9924:                                       ; preds = %label_9922
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 552, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 552, i32 69)
   unreachable
 }
 
@@ -156965,7 +156965,7 @@ label_9930:                                       ; preds = %label_9927
   br label %label_9928
 
 label_9929:                                       ; preds = %label_9927
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 555, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 555, i32 69)
   unreachable
 }
 
@@ -156996,7 +156996,7 @@ label_9935:                                       ; preds = %label_9932
   br label %label_9933
 
 label_9934:                                       ; preds = %label_9932
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 558, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 558, i32 69)
   unreachable
 }
 
@@ -157027,7 +157027,7 @@ label_9940:                                       ; preds = %label_9937
   br label %label_9938
 
 label_9939:                                       ; preds = %label_9937
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 561, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 561, i32 69)
   unreachable
 }
 
@@ -157058,7 +157058,7 @@ label_9945:                                       ; preds = %label_9942
   br label %label_9943
 
 label_9944:                                       ; preds = %label_9942
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 564, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 564, i32 69)
   unreachable
 }
 
@@ -157089,7 +157089,7 @@ label_9950:                                       ; preds = %label_9947
   br label %label_9948
 
 label_9949:                                       ; preds = %label_9947
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 567, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 567, i32 69)
   unreachable
 }
 
@@ -157120,7 +157120,7 @@ label_9955:                                       ; preds = %label_9952
   br label %label_9953
 
 label_9954:                                       ; preds = %label_9952
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 570, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 570, i32 69)
   unreachable
 }
 
@@ -157151,7 +157151,7 @@ label_9960:                                       ; preds = %label_9957
   br label %label_9958
 
 label_9959:                                       ; preds = %label_9957
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 573, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 573, i32 69)
   unreachable
 }
 
@@ -157182,7 +157182,7 @@ label_9965:                                       ; preds = %label_9962
   br label %label_9963
 
 label_9964:                                       ; preds = %label_9962
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 576, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 576, i32 69)
   unreachable
 }
 
@@ -157213,7 +157213,7 @@ label_9970:                                       ; preds = %label_9967
   br label %label_9968
 
 label_9969:                                       ; preds = %label_9967
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 579, i32 69)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 579, i32 69)
   unreachable
 }
 
@@ -157244,7 +157244,7 @@ label_9975:                                       ; preds = %label_9972
   br label %label_9973
 
 label_9974:                                       ; preds = %label_9972
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 583, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 583, i32 66)
   unreachable
 }
 
@@ -157275,7 +157275,7 @@ label_9980:                                       ; preds = %label_9977
   br label %label_9978
 
 label_9979:                                       ; preds = %label_9977
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 586, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 586, i32 66)
   unreachable
 }
 
@@ -157306,7 +157306,7 @@ label_9985:                                       ; preds = %label_9982
   br label %label_9983
 
 label_9984:                                       ; preds = %label_9982
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 589, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 589, i32 66)
   unreachable
 }
 
@@ -157337,7 +157337,7 @@ label_9990:                                       ; preds = %label_9987
   br label %label_9988
 
 label_9989:                                       ; preds = %label_9987
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 592, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 592, i32 66)
   unreachable
 }
 
@@ -157368,7 +157368,7 @@ label_9995:                                       ; preds = %label_9992
   br label %label_9993
 
 label_9994:                                       ; preds = %label_9992
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 595, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 595, i32 66)
   unreachable
 }
 
@@ -157399,7 +157399,7 @@ label_10000:                                      ; preds = %label_9997
   br label %label_9998
 
 label_9999:                                       ; preds = %label_9997
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 598, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 598, i32 66)
   unreachable
 }
 
@@ -157430,7 +157430,7 @@ label_10005:                                      ; preds = %label_10002
   br label %label_10003
 
 label_10004:                                      ; preds = %label_10002
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 601, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 601, i32 66)
   unreachable
 }
 
@@ -157461,7 +157461,7 @@ label_10010:                                      ; preds = %label_10007
   br label %label_10008
 
 label_10009:                                      ; preds = %label_10007
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 604, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 604, i32 66)
   unreachable
 }
 
@@ -157492,7 +157492,7 @@ label_10015:                                      ; preds = %label_10012
   br label %label_10013
 
 label_10014:                                      ; preds = %label_10012
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 607, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 607, i32 66)
   unreachable
 }
 
@@ -157523,7 +157523,7 @@ label_10020:                                      ; preds = %label_10017
   br label %label_10018
 
 label_10019:                                      ; preds = %label_10017
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 610, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 610, i32 66)
   unreachable
 }
 
@@ -157554,7 +157554,7 @@ label_10025:                                      ; preds = %label_10022
   br label %label_10023
 
 label_10024:                                      ; preds = %label_10022
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 613, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 613, i32 66)
   unreachable
 }
 
@@ -157585,7 +157585,7 @@ label_10030:                                      ; preds = %label_10027
   br label %label_10028
 
 label_10029:                                      ; preds = %label_10027
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 616, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 616, i32 66)
   unreachable
 }
 
@@ -157616,7 +157616,7 @@ label_10035:                                      ; preds = %label_10032
   br label %label_10033
 
 label_10034:                                      ; preds = %label_10032
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 619, i32 66)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 619, i32 66)
   unreachable
 }
 
@@ -157647,7 +157647,7 @@ label_10040:                                      ; preds = %label_10037
   br label %label_10038
 
 label_10039:                                      ; preds = %label_10037
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 623, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 623, i32 70)
   unreachable
 }
 
@@ -157678,7 +157678,7 @@ label_10045:                                      ; preds = %label_10042
   br label %label_10043
 
 label_10044:                                      ; preds = %label_10042
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 626, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 626, i32 70)
   unreachable
 }
 
@@ -157709,7 +157709,7 @@ label_10050:                                      ; preds = %label_10047
   br label %label_10048
 
 label_10049:                                      ; preds = %label_10047
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 629, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 629, i32 70)
   unreachable
 }
 
@@ -157740,7 +157740,7 @@ label_10055:                                      ; preds = %label_10052
   br label %label_10053
 
 label_10054:                                      ; preds = %label_10052
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 632, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 632, i32 70)
   unreachable
 }
 
@@ -157771,7 +157771,7 @@ label_10060:                                      ; preds = %label_10057
   br label %label_10058
 
 label_10059:                                      ; preds = %label_10057
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 635, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 635, i32 70)
   unreachable
 }
 
@@ -157802,7 +157802,7 @@ label_10065:                                      ; preds = %label_10062
   br label %label_10063
 
 label_10064:                                      ; preds = %label_10062
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 638, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 638, i32 70)
   unreachable
 }
 
@@ -157833,7 +157833,7 @@ label_10070:                                      ; preds = %label_10067
   br label %label_10068
 
 label_10069:                                      ; preds = %label_10067
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 641, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 641, i32 70)
   unreachable
 }
 
@@ -157864,7 +157864,7 @@ label_10075:                                      ; preds = %label_10072
   br label %label_10073
 
 label_10074:                                      ; preds = %label_10072
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 644, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 644, i32 70)
   unreachable
 }
 
@@ -157895,7 +157895,7 @@ label_10080:                                      ; preds = %label_10077
   br label %label_10078
 
 label_10079:                                      ; preds = %label_10077
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 647, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 647, i32 70)
   unreachable
 }
 
@@ -157926,7 +157926,7 @@ label_10085:                                      ; preds = %label_10082
   br label %label_10083
 
 label_10084:                                      ; preds = %label_10082
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 650, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 650, i32 70)
   unreachable
 }
 
@@ -157957,7 +157957,7 @@ label_10090:                                      ; preds = %label_10087
   br label %label_10088
 
 label_10089:                                      ; preds = %label_10087
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 653, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 653, i32 70)
   unreachable
 }
 
@@ -157988,7 +157988,7 @@ label_10095:                                      ; preds = %label_10092
   br label %label_10093
 
 label_10094:                                      ; preds = %label_10092
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 656, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 656, i32 70)
   unreachable
 }
 
@@ -158019,7 +158019,7 @@ label_10100:                                      ; preds = %label_10097
   br label %label_10098
 
 label_10099:                                      ; preds = %label_10097
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.fe9020bc.58, i32 659, i32 70)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.c0a4db7e.61, i32 659, i32 70)
   unreachable
 }
 
@@ -254217,7 +254217,7 @@ label_16477:                                      ; preds = %label_16472
   br i1 %17, label %label_16473, label %label_16475
 
 label_16476:                                      ; preds = %label_16472
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.90244a17.68, i32 1225, i32 13)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.9d14bb0d.71, i32 1225, i32 13)
   unreachable
 
 label_16473:                                      ; preds = %label_16477
@@ -254258,7 +254258,7 @@ label_16485:                                      ; preds = %label_16483
   br i1 %30, label %label_16492, label %label_16491
 
 label_16484:                                      ; preds = %label_16483
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.90244a17.68, i32 1231, i32 23)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.9d14bb0d.71, i32 1231, i32 23)
   unreachable
 
 label_16492:                                      ; preds = %label_16491, %label_16485
@@ -254326,7 +254326,7 @@ label_16500:                                      ; preds = %label_16498
   br i1 %55, label %label_16501, label %label_16503
 
 label_16499:                                      ; preds = %label_16498
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.90244a17.68, i32 1238, i32 22)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.9d14bb0d.71, i32 1238, i32 22)
   unreachable
 
 label_16501:                                      ; preds = %label_16500
@@ -254355,7 +254355,7 @@ label_16508:                                      ; preds = %label_16506
   br i1 %64, label %label_16509, label %label_16511
 
 label_16507:                                      ; preds = %label_16506
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.90244a17.68, i32 1244, i32 18)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.9d14bb0d.71, i32 1244, i32 18)
   unreachable
 
 label_16509:                                      ; preds = %label_16508
@@ -337408,7 +337408,7 @@ label_25162:                                      ; preds = %label_25160
   br i1 %15, label %label_25164, label %label_25163
 
 label_25161:                                      ; preds = %label_25160
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 147, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 147, i32 16)
   unreachable
 
 label_25164:                                      ; preds = %label_25162
@@ -337417,7 +337417,7 @@ label_25164:                                      ; preds = %label_25162
   ret i32 %17
 
 label_25163:                                      ; preds = %label_25162
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 147, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 147, i32 33)
   unreachable
 }
 
@@ -337465,7 +337465,7 @@ label_25175:                                      ; preds = %label_25173
   br i1 %15, label %label_25177, label %label_25176
 
 label_25174:                                      ; preds = %label_25173
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 157, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 157, i32 16)
   unreachable
 
 label_25177:                                      ; preds = %label_25175
@@ -337474,7 +337474,7 @@ label_25177:                                      ; preds = %label_25175
   ret i32 %17
 
 label_25176:                                      ; preds = %label_25175
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 157, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 157, i32 33)
   unreachable
 }
 
@@ -337522,7 +337522,7 @@ label_25188:                                      ; preds = %label_25186
   br i1 %15, label %label_25190, label %label_25189
 
 label_25187:                                      ; preds = %label_25186
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 167, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 167, i32 16)
   unreachable
 
 label_25190:                                      ; preds = %label_25188
@@ -337531,7 +337531,7 @@ label_25190:                                      ; preds = %label_25188
   ret i32 %17
 
 label_25189:                                      ; preds = %label_25188
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 167, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 167, i32 33)
   unreachable
 }
 
@@ -337579,7 +337579,7 @@ label_25201:                                      ; preds = %label_25199
   br i1 %15, label %label_25203, label %label_25202
 
 label_25200:                                      ; preds = %label_25199
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 177, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 177, i32 16)
   unreachable
 
 label_25203:                                      ; preds = %label_25201
@@ -337588,7 +337588,7 @@ label_25203:                                      ; preds = %label_25201
   ret i32 %17
 
 label_25202:                                      ; preds = %label_25201
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 177, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 177, i32 33)
   unreachable
 }
 
@@ -337636,7 +337636,7 @@ label_25214:                                      ; preds = %label_25212
   br i1 %15, label %label_25216, label %label_25215
 
 label_25213:                                      ; preds = %label_25212
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 187, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 187, i32 16)
   unreachable
 
 label_25216:                                      ; preds = %label_25214
@@ -337645,7 +337645,7 @@ label_25216:                                      ; preds = %label_25214
   ret i32 %17
 
 label_25215:                                      ; preds = %label_25214
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 187, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 187, i32 33)
   unreachable
 }
 
@@ -337693,7 +337693,7 @@ label_25227:                                      ; preds = %label_25225
   br i1 %15, label %label_25229, label %label_25228
 
 label_25226:                                      ; preds = %label_25225
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 197, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 197, i32 16)
   unreachable
 
 label_25229:                                      ; preds = %label_25227
@@ -337702,7 +337702,7 @@ label_25229:                                      ; preds = %label_25227
   ret i32 %17
 
 label_25228:                                      ; preds = %label_25227
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 197, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 197, i32 33)
   unreachable
 }
 
@@ -337750,7 +337750,7 @@ label_25240:                                      ; preds = %label_25238
   br i1 %15, label %label_25242, label %label_25241
 
 label_25239:                                      ; preds = %label_25238
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 207, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 207, i32 16)
   unreachable
 
 label_25242:                                      ; preds = %label_25240
@@ -337759,7 +337759,7 @@ label_25242:                                      ; preds = %label_25240
   ret i32 %17
 
 label_25241:                                      ; preds = %label_25240
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 207, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 207, i32 33)
   unreachable
 }
 
@@ -337807,7 +337807,7 @@ label_25253:                                      ; preds = %label_25251
   br i1 %15, label %label_25255, label %label_25254
 
 label_25252:                                      ; preds = %label_25251
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 217, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 217, i32 16)
   unreachable
 
 label_25255:                                      ; preds = %label_25253
@@ -337816,7 +337816,7 @@ label_25255:                                      ; preds = %label_25253
   ret i32 %17
 
 label_25254:                                      ; preds = %label_25253
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 217, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 217, i32 33)
   unreachable
 }
 
@@ -337864,7 +337864,7 @@ label_25266:                                      ; preds = %label_25264
   br i1 %15, label %label_25268, label %label_25267
 
 label_25265:                                      ; preds = %label_25264
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 227, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 227, i32 16)
   unreachable
 
 label_25268:                                      ; preds = %label_25266
@@ -337873,7 +337873,7 @@ label_25268:                                      ; preds = %label_25266
   ret i32 %17
 
 label_25267:                                      ; preds = %label_25266
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 227, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 227, i32 33)
   unreachable
 }
 
@@ -337921,7 +337921,7 @@ label_25279:                                      ; preds = %label_25277
   br i1 %15, label %label_25281, label %label_25280
 
 label_25278:                                      ; preds = %label_25277
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 237, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 237, i32 16)
   unreachable
 
 label_25281:                                      ; preds = %label_25279
@@ -337930,7 +337930,7 @@ label_25281:                                      ; preds = %label_25279
   ret i32 %17
 
 label_25280:                                      ; preds = %label_25279
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 237, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 237, i32 33)
   unreachable
 }
 
@@ -337978,7 +337978,7 @@ label_25292:                                      ; preds = %label_25290
   br i1 %15, label %label_25294, label %label_25293
 
 label_25291:                                      ; preds = %label_25290
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 247, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 247, i32 16)
   unreachable
 
 label_25294:                                      ; preds = %label_25292
@@ -337987,7 +337987,7 @@ label_25294:                                      ; preds = %label_25292
   ret i32 %17
 
 label_25293:                                      ; preds = %label_25292
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 247, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 247, i32 33)
   unreachable
 }
 
@@ -338035,7 +338035,7 @@ label_25305:                                      ; preds = %label_25303
   br i1 %15, label %label_25307, label %label_25306
 
 label_25304:                                      ; preds = %label_25303
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 257, i32 16)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 257, i32 16)
   unreachable
 
 label_25307:                                      ; preds = %label_25305
@@ -338044,7 +338044,7 @@ label_25307:                                      ; preds = %label_25305
   ret i32 %17
 
 label_25306:                                      ; preds = %label_25305
-  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.72c18257.59, i32 257, i32 33)
+  call void @prismio_panic(ptr @.aifprof.812f9c79.33, ptr @.aifprof.76fcc039.62, i32 257, i32 33)
   unreachable
 }
 
@@ -379688,7 +379688,7 @@ str.cstrheap13:                                   ; preds = %str.cstr11
 str.cstrdone14:                                   ; preds = %str.cstrheap13, %str.cstrbuf12, %str.cstrdone7
   %120 = phi ptr [ %str.cstrbuf15, %str.cstrbuf12 ], [ %119, %str.cstrheap13 ], [ %107, %str.cstrdone7 ]
   %121 = phi ptr [ null, %str.cstrbuf12 ], [ %119, %str.cstrheap13 ], [ null, %str.cstrdone7 ]
-  %122 = call i32 @file_exists(ptr readonly %120)
+  %122 = call i32 @directory_exists(ptr readonly %120)
   call void @rt_free(ptr %121)
   %123 = icmp eq i32 %122, 1
   br i1 %123, label %label_28199, label %label_28201
@@ -380199,7 +380199,7 @@ str.cstrheap70:                                   ; preds = %str.cstr68
 str.cstrdone71:                                   ; preds = %str.cstrheap70, %str.cstrbuf69, %str.cstrdone64
   %408 = phi ptr [ %str.cstrbuf72, %str.cstrbuf69 ], [ %407, %str.cstrheap70 ], [ %395, %str.cstrdone64 ]
   %409 = phi ptr [ null, %str.cstrbuf69 ], [ %407, %str.cstrheap70 ], [ null, %str.cstrdone64 ]
-  %410 = call i32 @file_exists(ptr readonly %408)
+  %410 = call i32 @directory_exists(ptr readonly %408)
   call void @rt_free(ptr %409)
   %411 = icmp eq i32 %410, 1
   store i1 %411, ptr %sc.1751, align 1
@@ -380313,7 +380313,7 @@ str.cstrheap82:                                   ; preds = %str.cstr80
 str.cstrdone83:                                   ; preds = %str.cstrheap82, %str.cstrbuf81, %label_28218
   %471 = phi ptr [ %str.cstrbuf84, %str.cstrbuf81 ], [ %470, %str.cstrheap82 ], [ %458, %label_28218 ]
   %472 = phi ptr [ null, %str.cstrbuf81 ], [ %470, %str.cstrheap82 ], [ null, %label_28218 ]
-  %473 = call i32 @file_exists(ptr readonly %471)
+  %473 = call i32 @directory_exists(ptr readonly %471)
   call void @rt_free(ptr %472)
   %474 = icmp eq i32 %473, 1
   store i1 %474, ptr %sc.1752, align 1

@@ -823,6 +823,23 @@ int proc_close(int fd) {
 // immediately before a quote, where each one must be doubled -- so `a\` passed
 // through the simple quoter becomes `"a\"` and swallows the closing quote.
 static void spawn_quote_into(char* out, int* at, const char* argument) {
+    // **An argument that needs no quoting is not quoted.** `CommandLineToArgvW`
+    // reads both spellings the same, but the programs that parse their own command
+    // line do not: `py` recognises `-3` only bare, and handed `"-3"` passed it on to
+    // `python.exe`, which refused it; and `cmd /c "echo" "piped"` has its first and
+    // last quote stripped by `cmd`, leaving `echo" "piped`, which prints nothing and
+    // exits 1. A backslash is literal when no quote follows it, so a bare argument
+    // is copied as written.
+    int bare = argument[0] != '\0';
+    for (int i = 0; bare && argument[i] != '\0'; i++) {
+        char c = argument[i];
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '"') bare = 0;
+    }
+    if (bare) {
+        for (int i = 0; argument[i] != '\0'; i++) out[(*at)++] = argument[i];
+        return;
+    }
+
     out[(*at)++] = '"';
     for (int i = 0; argument[i] != '\0'; ) {
         int slashes = 0;

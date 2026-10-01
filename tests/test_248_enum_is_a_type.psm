@@ -1,5 +1,5 @@
-// A fieldless enum is its own type, not an Int (docs/CONVERSIONS_PLAN.md, task
-// 6). `c as Int` names a variant's ordinal; the way back is `n as Color?`, which
+// A fieldless enum is its own type, not an Int.
+// `c as Int` names a variant's ordinal; the way back is `n as Color?`, which
 // is `none` for a number that is no variant. So a value of the enum is always one
 // of its variants, and a `match` naming every variant is exhaustive without `_`.
 

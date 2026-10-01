@@ -1,5 +1,5 @@
 // A scalar's `T?`: a present flag beside the value, copied like `T` and never
-// allocated (docs/CONVERSIONS_PLAN.md, task 1). The harness runs this under
+// allocated. The harness runs this under
 // `--verify` and requires 0 leaked; run_scalar_optional_test also reads `half`'s
 // IR for a `malloc`, and runs scalar_optional_expect_probe for the panic.
 //

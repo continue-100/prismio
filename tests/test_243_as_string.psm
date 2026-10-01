@@ -1,8 +1,7 @@
 // `x as String` for every number, Bool, Char and String -- the text
 // `x.toString()` gives, since the cast lowers to that call -- and `toString`,
-// `toFloat` and a range-checked `parse` on the widths that had none
-// (docs/CONVERSIONS_PLAN.md, tasks 2 and 5). Every `parse` answers a `T?` by
-// value. The harness runs this under `--verify` and requires 0 leaked.
+// `toFloat` and a range-checked `parse` on the widths that had none.
+// Every `parse` answers a `T?` by value. The harness runs this under `--verify` and requires 0 leaked.
 
 import std.io
 import std.string

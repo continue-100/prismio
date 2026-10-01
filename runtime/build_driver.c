@@ -194,7 +194,7 @@ int compiler_publish_file(const char* from, const char* to) {
     snprintf(tmp, len, "%s.%d.tmp", to, PRISMIO_GETPID());
 
     int result = write_text_file(tmp, text);
-    if (result == 0 && rename(tmp, to) != 0) {
+    if (result == 0 && fs_rename(tmp, to) != 0) {
         // Same filesystem by construction -- the temporary is a sibling -- so a
         // failure here is a permission or a disk problem, not EXDEV. Publishing
         // is best-effort either way: the build has its own copy.
@@ -1571,7 +1571,7 @@ static char* build_curated_module(const char* target_flags) {
         return tmp_ll;
     }
 
-    if (!failed && rename(tmp_ll, entry) != 0) {
+    if (!failed && fs_rename(tmp_ll, entry) != 0) {
         // A failed install is not a failed build: use the temporary this once
         // and pay for it again next time.
         free(q_src); free(q_tmp); free(q_raw);
@@ -2021,17 +2021,29 @@ static int link_program_object(const char* program_obj, const char* exe_file) {
         snprintf(min_os, sizeof(min_os), "-mmacosx-version-min=%s ", ir_host_macos_version());
     }
 #endif
+    // The 16 MiB stack link_program_msvc gives every program it links, for the
+    // links that go through a driver instead. A project host is one of them -- it
+    // has native sources and exports -- and at Windows' default 1 MiB it overflowed
+    // (0xC00000FD) compiling the first standard library module, which left the
+    // host built and unable to build anything else.
+    const char* stack = "";
+#ifdef _WIN32
+    if (!ir_target_is_explicit() || strstr(ir_target_triple(), "windows") != NULL) {
+        stack = " -Wl,/STACK:16777216";
+    }
+#endif
     const char* driver = link_driver_command();
     int len = (int)(strlen(driver) + strlen(min_os) + strlen(q_obj) + strlen(q_exe) +
-                    strlen(target) + strlen(native) + strlen(g_link_extra) + 96);
+                    strlen(target) + strlen(native) + strlen(g_link_extra) +
+                    strlen(stack) + 96);
     char* command = (char*)malloc(len);
 
     // -dead_strip: ld64 keeps every function of every object it is given unless
     // told otherwise, and neither the runtime's nor a target's native C is
     // pruned before it gets there. Exported symbols (exportDynamic) are roots,
     // so nothing a loaded module could resolve is removed.
-    snprintf(command, len, "%s %s%s%s%s%s -o %s%s%s",
-             driver, target, min_os, q_obj, g_link_extra, native, q_exe,
+    snprintf(command, len, "%s %s%s%s%s%s%s -o %s%s%s",
+             driver, target, min_os, q_obj, g_link_extra, native, stack, q_exe,
              target_needs_libm() ? " -lm" : "",
              target_is_mach_o() ? " -Wl,-dead_strip" : "");
     int result = run_build_command(command);
@@ -2378,7 +2390,11 @@ static int native_deps_record(const char* entry, const char* depfile) {
         if (n < (int)sizeof(path) - 1) path[n++] = c;
     }
     if (out && fclose(out) != 0) failed = 1;
-    if (!failed && rename(tmp, deps) != 0) {
+    // `fs_rename` replaces an existing list. Plain `rename` refuses one on Windows,
+    // and this one *is* there after a header edit -- the key is the source and the
+    // flags, so the same entry is rewritten -- which kept the stale hashes and made
+    // every later build a miss.
+    if (!failed && fs_rename(tmp, deps) != 0) {
         // Another build recorded the same entry first; its list is as good.
         delete_file(tmp);
     } else if (failed) {
@@ -2479,7 +2495,7 @@ static int compile_native_sources(const char* exe_file, char** objects, int* cac
         }
 
         if (result == 0 && entry && native_deps_record(entry, dep) == 0 &&
-                rename(out, entry) == 0) {
+                fs_rename(out, entry) == 0) {
             // A failed install is not a failed build: the temporary is linked
             // and the compile is paid for again next time.
             free(out);

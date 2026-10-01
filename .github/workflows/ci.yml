@@ -211,16 +211,16 @@ jobs:
               let m: Map<Int, Int> = mapNew<Int, Int>()
               mapSet(m, ids[0], 10)
 
-              let c: Channel<Note> = chan_new(2)
-              chan_send(c, Note { id: 7 })
-              chan_close(c)
-              let taken = chan_recv(c)
+              let c = Channel<Note>(2)
+              c.send(Note { id: 7 })
+              c.close()
+              let taken = c.receive()
               let mut got = 0
               if (taken != none) {
                   let note = expect(taken)
                   got = note.id
               }
-              chan_free(c)
+              c.free()
 
               println(ids[0] + mapGetOr(m, 1, 0) + got)
               return 0

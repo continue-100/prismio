@@ -583,10 +583,10 @@ private fn semaMatchCoversTag(stmt: ASTNode, tag: Int) -> Bool {
 // restriction: every match that was going to handle its remaining cases already
 // says so.
 //
-// **Payload enums only.** A fieldless enum still matches as an integer, where
-// the scrutinee is not confined to the declared variants and a program may
-// legitimately match on a subset. Extending it there is a separate decision with
-// a real chance of rejecting existing code; see HANDOFF.
+// **Payload enums only.** A fieldless enum is not checked here: a program may
+// match on a subset of its variants, and the rest run no arm. Requiring every
+// variant would reject that existing code; semaMatchCoversEnum, below, is the
+// only place a full match changes anything -- it needs no `_` arm.
 private fn semaCheckExhaustive(stmt: ASTNode, shadow: ASTNode) {
     if (semaMatchHasWildcard(stmt)) {
         stmt.i3 = 1

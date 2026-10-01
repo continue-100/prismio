@@ -47,6 +47,10 @@ public extern fn host_is_windows() -> Int
 public extern fn current_directory() -> String produce(free)
 public extern fn delete_file(path: String) -> Int
 public extern fn file_exists(path: String) -> Int
+// `file_exists` opens the path, and opening a directory fails on Windows, so a
+// directory is asked about with this one: `clean` reported "nothing to remove"
+// for a profile directory that was there.
+public extern fn directory_exists(path: String borrow) -> Int
 public extern fn join_path(directory: String, filename: String) -> String
 public extern fn make_directory(path: String borrow) -> Int
 // The writer half of the filesystem surface, for `init`. Both return 0 for
@@ -549,7 +553,7 @@ public fn cleanUmsProject(profile: String) -> Int {
 
     let profileRoot = join_path(workspace.plan.artifactRoot, profile)
     let mut removed: Vec<String> = []
-    if (file_exists(profileRoot) == 1) {
+    if (directory_exists(profileRoot) == 1) {
         if (compiler_remove_tree(profileRoot) != 0) {
             diag_error_code("P1020", "could not remove everything under ".concat(profileRoot))
             return 1
@@ -562,10 +566,10 @@ public fn cleanUmsProject(profile: String) -> Int {
         get_directory(umsHostExecutable(workspace.project.root, host)).equals(profileRoot)) {
         let toolchainLib = join_path(workspace.plan.artifactRoot, "lib")
         let toolchainStd = join_path(workspace.plan.artifactRoot, "stdlib")
-        if (file_exists(toolchainLib) == 1 and compiler_remove_tree(toolchainLib) == 0) {
+        if (directory_exists(toolchainLib) == 1 and compiler_remove_tree(toolchainLib) == 0) {
             removed.push(toolchainLib)
         }
-        if (file_exists(toolchainStd) == 1 and compiler_remove_tree(toolchainStd) == 0) {
+        if (directory_exists(toolchainStd) == 1 and compiler_remove_tree(toolchainStd) == 0) {
             removed.push(toolchainStd)
         }
     }

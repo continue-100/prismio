@@ -162,6 +162,10 @@ void proc_spawn_arg(const char* argument);
 int  proc_spawn_run(int stdin_mode, int stdout_mode, int stderr_mode, PrismioSpawnOut* out);
 int  proc_wait(int64_t handle);
 
+// Moves `from` over `to`, replacing one that is there -- on Windows too, where plain
+// `rename` refuses. 0 on success. Defined in program_support.c.
+int  fs_rename(const char* from, const char* to);
+
 // --- REQUIREMENTS 15: tasks and channels ---
 // prismio_task_* are compiler-emitted: `spawn f(x)` and `join t` lower to them,
 // so no program declares them by hand. The chan_* set is ordinary FFI surface a

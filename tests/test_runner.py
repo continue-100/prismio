@@ -10,6 +10,7 @@ import tempfile
 import io
 import time
 import threading
+import traceback
 import contextlib
 import difflib
 import concurrent.futures
@@ -872,14 +873,46 @@ def trust_host(path):
     """
     st = os.stat(path)
     if os.name == "nt":
-        filetime = st.st_mtime_ns // 100 + 116444736000000000
-        identity = (f"{st.st_dev} {st.st_ino >> 32} {st.st_ino & 0xffffffff} "
-                    f"{st.st_size >> 32} {st.st_size & 0xffffffff} "
-                    f"{filetime >> 32} {filetime & 0xffffffff}")
+        # Asked of Win32, not `os.stat`: Python 3.12 widened `st_dev` to a 64-bit
+        # volume id, while the launcher records `dwVolumeSerialNumber`, the
+        # 32-bit serial, and a stamp that differs in that one field is untrusted.
+        import ctypes
+        from ctypes import wintypes
+
+        class FileTime(ctypes.Structure):
+            _fields_ = [("low", wintypes.DWORD), ("high", wintypes.DWORD)]
+
+        class FileInformation(ctypes.Structure):
+            _fields_ = [("attributes", wintypes.DWORD), ("created", FileTime),
+                        ("accessed", FileTime), ("written", FileTime),
+                        ("serial", wintypes.DWORD), ("size_high", wintypes.DWORD),
+                        ("size_low", wintypes.DWORD), ("links", wintypes.DWORD),
+                        ("index_high", wintypes.DWORD), ("index_low", wintypes.DWORD)]
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                       wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
+                                       wintypes.HANDLE]
+        kernel.GetFileInformationByHandle.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.CreateFileW(str(path), 0x80000000, 7, None, 3, 0, None)
+        info = FileInformation()
+        found = handle not in (None, ctypes.c_void_p(-1).value) and \
+            kernel.GetFileInformationByHandle(handle, ctypes.byref(info))
+        if handle not in (None, ctypes.c_void_p(-1).value):
+            kernel.CloseHandle(handle)
+        if not found:
+            raise OSError(f"could not read the identity of {path}")
+        identity = (f"{info.serial} {info.index_high} {info.index_low} "
+                    f"{info.size_high} {info.size_low} "
+                    f"{info.written.high} {info.written.low}")
     else:
         identity = (f"{st.st_dev} {st.st_ino} {st.st_size} "
                     f"{st.st_mtime_ns // 1_000_000_000} {st.st_mtime_ns % 1_000_000_000}")
-    Path(f"{path}.trusted").write_text(f"prismio-host-stamp 1\n{identity}\n", encoding="ascii")
+    # Bytes: `write_text` would write CRLF on Windows, and the launcher compares the
+    # stamp as written, header and newlines included.
+    Path(f"{path}.trusted").write_bytes(f"prismio-host-stamp 1\n{identity}\n".encode("ascii"))
 
 
 @contextlib.contextmanager
@@ -933,8 +966,8 @@ def show_run(result):
 def run_ums_project_test():
     """What a project's user sees: `run`, `test`, `clean`, commands, native code.
 
-    Each check is one of the defects the UMS release audit reproduced
-    (docs/UMS_RELEASE_AUDIT.md), asserted from the outside, in a project outside
+    Each check is one of the defects the UMS release audit reproduced,
+    asserted from the outside, in a project outside
     the checkout so nothing in the tree can stand in for the installed toolchain.
     """
     print(f"\n{BLUE}--- Running ums_project ---{RESET}")
@@ -3329,8 +3362,10 @@ def run_bootstrap_cache_key_test():
 
         source = Path(tree) / "runtime" / "lang_runtime.c"
         header = Path(tree) / "runtime" / "prismio_runtime.h"
-        original_source = source.read_text(encoding="utf-8")
-        original_header = header.read_text(encoding="utf-8")
+        # Bytes, not text: on Windows `write_text` turns every LF into CRLF, so
+        # "restoring" a file through it changed its content and its key.
+        original_source = source.read_bytes()
+        original_header = header.read_bytes()
 
         base = key("lang_runtime.c")
         if base and key("lang_runtime.c") != base:
@@ -3341,20 +3376,20 @@ def run_bootstrap_cache_key_test():
         if base and other == base:
             problems.append("two different sources produce the same cache entry")
 
-        source.write_text(original_source + "\n// cache key check\n", encoding="utf-8")
+        source.write_bytes(original_source + b"\n// cache key check\n")
         edited = key("lang_runtime.c")
         if base and edited == base:
             problems.append("editing lang_runtime.c did not change its key -- the key is not "
                             "the content, and the next generation would link the old object")
-        source.write_text(original_source, encoding="utf-8")
+        source.write_bytes(original_source)
 
-        header.write_text("/* cache key check */\n" + original_header, encoding="utf-8")
+        header.write_bytes(b"/* cache key check */\n" + original_header)
         after_header = key("lang_runtime.c")
         if base and after_header == base:
             problems.append("editing prismio_runtime.h did not change lang_runtime.c's key -- "
                             "a header changes what a source compiles to without changing a byte "
                             "of it, so this serves an object built against the old header")
-        header.write_text(original_header, encoding="utf-8")
+        header.write_bytes(original_header)
 
         if base and key("lang_runtime.c") != base:
             problems.append("restoring the tree did not restore the key, so at least one of the "
@@ -9157,6 +9192,10 @@ def main():
             except Exception as exc:
                 ok = False
                 print(f"{RED}[FAIL] {name}: uncaught exception: {exc}{RESET}", flush=True)
+                # The message alone ("[WinError 3] The system cannot find the path
+                # specified") names no file and no line, which cost a Windows replay
+                # to find.
+                traceback.print_exc(file=sys.stdout)
             dt = time.time() - t0
             _progress_meter.finish_test(name, ok, dt)
             if ok:

@@ -1,5 +1,4 @@
-// `x as T?`: a conversion that can fail answers `none` rather than truncating
-// (docs/CONVERSIONS_PLAN.md, tasks 3 and 4).
+// `x as T?`: a conversion that can fail answers `none` rather than truncating.
 //
 //   * Between numbers: `none` when the value is not one of the target's --
 //     too large, a sign the target cannot hold, and from a Float a NaN, an
