@@ -1,0 +1,48 @@
+// An array answers `length` and the four searches (docs/COLLECTION_METHODS_PLAN.md,
+// 1.1 d). Its length is in its type, so `a.length` is the literal `N` and
+// `a.contains(x)` is `contains(a, N, x)` -- the `[T]` overloads in std/vec.psm,
+// which a parameter's owner calls by hand with the length they carry beside it.
+
+import std.io
+import std.vec
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn total(xs: [Int], n: Int) -> Int {
+    let mut sum = 0
+    for i in 0..<n { sum = sum + xs[i] }
+    return sum
+}
+
+fn main() -> Int {
+    // Unannotated, so an `Array<Int, 4>` and not a Vec: the case that used to
+    // report "no overload of `contains`".
+    let a = [1, 2, 3, 2]
+    if (a.length != 4) { return fail("length of an inferred array") }
+    if (a.contains(3) == false or a.contains(9)) { return fail("contains") }
+    if (a.indexOf(2) != 1 or a.indexOf(9) != 0 - 1) { return fail("indexOf") }
+    if (a.lastIndexOf(2) != 3 or a.lastIndexOf(9) != 0 - 1) { return fail("lastIndexOf") }
+    if (a.countOf(2) != 2 or a.countOf(9) != 0) { return fail("countOf") }
+
+    // Other element types; the needle's type is the element's.
+    let f = [1.5, 2.5]
+    if (f.contains(2.5) == false or f.contains(3.5)) { return fail("Float") }
+    let wide: Array<I64, 3> = [7, 7, 8]
+    if (wide.countOf(7 as I64) != 2 or wide.length != 3) { return fail("I64") }
+    let flags: Array<Bool, 2> = [true, false]
+    if (flags.contains(false) == false) { return fail("Bool") }
+
+    // The spelling a `[T]` parameter's owner uses.
+    if (contains(a, a.length, 3) == false) { return fail("contains(xs, n, x)") }
+    if (total(a, a.length) != 8) { return fail("array as a view with its length") }
+
+    // A Vec is unchanged.
+    let v: Vec<Int> = [1, 2, 3]
+    if (v.contains(2) == false or v.indexOf(3) != 2 or v.length != 3) { return fail("Vec") }
+    println("ok")
+    return 0
+}

@@ -583,6 +583,37 @@ public fn countOf<T: Eq>(items: Vec<T>, needle: T) -> Int {
     return found
 }
 
+// The same four searches over an array. A `[T]` parameter does not know how long
+// it is, so the length is passed beside it; `a.contains(x)` supplies the `N` in
+// `a`'s type (src/sema/array.psm), and a parameter's owner writes `contains(xs, n, x)`.
+public fn contains<T: Eq>(items: [T], count: Int, needle: T) -> Bool {
+    return indexOf(items, count, needle) >= 0
+}
+
+public fn indexOf<T: Eq>(items: [T], count: Int, needle: T) -> Int {
+    for i in 0..<count {
+        if (Eq.eq(items[i], needle)) { return i }
+    }
+    return 0 - 1
+}
+
+public fn lastIndexOf<T: Eq>(items: [T], count: Int, needle: T) -> Int {
+    let mut i = count - 1
+    while (i >= 0) {
+        if (Eq.eq(items[i], needle)) { return i }
+        i = i - 1
+    }
+    return 0 - 1
+}
+
+public fn countOf<T: Eq>(items: [T], count: Int, needle: T) -> Int {
+    let mut found = 0
+    for i in 0..<count {
+        if (Eq.eq(items[i], needle)) { found = found + 1 }
+    }
+    return found
+}
+
 // Appends a copy of every element of `other`, which is left as it was.
 public fn extend<T: Copy>(inout items: Vec<T>, other: Vec<T>) {
     let n = list_len(other)
@@ -703,7 +734,7 @@ public fn countWhere<T, F>(items: Vec<T>, keep: F) -> Int {
     return found
 }
 
-public fn anyOf<T, F>(items: Vec<T>, keep: F) -> Bool {
+public fn any<T, F>(items: Vec<T>, keep: F) -> Bool {
     let n = list_len(items)
     let mut i = 0
     while (i < n) {
@@ -713,7 +744,7 @@ public fn anyOf<T, F>(items: Vec<T>, keep: F) -> Bool {
     return false
 }
 
-public fn allOf<T, F>(items: Vec<T>, keep: F) -> Bool {
+public fn all<T, F>(items: Vec<T>, keep: F) -> Bool {
     let n = list_len(items)
     let mut i = 0
     while (i < n) {
@@ -721,4 +752,551 @@ public fn allOf<T, F>(items: Vec<T>, keep: F) -> Bool {
         i = i + 1
     }
     return true
+}
+
+// ---------------------------------------------------------------------------
+// The rest of the 0.1 table (docs/COLLECTION_METHODS_PLAN.md, 1.2)
+// ---------------------------------------------------------------------------
+
+// The smallest and the largest element, or `None` when there is none. The first
+// of equal elements wins, so `min` and `max` agree on which one they mean.
+public fn min<T: Ord + Copy>(items: Vec<T>) -> Option<T> {
+    let n = list_len(items)
+    if (n == 0) { return Option<T>.None }
+    let mut best = 0
+    for i in 1..<n {
+        if (cmp(list_get(items, i), list_get(items, best)) < 0) { best = i }
+    }
+    return Option<T>.Some(copyOf(list_get(items, best)))
+}
+
+public fn max<T: Ord + Copy>(items: Vec<T>) -> Option<T> {
+    let n = list_len(items)
+    if (n == 0) { return Option<T>.None }
+    let mut best = 0
+    for i in 1..<n {
+        if (cmp(list_get(items, i), list_get(items, best)) > 0) { best = i }
+    }
+    return Option<T>.Some(copyOf(list_get(items, best)))
+}
+
+// The first element `keep` accepts, or `None`. `T: Copy` for `get`'s reason.
+public fn find<T: Copy, F>(items: Vec<T>, keep: F) -> Option<T> {
+    let n = list_len(items)
+    for i in 0..<n {
+        let element = list_get(items, i)
+        if (keep(element)) { return Option<T>.Some(copyOf(element)) }
+    }
+    return Option<T>.None
+}
+
+// The position of the first element `keep` accepts, or -1, as `indexOf` answers.
+public fn indexWhere<T, F>(items: Vec<T>, keep: F) -> Int {
+    let n = list_len(items)
+    for i in 0..<n {
+        if (keep(list_get(items, i))) { return i }
+    }
+    return 0 - 1
+}
+
+public fn forEach<T, F>(items: Vec<T>, f: F) {
+    let n = list_len(items)
+    for i in 0..<n {
+        f(list_get(items, i))
+    }
+}
+
+// `f` folded over the elements from `initial`, left to right. The result type is
+// solved from `initial`, an argument, which is why this one can return a value
+// and `map` cannot (see `mapInto`). `U: Copy` because the accumulator is handed
+// to `f` and back, and a parameter cannot be moved out of.
+public fn fold<T, U: Copy, F>(items: Vec<T>, initial: U, f: F) -> U {
+    let n = list_len(items)
+    let mut accumulated = copyOf(initial)
+    for i in 0..<n {
+        accumulated = f(accumulated, list_get(items, i))
+    }
+    return accumulated
+}
+
+// The first element, removed, with the rest moved down one; `None` when empty.
+public fn removeFirst<T: Copy>(inout items: Vec<T>) -> Option<T> {
+    if (list_len(items) == 0) { return Option<T>.None }
+    let taken = copyOf(list_get(items, 0))
+    list_remove_at(items, 0)
+    return Option<T>.Some(taken)
+}
+
+// The element at `index`, removed by moving the last element into its place:
+// constant time, and the order is not kept. Out of range is a runtime error, as
+// it is for `removeAt`.
+public fn swapRemove<T: Copy>(inout items: Vec<T>, index: Int) -> T {
+    let last = list_len(items) - 1
+    if (index < 0 or index > last) { list_remove_at(items, index) }
+    let taken = copyOf(list_get(items, index))
+    list_swap(items, index, last)
+    list_truncate(items, last)
+    return taken
+}
+
+// Keeps the elements `keep` accepts, in their order, in place. The kept ones are
+// swapped forward and the rest are truncated off the end, so nothing is copied
+// and no element needs `Copy`: a swap is a permutation, and the truncation
+// releases what it drops.
+public fn retain<T, F>(inout items: Vec<T>, keep: F) {
+    let n = list_len(items)
+    let mut write = 0
+    for read in 0..<n {
+        if (keep(list_get(items, read))) {
+            if (read != write) { list_swap(items, write, read) }
+            write = write + 1
+        }
+    }
+    list_truncate(items, write)
+}
+
+// Removes each element equal to the one before it, so `[1, 1, 2, 1]` becomes
+// `[1, 2, 1]`; sort first to remove every repeat. In place, for `retain`'s reason.
+public fn dedup<T: Eq>(inout items: Vec<T>) {
+    let n = list_len(items)
+    if (n < 2) { return }
+    let mut write = 1
+    for read in 1..<n {
+        if (Eq.eq(list_get(items, read), list_get(items, write - 1)) == false) {
+            if (read != write) { list_swap(items, write, read) }
+            write = write + 1
+        }
+    }
+    list_truncate(items, write)
+}
+
+// The copying forms of `sort` and `reverse`: a new Vec, and `items` is as it was.
+public fn sorted<T: Ord + Copy>(items: Vec<T>) -> Vec<T> {
+    let mut out = clone(items)
+    sort(out)
+    return out
+}
+
+public fn reversed<T: Copy>(items: Vec<T>) -> Vec<T> {
+    let mut out = clone(items)
+    reverse(out)
+    return out
+}
+
+// The first `count` elements, and everything after them. A count past either end
+// clamps, so `take` and `skip` never fail and `take(n)` + `skip(n)` is the Vec.
+// `skip` and not `drop`, which is the compiler's own release.
+public fn take<T: Copy>(items: Vec<T>, count: Int) -> Vec<T> {
+    let n = list_len(items)
+    let mut end = count
+    if (end > n) { end = n }
+    if (end < 0) { end = 0 }
+    let mut out: Vec<T> = list_new_with_capacity(end)
+    for i in 0..<end {
+        list_push(out, copyOf(list_get(items, i)))
+    }
+    return out
+}
+
+public fn skip<T: Copy>(items: Vec<T>, count: Int) -> Vec<T> {
+    let n = list_len(items)
+    let mut start = count
+    if (start > n) { start = n }
+    if (start < 0) { start = 0 }
+    let mut out: Vec<T> = list_new_with_capacity(n - start)
+    for i in start..<n {
+        list_push(out, copyOf(list_get(items, i)))
+    }
+    return out
+}
+
+// Every element becomes a copy of `value`; the length is unchanged.
+public fn fill<T: Copy>(inout items: Vec<T>, value: T) {
+    let n = list_len(items)
+    for i in 0..<n {
+        list_set(items, i, copyOf(value))
+    }
+}
+
+// Whether `items` begins, or ends, with the elements of `other`, in order.
+public fn startsWith<T: Eq>(items: Vec<T>, other: Vec<T>) -> Bool {
+    let m = list_len(other)
+    if (m > list_len(items)) { return false }
+    for i in 0..<m {
+        if (Eq.eq(list_get(items, i), list_get(other, i)) == false) { return false }
+    }
+    return true
+}
+
+public fn endsWith<T: Eq>(items: Vec<T>, other: Vec<T>) -> Bool {
+    let m = list_len(other)
+    let offset = list_len(items) - m
+    if (offset < 0) { return false }
+    for i in 0..<m {
+        if (Eq.eq(list_get(items, offset + i), list_get(other, i)) == false) { return false }
+    }
+    return true
+}
+
+// A new Vec holding the elements of `items`, then those of `other`. Both are as
+// they were; `extend` is the in-place form.
+public fn concat<T: Copy>(items: Vec<T>, other: Vec<T>) -> Vec<T> {
+    let mut out = clone(items)
+    extend(out, other)
+    return out
+}
+
+// ---------------------------------------------------------------------------
+// Arrays and slices (docs/COLLECTION_METHODS_PLAN.md, 1.4)
+// ---------------------------------------------------------------------------
+//
+// **An array takes its length beside it.** A `[T]` parameter does not know how
+// long it is, so each function below has the array first and `count` second;
+// `a.min()` is `min(a, N, ...)`, the call site supplying the `N` in `a`'s type
+// (src/sema/array.psm), and a parameter's owner writes `min(xs, n)` by hand. The
+// four searches above are the first of them.
+//
+// **A slice carries its length**, so its overloads are the Vec's with `Slice<T>`
+// for `Vec<T>` and `.length` for `list_len`; they need no help from the compiler.
+//
+// The element reads go through `items[i]` and not `list_get`, which a `[T]` and a
+// `Slice<T>` do not accept.
+
+public fn min<T: Ord + Copy>(items: [T], count: Int) -> Option<T> {
+    if (count == 0) { return Option<T>.None }
+    let mut best = 0
+    for i in 1..<count {
+        if (cmp(items[i], items[best]) < 0) { best = i }
+    }
+    return Option<T>.Some(copyOf(items[best]))
+}
+
+public fn max<T: Ord + Copy>(items: [T], count: Int) -> Option<T> {
+    if (count == 0) { return Option<T>.None }
+    let mut best = 0
+    for i in 1..<count {
+        if (cmp(items[i], items[best]) > 0) { best = i }
+    }
+    return Option<T>.Some(copyOf(items[best]))
+}
+
+public fn isSorted<T: Ord>(items: [T], count: Int) -> Bool {
+    for i in 1..<count {
+        if (cmp(items[i - 1], items[i]) > 0) { return false }
+    }
+    return true
+}
+
+public fn binarySearch<T: Ord>(items: [T], count: Int, needle: T) -> Int {
+    let mut low = 0
+    let mut high = count - 1
+    while (low <= high) {
+        let mid = low + (high - low) / 2
+        let order = cmp(items[mid], needle)
+        if (order == 0) { return mid }
+        if (order < 0) {
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return 0 - 1
+}
+
+public fn any<T, F>(items: [T], count: Int, keep: F) -> Bool {
+    for i in 0..<count {
+        if (keep(items[i])) { return true }
+    }
+    return false
+}
+
+public fn all<T, F>(items: [T], count: Int, keep: F) -> Bool {
+    for i in 0..<count {
+        if (keep(items[i]) == false) { return false }
+    }
+    return true
+}
+
+public fn countWhere<T, F>(items: [T], count: Int, keep: F) -> Int {
+    let mut found = 0
+    for i in 0..<count {
+        if (keep(items[i])) { found = found + 1 }
+    }
+    return found
+}
+
+public fn find<T: Copy, F>(items: [T], count: Int, keep: F) -> Option<T> {
+    for i in 0..<count {
+        if (keep(items[i])) { return Option<T>.Some(copyOf(items[i])) }
+    }
+    return Option<T>.None
+}
+
+public fn indexWhere<T, F>(items: [T], count: Int, keep: F) -> Int {
+    for i in 0..<count {
+        if (keep(items[i])) { return i }
+    }
+    return 0 - 1
+}
+
+public fn forEach<T, F>(items: [T], count: Int, f: F) {
+    for i in 0..<count {
+        f(items[i])
+    }
+}
+
+public fn fold<T, U: Copy, F>(items: [T], count: Int, initial: U, f: F) -> U {
+    let mut accumulated = copyOf(initial)
+    for i in 0..<count {
+        accumulated = f(accumulated, items[i])
+    }
+    return accumulated
+}
+
+// A new Vec holding a copy of every element: the way from an array to the Vec
+// methods that return a Vec (`a.toVec().sorted()`).
+public fn toVec<T: Copy>(items: [T], count: Int) -> Vec<T> {
+    let mut out: Vec<T> = list_new_with_capacity(count)
+    for i in 0..<count {
+        list_push(out, copyOf(items[i]))
+    }
+    return out
+}
+
+// The in-place changes. An array stores an element only when nothing owns it
+// (sema refuses the store otherwise), so these take scalars, `Bool`, `Char` and
+// enums without payloads, and say so for anything else at the store.
+
+public fn reverse<T: Copy>(inout items: [T], count: Int) {
+    let mut low = 0
+    let mut high = count - 1
+    while (low < high) {
+        let held = copyOf(items[low])
+        items[low] = items[high]
+        items[high] = held
+        low = low + 1
+        high = high - 1
+    }
+}
+
+public fn swap<T: Copy>(inout items: [T], count: Int, first: Int, second: Int) {
+    if (first < 0 or first >= count or second < 0 or second >= count) {
+        panic("array swap index out of range")
+    }
+    let held = copyOf(items[first])
+    items[first] = items[second]
+    items[second] = held
+}
+
+public fn fill<T: Copy>(inout items: [T], count: Int, value: T) {
+    for i in 0..<count {
+        items[i] = copyOf(value)
+    }
+}
+
+// Sorted through a Vec: the elements are copied out, sorted by the one sort this
+// library has, and copied back. One allocation, and nothing about the order is
+// different from `Vec.sort`'s -- in place, not stable.
+public fn sort<T: Ord + Copy>(inout items: [T], count: Int) {
+    let mut scratch = toVec(items, count)
+    sort(scratch)
+    for i in 0..<count {
+        items[i] = copyOf(list_get(scratch, i))
+    }
+}
+
+public fn sortBy<T: Copy, F>(inout items: [T], count: Int, order: F) {
+    let mut scratch = toVec(items, count)
+    sortBy(scratch, order)
+    for i in 0..<count {
+        items[i] = copyOf(list_get(scratch, i))
+    }
+}
+
+// The same reads over a slice, which carries its own length.
+
+public fn contains<T: Eq>(items: Slice<T>, needle: T) -> Bool {
+    return indexOf(items, needle) >= 0
+}
+
+public fn indexOf<T: Eq>(items: Slice<T>, needle: T) -> Int {
+    for i in 0..<items.length {
+        if (Eq.eq(items[i], needle)) { return i }
+    }
+    return 0 - 1
+}
+
+public fn lastIndexOf<T: Eq>(items: Slice<T>, needle: T) -> Int {
+    let mut i = items.length - 1
+    while (i >= 0) {
+        if (Eq.eq(items[i], needle)) { return i }
+        i = i - 1
+    }
+    return 0 - 1
+}
+
+public fn countOf<T: Eq>(items: Slice<T>, needle: T) -> Int {
+    let mut found = 0
+    for i in 0..<items.length {
+        if (Eq.eq(items[i], needle)) { found = found + 1 }
+    }
+    return found
+}
+
+public fn min<T: Ord + Copy>(items: Slice<T>) -> Option<T> {
+    let n = items.length
+    if (n == 0) { return Option<T>.None }
+    let mut best = 0
+    for i in 1..<n {
+        if (cmp(items[i], items[best]) < 0) { best = i }
+    }
+    return Option<T>.Some(copyOf(items[best]))
+}
+
+public fn max<T: Ord + Copy>(items: Slice<T>) -> Option<T> {
+    let n = items.length
+    if (n == 0) { return Option<T>.None }
+    let mut best = 0
+    for i in 1..<n {
+        if (cmp(items[i], items[best]) > 0) { best = i }
+    }
+    return Option<T>.Some(copyOf(items[best]))
+}
+
+public fn isSorted<T: Ord>(items: Slice<T>) -> Bool {
+    for i in 1..<items.length {
+        if (cmp(items[i - 1], items[i]) > 0) { return false }
+    }
+    return true
+}
+
+public fn binarySearch<T: Ord>(items: Slice<T>, needle: T) -> Int {
+    let mut low = 0
+    let mut high = items.length - 1
+    while (low <= high) {
+        let mid = low + (high - low) / 2
+        let order = cmp(items[mid], needle)
+        if (order == 0) { return mid }
+        if (order < 0) {
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return 0 - 1
+}
+
+public fn any<T, F>(items: Slice<T>, keep: F) -> Bool {
+    for i in 0..<items.length {
+        if (keep(items[i])) { return true }
+    }
+    return false
+}
+
+public fn all<T, F>(items: Slice<T>, keep: F) -> Bool {
+    for i in 0..<items.length {
+        if (keep(items[i]) == false) { return false }
+    }
+    return true
+}
+
+public fn countWhere<T, F>(items: Slice<T>, keep: F) -> Int {
+    let mut found = 0
+    for i in 0..<items.length {
+        if (keep(items[i])) { found = found + 1 }
+    }
+    return found
+}
+
+public fn find<T: Copy, F>(items: Slice<T>, keep: F) -> Option<T> {
+    for i in 0..<items.length {
+        if (keep(items[i])) { return Option<T>.Some(copyOf(items[i])) }
+    }
+    return Option<T>.None
+}
+
+public fn indexWhere<T, F>(items: Slice<T>, keep: F) -> Int {
+    for i in 0..<items.length {
+        if (keep(items[i])) { return i }
+    }
+    return 0 - 1
+}
+
+public fn forEach<T, F>(items: Slice<T>, f: F) {
+    for i in 0..<items.length {
+        f(items[i])
+    }
+}
+
+public fn fold<T, U: Copy, F>(items: Slice<T>, initial: U, f: F) -> U {
+    let mut accumulated = copyOf(initial)
+    for i in 0..<items.length {
+        accumulated = f(accumulated, items[i])
+    }
+    return accumulated
+}
+
+// The way from a slice to a Vec of its own, and from a Vec to a copy of itself
+// under the name the array and the slice use.
+public fn toVec<T: Copy>(items: Slice<T>) -> Vec<T> {
+    let n = items.length
+    let mut out: Vec<T> = list_new_with_capacity(n)
+    for i in 0..<n {
+        list_push(out, copyOf(items[i]))
+    }
+    return out
+}
+
+public fn toVec<T: Copy>(items: Vec<T>) -> Vec<T> {
+    return clone(items)
+}
+
+// The in-place changes over a slice write through to the Vec it views, so they
+// need a slice the code may change (`let mut`, or an `inout` parameter) of a Vec
+// that is itself changeable, as `slice_set` does.
+
+public fn reverse<T: Copy>(inout items: Slice<T>) {
+    let mut low = 0
+    let mut high = items.length - 1
+    while (low < high) {
+        let held = copyOf(items[low])
+        items[low] = items[high]
+        items[high] = held
+        low = low + 1
+        high = high - 1
+    }
+}
+
+public fn swap<T: Copy>(inout items: Slice<T>, first: Int, second: Int) {
+    if (first < 0 or first >= items.length or second < 0 or second >= items.length) {
+        panic("slice swap index out of range")
+    }
+    let held = copyOf(items[first])
+    items[first] = items[second]
+    items[second] = held
+}
+
+public fn fill<T: Copy>(inout items: Slice<T>, value: T) {
+    for i in 0..<items.length {
+        items[i] = copyOf(value)
+    }
+}
+
+// Sorted through a Vec, as an array is: copied out, sorted, copied back.
+public fn sort<T: Ord + Copy>(inout items: Slice<T>) {
+    let n = items.length
+    let mut scratch = toVec(items)
+    sort(scratch)
+    for i in 0..<n {
+        items[i] = copyOf(list_get(scratch, i))
+    }
+}
+
+public fn sortBy<T: Copy, F>(inout items: Slice<T>, order: F) {
+    let n = items.length
+    let mut scratch = toVec(items)
+    sortBy(scratch, order)
+    for i in 0..<n {
+        items[i] = copyOf(list_get(scratch, i))
+    }
 }

@@ -28,7 +28,7 @@ for it: the stack, a bulk-freed region, a single owner with a deterministic free
 a reference count. It shows you each decision, and it can check them against a
 real run.
 
-> **Status: pre-release.** 0.1.0 is being prepared ([release checklist](RELEASE_CHECKLIST.md)).
+> **Status: pre-release.** 0.1.0 is being prepared ([release procedure](RELEASE.md)).
 > The language and standard library can still change in incompatible ways before 1.0.
 > Build it from source today; installers come with the 0.1.0 release.
 
@@ -215,9 +215,9 @@ CI alone. WebAssembly IR can be emitted but has no runtime yet. See
 
 |                                                                    | |
 |--------------------------------------------------------------------|---|
-| [CHANGELOG.md](CHANGELOG.md)                                       | What changed, release by release |
+| [Release notes](https://docs.prismio.org/releases)                 | What changed, release by release |
 | [KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)                            | What is open, with enough of each to act on |
-| [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)                       | What is left before 0.1.0 |
+| [RELEASE.md](RELEASE.md)                                           | How a release is cut, and what must be green first |
 | [docs/](docs/)                                                     | Plans for the standard library, memory, performance, collections and channels |
 | [Runtime surface](https://developers.prismio.org/runtime/supported-surface), [String representation](https://developers.prismio.org/compiler/string-representation) | The runtime surface, and how `String` is represented |
 | [CODE_STYLE.md](CODE_STYLE.md), [C_CODE_STYLE.md](C_CODE_STYLE.md) | How the compiler and runtime are written |

@@ -1750,6 +1750,23 @@ private fn semaCallExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
                 if (lowered == semaVecRewritten()) { return semaExpr(module, expr) }
                 if (lowered == semaVecRejected()) { return typeInvalid() }
             }
+            // An array's methods take its length from the type (src/sema/array.psm).
+            if (receiverKind == TypeKind.ARRAY) {
+                let method = callee.s1.clone()
+                if (semaArrayIsProperty(method)) {
+                    semaErrorAt(callee, diagQuote(method).concat(" is a property, not a method"))
+                    diag_note("read it without parentheses: `x.".concat(method, "`"))
+                    nodeSetType(expr, typeInvalid())
+                    return typeInvalid()
+                }
+                let arrayLowered = semaArrayLower(expr, receiverT, method, target, expr.child2)
+                if (arrayLowered == semaVecRewritten()) { return semaExpr(module, expr) }
+                if (arrayLowered == semaVecRejected()) { return typeInvalid() }
+                if (semaArrayLacksVecMethod(callee, target, receiverT, method)) {
+                    nodeSetType(expr, typeInvalid())
+                    return typeInvalid()
+                }
+            }
         }
 
         if (target.kind != NodeKind.TYPE_ANNOTATION) {
@@ -2070,6 +2087,12 @@ private fn semaMemberAccessExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
         if (chanRead == semaVecRewritten()) { return semaExpr(module, expr) }
         if (chanRead == semaVecRejected()) { return typeInvalid() }
     }
+    if (objectT.kind == TypeKind.ARRAY and semaArrayIsProperty(expr.s1)) {
+        let arrayProperty = expr.s1.clone()
+        let arrayRead = semaArrayLower(expr, objectT, arrayProperty, objectNode, ptr_null())
+        if (arrayRead == semaVecRewritten()) { return semaExpr(module, expr) }
+        if (arrayRead == semaVecRejected()) { return typeInvalid() }
+    }
     if (semaVecLowersKind(objectT.kind) and semaVecIsProperty(objectT.kind, expr.s1)) {
         let propertyName = expr.s1.clone()
         let loweredProperty = semaVecLower(module, expr, objectT.kind, propertyName, objectNode, ptr_null())
@@ -2101,7 +2124,7 @@ private fn semaMemberAccessExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
             if (objectT.kind == TypeKind.OPTIONAL) {
                 semaErrorAt(objectNode, "member access requires a struct value, found ".concat(typeDisplay(objectT)))
                 diag_note("unwrap it first -- `expect(value)`")
-            } else {
+            } else if (semaArrayLacksVecMethod(objectNode, objectNode, objectT, expr.s1) == false) {
                 semaErrorAt(objectNode, "no property ".concat(diagQuote(expr.s1),
                                                               " on ",
                                                               typeDisplay(objectT)))
@@ -5173,14 +5196,25 @@ private fn semaLowerClosure(module: ASTNode, expr: ASTNode) -> TypeInfo {
     }
     callFn.child1 = params.head
 
-    let returnStatement = createNode(NodeKind.RETURN_STATEMENT)
-    nodeSpanFrom(returnStatement, expr)
-    returnStatement.child1 = expr.child2
     let body = createNode(NodeKind.BLOCK)
     nodeSpanFrom(body, expr)
-    body.child1 = node_to_ptr(returnStatement)
+    if (bodyT.kind == TypeKind.VOID) {
+        // A closure whose body answers nothing, `|x| println(x)`: its `call` has no
+        // return type, and the body is a statement. Void is not a type a function
+        // can name, so the annotation below would be "unknown type `Void`".
+        let statement = createNode(NodeKind.EXPRESSION_STATEMENT)
+        nodeSpanFrom(statement, expr)
+        statement.child1 = expr.child2
+        body.child1 = node_to_ptr(statement)
+        callFn.child3 = ptr_null()
+    } else {
+        let returnStatement = createNode(NodeKind.RETURN_STATEMENT)
+        nodeSpanFrom(returnStatement, expr)
+        returnStatement.child1 = expr.child2
+        body.child1 = node_to_ptr(returnStatement)
+        callFn.child3 = node_to_ptr(monoAnnotationFromType(bodyT))
+    }
     callFn.child2 = node_to_ptr(body)
-    callFn.child3 = node_to_ptr(monoAnnotationFromType(bodyT))
     // **A closure lowered inside an instantiation is part of it**, and says so
     // the way an instantiation does: a non-null `genericInfo` is what
     // `shouldEmitFunctionFromSource` reads as "the importing program emits

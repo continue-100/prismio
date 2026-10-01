@@ -1,0 +1,47 @@
+// A program may declare a name that a standard-library *generic* also uses.
+// `std.vec` has `filter`, `find`, `take`, `min` and more as generic functions,
+// and a program with its own `filter` -- a free function or a method -- used to
+// fail with "unknown type `T`" pointing into the library: the check that decides
+// whether a declaration shadows the library compared its signature with the
+// generic's, whose `T` is bound only at an instantiation.
+//
+// Both still resolve: the program's own where the arguments are its own, the
+// library's where they are a Vec.
+
+import std.io
+import std.vec
+import std.option
+
+struct Parser {
+    pos: Int
+}
+
+impl Parser {
+    fn take(self, kind: Int) -> Bool { return kind == self.pos }
+    fn find(self, kind: Int) -> Int { return self.pos + kind }
+    fn min(self, other: Int) -> Int {
+        if (self.pos < other) { return self.pos }
+        return other
+    }
+}
+
+fn filter(n: Int) -> Bool { return n > 2 }
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let p = Parser { pos: 3 }
+    if (p.take(3) == false or p.take(4)) { return fail("method take") }
+    if (p.find(4) != 7 or p.min(9) != 3) { return fail("methods find and min") }
+    if (filter(5) == false or filter(1)) { return fail("free function filter") }
+
+    let v: Vec<Int> = [1, 2, 3, 4]
+    if (v.take(2).length != 2 or v.filter(|x: Int| x > 2).length != 2) { return fail("the library's, on a Vec") }
+    if (v.find(|x: Int| x > 2).unwrapOr(0) != 3 or v.min().unwrapOr(0) != 1) { return fail("find and min on a Vec") }
+    println("ok")
+    return 0
+}

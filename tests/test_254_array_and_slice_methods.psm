@@ -1,0 +1,77 @@
+// Arrays and slices answer the same reads and in-place changes a Vec does
+// (docs/COLLECTION_METHODS_PLAN.md, 1.4). An array takes its length from its
+// type, so `a.min()` is `min(a, N)`; a slice carries its own, so its overloads are
+// the Vec's. `first` and `last` on an array are `a[0]` and `a[N - 1]`.
+
+import std.io
+import std.vec
+import std.option
+
+let mut visited: Int = 0
+
+fn visit(x: Int) {
+    visited = visited + x
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    // ---- arrays
+    let a = [3, 1, 2, 2]
+    if (a.first != 3 or a.last != 2 or a.length != 4) { return fail("array ends and length") }
+    if (a.min().unwrapOr(0 - 1) != 1 or a.max().unwrapOr(0 - 1) != 3) { return fail("array min / max") }
+    if (a.isSorted()) { return fail("array isSorted") }
+    if (a.any(|x: Int| x > 2) == false or a.all(|x: Int| x > 2) or a.countWhere(|x: Int| x == 2) != 2) { return fail("array predicates") }
+    if (a.find(|x: Int| x < 3).unwrapOr(0 - 1) != 1 or a.indexWhere(|x: Int| x == 2) != 2) { return fail("array find / indexWhere") }
+    if (a.fold(0, |total: Int, x: Int| total + x) != 8) { return fail("array fold") }
+    a.forEach(|x: Int| visit(x))
+    if (visited != 8) { return fail("array forEach") }
+    if (a.toVec().length != 4 or a.toVec().sorted()[0] != 1) { return fail("array toVec") }
+
+    let mut b = [5, 3, 4, 1]
+    b.sort()
+    if (b[0] != 1 or b[3] != 5 or b.isSorted() == false) { return fail("array sort") }
+    if (b.binarySearch(4) != 2 or b.binarySearch(9) != 0 - 1) { return fail("array binarySearch") }
+    b.reverse()
+    if (b[0] != 5 or b[3] != 1) { return fail("array reverse") }
+    b.swap(0, 3)
+    if (b[0] != 1 or b[3] != 5) { return fail("array swap") }
+    b.sortBy(|p: Int, q: Int| q - p)
+    if (b[0] != 5 or b[3] != 1) { return fail("array sortBy") }
+    b.fill(7)
+    if (b.countOf(7) != 4) { return fail("array fill") }
+
+    let wide: Array<I64, 3> = [30, 10, 20]
+    if (wide.min().unwrapOr(0 as I64) != 10 as I64 or wide.last != 20 as I64) { return fail("Array<I64>") }
+    let words: Array<String, 3> = ["pear", "fig", "a-longer-string-past-twelve-bytes"]
+    if (words.max().unwrapOr("") != "pear" or words.first != "pear") { return fail("Array<String> reads") }
+
+    // ---- slices
+    let mut v: Vec<Int> = [9, 4, 7, 1, 8]
+    let part = v[1..<4]
+    if (part.contains(7) == false or part.contains(9) or part.indexOf(1) != 2) { return fail("slice search") }
+    if (part.min().unwrapOr(0 - 1) != 1 or part.max().unwrapOr(0 - 1) != 7) { return fail("slice min / max") }
+    if (part.isSorted() or part.fold(0, |total: Int, x: Int| total + x) != 12) { return fail("slice isSorted / fold") }
+    if (part.any(|x: Int| x == 4) == false or part.countWhere(|x: Int| x > 2) != 2) { return fail("slice predicates") }
+    if (part.toVec().length != 3) { return fail("slice toVec") }
+
+    let mut middle = v[1..<4]
+    middle.sort()
+    if (v[0] != 9 or v[1] != 1 or v[2] != 4 or v[3] != 7 or v[4] != 8) { return fail("slice sort writes through") }
+    middle.reverse()
+    if (v[1] != 7 or v[3] != 1) { return fail("slice reverse") }
+    middle.swap(0, 2)
+    if (v[1] != 1 or v[3] != 7) { return fail("slice swap") }
+    middle.fill(0)
+    if (v.countOf(0) != 3 or v[0] != 9 or v[4] != 8) { return fail("slice fill") }
+
+    // The Vec's own are unchanged, and `toVec` is a copy.
+    let copy = v.toVec()
+    if (copy.length != 5) { return fail("Vec toVec") }
+    println("ok")
+    return 0
+}

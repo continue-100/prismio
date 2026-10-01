@@ -130,7 +130,13 @@ private fn semaShadowsStandardLibrary(module: ASTNode, fnNode: ASTNode, signatur
     let count = ir_decl_count(fnNode.s1)
     for i in 0..<count {
         let decl = ptr_to_node(ir_decl_at(fnNode.s1, i))
-        if (decl.kind == NodeKind.FUNCTION and semaFileIsStandardLibrary(decl.file)) {
+        // A generic has no signature to compare: its parameters name a `T` that
+        // is bound only at an instantiation, and mangling them here reported
+        // "unknown type `T`" against the library for any program that declared a
+        // `filter`, `find` or `take` of its own. Its instantiations are concrete
+        // functions with their own symbols and are compared as such.
+        if (decl.kind == NodeKind.FUNCTION and semaFileIsStandardLibrary(decl.file)
+            and nodeIsNull(decl.genericInfo)) {
             let other = semaParamSignature(module, decl.child1)
             if (other.equals(signature)) { return true }
         }
@@ -541,6 +547,39 @@ private fn semaTypeFunctionOwner(module: ASTNode, name: String) -> String {
     return ""
 }
 
+// `let x = [1, 2, 3]` is an `Array<Int, 3>`, not a `Vec`, and most of what a Vec
+// answers is not an array's: `x.push(4)` reaches resolution with no candidate for
+// an array, and a generic function of std/vec.psm (`removeAt`) is not in the decl
+// index at all, so it reads as "unknown function". Neither says that `x` is the
+// surprise. Whether this call is a Vec's method asked of an array: the first
+// argument is one, and the name is one the compiler builds for a Vec, or a function
+// that takes a Vec first. A user's own `push(n: Int)` is none of these, and is not
+// improved by a note about arrays.
+private fn semaArrayAskedVecMethod(module: ASTNode, name: String, argPtr: Ptr) -> Bool {
+    if (nodeExists(argPtr) == false) { return false }
+    let receiver = ptr_to_node(argPtr)
+    if (nodeHasType(receiver) == false or nodeGetType(receiver).kind != TypeKind.ARRAY) { return false }
+    if (semaVecLowersMethod(name) or monoHasVecTemplate(module, name)) { return true }
+    let count = ir_decl_count(name)
+    for i in 0..<count {
+        let decl = ptr_to_node(ir_decl_at(name, i))
+        if (nodeExists(decl.child1)) {
+            let first = ptr_to_node(decl.child1)
+            if (nodeExists(first.child1)
+                and semaAnnotationType(module, ptr_to_node(first.child1)).kind == TypeKind.LIST) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+private fn semaReportArrayAskedVecMethod(call: ASTNode, name: String, argPtr: Ptr) {
+    semaErrorAt(call, "no overload of ".concat(diagQuote(name), " accepts these argument types"))
+    let receiver = ptr_to_node(argPtr)
+    semaArrayNoteVecMethod(receiver, nodeGetType(receiver), name)
+}
+
 internal fn semaFindFunctionOverload(module: ASTNode, call: ASTNode, name: String, argPtr: Ptr) -> ASTNode {
     // Track the winner as a pointer, not an ASTNode binding: `best = stmt` would
     // move the move-only struct out of `stmt`, and the loop still needs `stmt.next`.
@@ -731,6 +770,10 @@ internal fn semaFindFunctionOverload(module: ASTNode, call: ASTNode, name: Strin
     if (nameSeen) {
         semaErrorAt(call, "no overload of ".concat(diagQuote(name),
                                                    " accepts these argument types"))
+        if (semaArrayAskedVecMethod(module, name, argPtr)) {
+            let receiver = ptr_to_node(argPtr)
+            semaArrayNoteVecMethod(receiver, nodeGetType(receiver), name)
+        }
         return createNode(NodeKind.MODULE)
     }
     if (hiddenLevel == 1) {
@@ -757,6 +800,10 @@ internal fn semaFindFunctionOverload(module: ASTNode, call: ASTNode, name: Strin
                                                  ", which this file does not import"))
         diag_note("add `import ".concat(unimportedModule,
                                         "`; an import is not transitive, so importing a module that imports it is not enough"))
+        return createNode(NodeKind.MODULE)
+    }
+    if (semaArrayAskedVecMethod(module, name, argPtr)) {
+        semaReportArrayAskedVecMethod(call, name, argPtr)
         return createNode(NodeKind.MODULE)
     }
     semaErrorAt(call, "unknown function ".concat(diagQuote(name)))

@@ -1,0 +1,12 @@
+// expect-error: cannot change `a`, which is not declared `mut`
+// expect-error: aborting due to 1 previous error
+// An array's in-place methods change it, so the array has to be one the code may
+// change, as for a Vec.
+
+import std.vec
+
+fn main() -> Int {
+    let a = [3, 1, 2]
+    a.sort()
+    return 0
+}

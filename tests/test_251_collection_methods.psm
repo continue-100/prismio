@@ -1,0 +1,75 @@
+// The Vec methods added for 0.1 (docs/COLLECTION_METHODS_PLAN.md, 1.2): the
+// reads (`min`, `max`, `find`, `indexWhere`, `fold`, `forEach`, `startsWith`,
+// `endsWith`), the in-place changes (`retain`, `dedup`, `fill`, `removeFirst`,
+// `swapRemove`) and the copying forms (`sorted`, `reversed`, `take`, `skip`,
+// `concat`). Each runs over scalars, and the ones that release an element also
+// over Strings longer than a pair's inline bytes.
+
+import std.io
+import std.vec
+import std.option
+
+let mut seen: Int = 0
+
+fn count(x: Int) {
+    seen = seen + x
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let v: Vec<Int> = [3, 1, 2, 2, 5]
+    let empty: Vec<Int> = []
+
+    if (v.min().unwrapOr(0 - 1) != 1 or v.max().unwrapOr(0 - 1) != 5) { return fail("min / max") }
+    if (empty.min().isSome or empty.max().isSome) { return fail("min / max of nothing") }
+    if (v.find(|x: Int| x > 2).unwrapOr(0 - 1) != 3 or v.find(|x: Int| x > 9).isSome) { return fail("find") }
+    if (v.indexWhere(|x: Int| x == 2) != 2 or v.indexWhere(|x: Int| x > 9) != 0 - 1) { return fail("indexWhere") }
+    if (v.fold(0, |total: Int, x: Int| total + x) != 13) { return fail("fold") }
+    v.forEach(|x: Int| count(x))
+    if (seen != 13) { return fail("forEach") }
+
+    let head: Vec<Int> = [3, 1]
+    let tail: Vec<Int> = [2, 5]
+    if (v.startsWith(head) == false or v.endsWith(tail) == false) { return fail("startsWith / endsWith") }
+    if (v.startsWith(tail) or v.endsWith(head) or head.startsWith(v)) { return fail("startsWith / endsWith, no") }
+
+    let mut runs: Vec<Int> = [1, 1, 2, 1]
+    runs.dedup()
+    if (runs.length != 3 or runs[2] != 1) { return fail("dedup") }
+    let mut kept: Vec<Int> = [4, 1, 5, 2]
+    kept.retain(|x: Int| x > 2)
+    if (kept.length != 2 or kept[0] != 4 or kept[1] != 5) { return fail("retain keeps order") }
+    let mut filled: Vec<Int> = [1, 2, 3]
+    filled.fill(7)
+    if (filled.countOf(7) != 3) { return fail("fill") }
+
+    let mut queue: Vec<Int> = [10, 20, 30]
+    if (queue.removeFirst().unwrapOr(0) != 10 or queue.length != 2 or queue[0] != 20) { return fail("removeFirst") }
+    if (empty.length != 0) { return fail("empty") }
+    let mut nothing: Vec<Int> = []
+    if (nothing.removeFirst().isSome) { return fail("removeFirst of nothing") }
+    let mut bag: Vec<Int> = [10, 20, 30]
+    if (bag.swapRemove(0) != 10 or bag.length != 2 or bag[0] != 30) { return fail("swapRemove") }
+
+    if (v.sorted()[0] != 1 or v[0] != 3) { return fail("sorted copies") }
+    if (v.reversed()[0] != 5 or v[4] != 5) { return fail("reversed copies") }
+    if (v.take(2).length != 2 or v.take(99).length != 5 or v.take(0 - 3).length != 0) { return fail("take clamps") }
+    if (v.skip(2).length != 3 or v.skip(99).length != 0 or v.skip(0 - 3).length != 5) { return fail("skip clamps") }
+    if (v.concat(v).length != 10 or empty.concat(v).length != 5) { return fail("concat") }
+
+    // Strings past a pair's inline bytes: retain and dedup release what they drop.
+    let mut words: Vec<String> = ["alpha", "beta", "beta", "a-longer-string-past-twelve-bytes", "gamma"]
+    words.dedup()
+    if (words.length != 4) { return fail("dedup of Strings") }
+    words.retain(|w: String| w.length > 4)
+    if (words.length != 3 or words[1] != "a-longer-string-past-twelve-bytes") { return fail("retain of Strings") }
+    if (words.find(|w: String| w.length > 10).unwrapOr("") != "a-longer-string-past-twelve-bytes") { return fail("find of Strings") }
+    if (words.removeFirst().unwrapOr("") != "alpha" or words.length != 2) { return fail("removeFirst of Strings") }
+    println("ok")
+    return 0
+}

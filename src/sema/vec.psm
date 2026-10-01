@@ -69,6 +69,13 @@ private fn semaVecArity(kind: TypeKind, name: String) -> Int {
     return 0 - 1
 }
 
+// Whether a Vec has a method or property of this name that the compiler builds
+// itself, so no function in std/vec.psm carries it. An array answers none of
+// them, and a call there should say so rather than "unknown function".
+internal fn semaVecLowersMethod(name: String) -> Bool {
+    return semaVecArity(TypeKind.LIST, name) >= 0
+}
+
 // Whether `name` read with no parentheses is one of the collection's
 // properties: the size queries, and a Vec's two ends. None of them allocates.
 internal fn semaVecIsProperty(kind: TypeKind, name: String) -> Bool {
@@ -82,7 +89,7 @@ internal fn semaVecIsProperty(kind: TypeKind, name: String) -> Bool {
     return false
 }
 
-private fn semaVecIntLiteral(text: String, at: ASTNode) -> ASTNode {
+internal fn semaVecIntLiteral(text: String, at: ASTNode) -> ASTNode {
     let literal = createNode(NodeKind.LITERAL_EXPR)
     literal.i1 = TokenType.NUMBER_LITERAL as Int
     literal.s1 = text.clone()
@@ -90,7 +97,7 @@ private fn semaVecIntLiteral(text: String, at: ASTNode) -> ASTNode {
     return literal
 }
 
-private fn semaVecCall(name: String, args: Ptr, at: ASTNode) -> ASTNode {
+internal fn semaVecCall(name: String, args: Ptr, at: ASTNode) -> ASTNode {
     let callee = createNode(NodeKind.IDENTIFIER_EXPR)
     callee.s1 = name.clone()
     nodeSpanFrom(callee, at)
@@ -104,7 +111,7 @@ private fn semaVecCall(name: String, args: Ptr, at: ASTNode) -> ASTNode {
 // A receiver that can be read twice with the same answer and no effect: a
 // name, or a field of one. `last` reads its receiver for the length as well as
 // for the element, and a call there would run twice.
-private fn semaVecIsPath(node: ASTNode) -> Bool {
+internal fn semaVecIsPath(node: ASTNode) -> Bool {
     if (node.kind == NodeKind.IDENTIFIER_EXPR) { return true }
     if (node.kind == NodeKind.MEMBER_ACCESS_EXPR and nodeExists(node.child1)) {
         return semaVecIsPath(ptr_to_node(node.child1))

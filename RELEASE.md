@@ -4,8 +4,9 @@ The v0.1.0 procedure, written down because the interesting part is the order:
 **nothing is tagged until three platforms have agreed on the exact commit that
 would be tagged.** A tag is the one artifact that cannot be corrected quietly.
 
-This file is *how*. What is still left before 0.1.0 can be cut is
-[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). The numbers a previous candidate
+This file is *how*. What is still open is [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)
+plus whichever step below has not yet gone green on all three platforms. There is no
+separate checklist file. The numbers a previous candidate
 produced (suite 202/202, a macOS checksum from `63a5bcf`) were removed on
 2026-09-25, because the tree has moved past that candidate. Fill them in again
 from the candidate that is tagged.
@@ -121,9 +122,14 @@ Only after steps 2–4 are green on all three platforms:
 git tag -a v0.1.0 -m "Prismio 0.1.0"        # on main's head, gate-green
 git push origin v0.1.0
 
+# The release notes are the docs site's page, `../website/apps/docs/content/releases/0.1.0.md`;
+# there is no CHANGELOG.md. gh wants the body without the page's front matter:
+awk '/^---$/ && n < 2 { n++; next } n >= 2' \
+    ../website/apps/docs/content/releases/0.1.0.md > dist/release/NOTES.md
+
 gh release create v0.1.0 \
     --title "Prismio 0.1.0" \
-    --notes-file CHANGELOG.md \
+    --notes-file dist/release/NOTES.md \
     dist/release/prismio-0.1.0-*.tar.gz \
     dist/release/prismio-0.1.0-*.tar.gz.sha256
 ```
@@ -135,4 +141,5 @@ thing that breaks other people's checkouts.
 
 Then publish the docs site from `../website`, at the commit whose
 `verify-doc-examples.mjs` passed in both apps against this toolchain. Its
-release-notes page must match `CHANGELOG.md`.
+release-notes page is the one the GitHub release was created from (step 5), so
+the two cannot differ.

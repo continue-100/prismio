@@ -1,0 +1,177 @@
+// An array's method surface: what `a.f(x)` means when `a` is an `Array<T, N>`.
+//
+// A Vec carries its length in the value, and an array carries it in the *type*:
+// the compiler knows `N` at every use of a named array and the callee, a `[T]`
+// parameter, does not. So an array cannot be passed to a function that reads
+// `items.length`, and the reading methods are written twice -- once over a Vec,
+// once over `(items: [T], count: Int, ...)` -- with the call site supplying the
+// count. `a.contains(x)` is `contains(a, N, x)`; `a.length` is the literal `N`.
+//
+// The same overloads are what a `[T]` parameter's owner calls by hand, once they
+// have the length beside it: `contains(xs, n, x)`. A parameter's own length is not
+// known here, and the message says so rather than leaving "no overload".
+//
+// docs/COLLECTION_METHODS_PLAN.md has the list and what is not covered yet.
+
+import ast.nodes
+import lexer.token
+import ast.types
+import common.diagnostics
+import std.string
+
+// The methods whose array overload takes the length as its second argument, in
+// std/vec.psm: the reads, the queries that take a closure, and the in-place
+// changes. The changing ones need an array the code may change (a `let mut`
+// binding or an `inout` parameter), as the call they become requires.
+private fn semaArrayTakesCount(name: String) -> Bool {
+    if (name.equals("contains")) { return true }
+    if (name.equals("indexOf")) { return true }
+    if (name.equals("lastIndexOf")) { return true }
+    if (name.equals("countOf")) { return true }
+    if (name.equals("min")) { return true }
+    if (name.equals("max")) { return true }
+    if (name.equals("isSorted")) { return true }
+    if (name.equals("binarySearch")) { return true }
+    if (name.equals("any")) { return true }
+    if (name.equals("all")) { return true }
+    if (name.equals("countWhere")) { return true }
+    if (name.equals("find")) { return true }
+    if (name.equals("indexWhere")) { return true }
+    if (name.equals("forEach")) { return true }
+    if (name.equals("fold")) { return true }
+    if (name.equals("toVec")) { return true }
+    if (name.equals("reverse")) { return true }
+    if (name.equals("swap")) { return true }
+    if (name.equals("fill")) { return true }
+    if (name.equals("sort")) { return true }
+    if (name.equals("sortBy")) { return true }
+    return false
+}
+
+// Whether `name` read with no parentheses is a property of an array: its length,
+// and its two ends. An array is never empty, so it has no `isEmpty`.
+internal fn semaArrayIsProperty(name: String) -> Bool {
+    if (name.equals("length")) { return true }
+    if (name.equals("first")) { return true }
+    if (name.equals("last")) { return true }
+    return false
+}
+
+// Whether `t` is an array whose length the compiler knows at this use. A `[T]`
+// parameter, and anything bound from one, is a view of unknown length.
+private fn semaArrayKnownLength(t: TypeInfo) -> Bool {
+    return t.kind == TypeKind.ARRAY and t.length > 0
+}
+
+private fn semaArrayUnknownLength(expr: ASTNode, receiver: ASTNode, name: String) {
+    semaErrorAt(receiver, "the length of this array is not known here")
+    if (name.equals("first")) {
+        diag_note("a `[T]` parameter takes any length; read the first element as `xs[0]`")
+    } else if (semaArrayIsProperty(name)) {
+        diag_note("a `[T]` parameter takes any length; pass the length beside it")
+    } else {
+        let spelling = "`".concat(name, "(xs, n, ...)`")
+        diag_note("a `[T]` parameter takes any length; pass it beside the parameter and call ".concat(spelling))
+    }
+    nodeSetType(expr, typeInvalid())
+}
+
+// What to say beside an error when an array was asked for a Vec's method: what the
+// receiver is, and how to write one that grows. Shared by the resolution failure
+// (a function in std/vec.psm that takes a Vec) and by the names the compiler
+// builds for a Vec itself, which have no function to fail to resolve.
+internal fn semaArrayNoteVecMethod(receiver: ASTNode, t: TypeInfo, name: String) {
+    if (t.kind != TypeKind.ARRAY or nodeExists(t.child) == false) { return }
+    let elem = typeDisplay(ptr_to_type(t.child))
+    let named = receiver.kind == NodeKind.IDENTIFIER_EXPR
+    let mut subject = "the receiver"
+    if (named) { subject = diagQuote(receiver.s1) }
+    if (t.length > 0) {
+        let spelling = "Array<".concat(elem, ", ", t.length.toString(), ">")
+        diag_note(subject.concat(" is an `", spelling, "`, a fixed-length array, and ",
+                                 diagQuote(name), " is a `Vec` method"))
+        if (named) {
+            diag_note("for a list that can grow, write `let ".concat(receiver.s1, ": Vec<", elem,
+                                                                       "> = [...]`"))
+        }
+    } else {
+        diag_note(subject.concat(" is a `[", elem, "]` parameter, a fixed-length array, and ",
+                                 diagQuote(name), " is a `Vec` method"))
+        diag_note("take a `Vec<".concat(elem, ">` parameter for a list that can grow"))
+    }
+}
+
+// A call or property the compiler builds for a Vec (`push`, `insert`, `isEmpty`,
+// ...) on an array: there is no function to fail, so say what resolution would.
+// Answers true when it reported.
+internal fn semaArrayLacksVecMethod(at: ASTNode, receiver: ASTNode, t: TypeInfo, name: String) -> Bool {
+    if (t.kind != TypeKind.ARRAY or semaVecLowersMethod(name) == false) { return false }
+    semaErrorAt(at, "no overload of ".concat(diagQuote(name), " accepts these argument types"))
+    semaArrayNoteVecMethod(receiver, t, name)
+    return true
+}
+
+// Rewrites `expr` in place when `receiver.name` or `receiver.name(args)` is one
+// of the array's own spellings, and answers what it did in vec.psm's terms:
+// not lowered, rewritten (check `expr` again), or rejected (already reported).
+internal fn semaArrayLower(expr: ASTNode, receiverT: TypeInfo, name: String,
+                           receiver: ASTNode, args: Ptr) -> Int {
+    if (receiverT.kind != TypeKind.ARRAY) { return semaVecNotLowered() }
+    let isProperty = semaArrayIsProperty(name)
+    if (isProperty == false and semaArrayTakesCount(name) == false) { return semaVecNotLowered() }
+
+    if (semaArrayKnownLength(receiverT) == false) {
+        semaArrayUnknownLength(expr, receiver, name)
+        return semaVecRejected()
+    }
+    if (name.equals("first") or name.equals("last")) {
+        // `a.first` is `a[0]` and `a.last` is `a[N - 1]`: an element read, and the
+        // receiver stays where it is, so it is read once and needs no name.
+        let mut position = "0"
+        if (name.equals("last")) { position = (receiverT.length - 1).toString() }
+        expr.kind = NodeKind.INDEX_EXPR
+        expr.s1 = ""
+        expr.s2 = ""
+        expr.i1 = 0
+        expr.i2 = 0
+        expr.i3 = 0
+        expr.child1 = node_to_ptr(receiver)
+        expr.child2 = node_to_ptr(semaVecIntLiteral(position, expr))
+        expr.child3 = ptr_null()
+        return semaVecRewritten()
+    }
+    // `length` drops its receiver, so a call in that position would no longer run.
+    if (name.equals("length")) {
+        if (semaVecIsPath(receiver) == false) {
+            semaErrorAt(receiver, "`length` needs a named array")
+            diag_note("bind the expression with `let` first; its length is the `N` in its type")
+            nodeSetType(expr, typeInvalid())
+            return semaVecRejected()
+        }
+        expr.kind = NodeKind.LITERAL_EXPR
+        expr.i1 = TokenType.NUMBER_LITERAL as Int
+        expr.i2 = 0
+        expr.i3 = 0
+        expr.s1 = receiverT.length.toString()
+        expr.s2 = ""
+        expr.child1 = ptr_null()
+        expr.child2 = ptr_null()
+        expr.child3 = ptr_null()
+        return semaVecRewritten()
+    }
+
+    let count = semaVecIntLiteral(receiverT.length.toString(), expr)
+    count.next = args
+    receiver.next = node_to_ptr(count)
+    let callee = createNode(NodeKind.IDENTIFIER_EXPR)
+    callee.s1 = name.clone()
+    nodeSpanFrom(callee, expr)
+    expr.kind = NodeKind.CALL_EXPR
+    expr.s1 = ""
+    expr.s2 = ""
+    expr.i1 = 0
+    expr.child1 = node_to_ptr(callee)
+    expr.child2 = node_to_ptr(receiver)
+    expr.child3 = ptr_null()
+    return semaVecRewritten()
+}

@@ -1,0 +1,29 @@
+// expect-error: the length of this array is not known here
+// expect-error: the length of this array is not known here
+// expect-error: `length` is a property, not a method
+// expect-error: `length` needs a named array
+// expect-error: aborting due to 4 previous errors
+// An array's length is in its type, so a `[T]` parameter -- which takes any
+// length -- cannot answer `length` or the searches, and says to pass the length
+// beside it. `length` is a property, and a call that returns an array is not a
+// place to read it from.
+
+import std.vec
+
+fn view(xs: [Int]) -> Int { return xs.length }
+
+fn find(xs: [Int]) -> Bool { return xs.contains(1) }
+
+fn named() -> Int {
+    let a = [1, 2]
+    return a.length()
+}
+
+fn made() -> Array<Int, 2> {
+    let r: Array<Int, 2> = [1, 2]
+    return r
+}
+
+fn call() -> Int { return made().length }
+
+fn main() -> Int { return 0 }

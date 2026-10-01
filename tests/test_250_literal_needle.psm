@@ -1,0 +1,28 @@
+// A bare integer literal is an integer of whatever width the call needs
+// (docs/COLLECTION_METHODS_PLAN.md, 1.1 a). `ids.contains(2)` solves `T` from the
+// Vec as `I64`, so the needle is an `I64`, not an `Int` that no overload takes.
+// The literal is still range-checked against the width it lands on
+// (neg_252_literal_needle_range).
+
+import std.io
+import std.vec
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let ids: Vec<I64> = [1, 2, 2]
+    if (ids.contains(2) == false or ids.contains(3)) { return fail("Vec<I64>.contains") }
+    if (ids.indexOf(2) != 1 or ids.lastIndexOf(2) != 2 or ids.countOf(2) != 2) { return fail("I64 searches") }
+
+    let bytes: Vec<U8> = [65, 66]
+    if (bytes.contains(66) == false or bytes.countOf(65) != 1) { return fail("Vec<U8>") }
+
+    let wide: Array<I64, 2> = [5, 6]
+    if (wide.contains(6) == false or wide.indexOf(5) != 0) { return fail("Array<I64, 2>") }
+    println("ok")
+    return 0
+}

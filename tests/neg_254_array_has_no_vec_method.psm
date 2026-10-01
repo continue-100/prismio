@@ -1,0 +1,39 @@
+// expect-error: no overload of `push` accepts these argument types
+// expect-error: `x` is an `Array<Int, 3>`, a fixed-length array, and `push` is a `Vec` method
+// expect-error: for a list that can grow, write `let x: Vec<Int> = [...]`
+// expect-error: no overload of `removeAt` accepts these argument types
+// expect-error: `x` is an `Array<Int, 3>`, a fixed-length array, and `removeAt` is a `Vec` method
+// expect-error: no overload of `insert` accepts these argument types
+// expect-error: `xs` is a `[Int]` parameter, a fixed-length array, and `insert` is a `Vec` method
+// expect-error: take a `Vec<Int>` parameter for a list that can grow
+// expect-error: no overload of `isEmpty` accepts these argument types
+// expect-error: `y` is an `Array<Int, 2>`, a fixed-length array, and `isEmpty` is a `Vec` method
+// expect-error: no overload of `capacity` accepts these argument types
+// expect-error: `y` is an `Array<Int, 2>`, a fixed-length array, and `capacity` is a `Vec` method
+// expect-error: aborting due to 5 previous errors
+// `let x = [1, 2, 3]` is an array, not a Vec. A method it lacks used to say only
+// that no overload accepts the arguments, or that the function was unknown; it now
+// says the receiver is an array and what to write for a list that grows. Three
+// routes reach it: a name the compiler builds for a Vec (`push`, `insert`), a
+// property of one (`isEmpty`, `capacity`), and a function in std/vec.psm that takes
+// a Vec (`removeAt`).
+
+import std.vec
+
+fn grow() {
+    let mut x = [1, 2, 3]
+    x.push(4)
+    x.removeAt(0)
+}
+
+fn put(inout xs: [Int]) {
+    xs.insert(0, 9)
+}
+
+fn shape() -> Int {
+    let y = [1, 2]
+    let e = y.isEmpty
+    return y.capacity
+}
+
+fn main() -> Int { return 0 }

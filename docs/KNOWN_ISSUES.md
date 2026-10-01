@@ -82,6 +82,14 @@ something about a String read out of the map's key list and cloned. It is why
 `Map` has no `keys()` method. Making `copyOf` for String use `concat("")` does
 not help: the map's own key copies then leak.
 
+The same shape is why every Vec method that returns copies of its elements leaks
+on a `Vec<String>`: `clone`, `filter`, `extend`, `take`, `skip`, `concat` and
+`reversed` each read an element out of one Vec and push the copy into another.
+Minimal: `let s: Vec<String> = [a, b]` then `let mut r: Vec<String> = []` and
+`r.push(s[0].clone())` is 8 allocated, 5 released; pushing a literal is clean. A
+scalar element type is clean, and so are the methods that move or only read
+(`find`, `removeFirst`, `swapRemove`, `retain`, `dedup`, `fill`, `min`, `max`).
+
 **One allocation site backs every `concat` in a program, so its ownership is
 decided by the whole program.** When `StringBuilder` first stored `concat`
 results in its `Vec` field, that together with `listModules` doing the same
@@ -1056,8 +1064,7 @@ checks only `x.f()` and `x.f`).
 `../src/sema/flow.psm`), but `fn fail(m: String) { eprintln(m) exit(1) }` does not:
 a caller still needs a `return` after calling it. Inferring it from the body
 would work for this shape and not across a `.plib`, where the body is not
-parsed; a `Never` return type is the planned fix (docs/STDLIB_SHIP_PLAN.md,
-tier 2).
+parsed; a `Never` return type is the planned fix.
 
 **`std.process` starts a program with an argument vector, and that is all it
 does.** `Process` / `Child` / `Stream` landed with the capability in

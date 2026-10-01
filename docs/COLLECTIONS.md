@@ -68,7 +68,7 @@ releasing the container.
 | Order | `sort`, `sortBy` | existing |
 | | `reverse` | library, through `swap` |
 | Derive | `clone` | library, `T: Copy` |
-| | `filter`, `mapInto`, `countWhere`, `anyOf`, `allOf` | existing |
+| | `filter`, `mapInto`, `countWhere`, `any`, `all` | existing |
 
 The `list_*` functions remain as the runtime layer, as `str_*` do under String.
 **Since 2026-09-24 a program cannot call them**: `semaRefuseRuntimeCalls`

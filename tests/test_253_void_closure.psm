@@ -1,0 +1,41 @@
+// A closure whose body answers nothing: `|x: Int| report(x)`. Its lowered `call`
+// has no return type and its body is a statement; it used to fail with "unknown
+// type `Void`", so a closure could be passed only where a value came back.
+
+import std.io
+import std.vec
+
+let mut total: Int = 0
+
+fn add(x: Int) {
+    total = total + x
+}
+
+fn each<F>(items: Vec<Int>, f: F) {
+    for i in 0..<items.length {
+        f(items[i])
+    }
+}
+
+fn twice<F>(f: F) {
+    f(1)
+    f(2)
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    let v: Vec<Int> = [3, 4, 5]
+    each(v, |x: Int| add(x))
+    if (total != 12) { return fail("a user generic called with a void closure") }
+    v.forEach(|x: Int| add(x))
+    if (total != 24) { return fail("Vec.forEach") }
+    twice(|n: Int| add(n * 10))
+    if (total != 54) { return fail("a closure called twice") }
+    println("ok")
+    return 0
+}
