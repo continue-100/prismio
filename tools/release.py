@@ -16,10 +16,10 @@ had that problem: tools/package.py rebuilds both from source every time.
 `--compiler` ships the binary it names, as it is: a frozen release candidate
 that has been through the gate (RELEASE.md §1).
 
-One archive per host, named for the triple it was built on, plus a SHA-256
-manifest covering it. Run it on each platform; the manifests concatenate, which
-is what lets three machines produce one checksum file without any of them
-trusting the others.
+One archive per host, named for the OS and architecture it was built on
+(`prismio-0.1.0-macos-arm64.tar.gz`), plus a SHA-256 manifest covering it. Run
+it on each platform; the manifests concatenate, which is what lets three
+machines produce one checksum file without any of them trusting the others.
 
 **It refuses to build from a compiler that is not a fixpoint.** A release
 artifact whose compiler does not reproduce its own IR is a compiler caught
@@ -65,16 +65,17 @@ def run(command: list, **kwargs) -> subprocess.CompletedProcess:
                           cwd=str(REPO), **kwargs)
 
 
-def host_triple() -> str:
-    machine = platform.machine()
-    system = platform.system()
-    if system == "Darwin":
-        return f"{machine}-apple-darwin"
-    if system == "Linux":
-        return f"{machine}-unknown-linux-gnu"
-    if system == "Windows":
-        return f"{machine}-pc-windows-msvc"
-    return system.lower()
+def host_platform() -> str:
+    """`macos-arm64`, `linux-x64`, `windows-x64`: the OS and architecture as a
+    person names them, the way LLVM, Node and Go name their downloads, not as a
+    target triple. install.sh looks for exactly these spellings (OS_NAME and
+    ARCH_NAME), and the website's download list sorts assets by the OS word."""
+    system = {"Darwin": "macos", "Linux": "linux", "Windows": "windows"}.get(
+        platform.system(), platform.system().lower())
+    machine = platform.machine().lower()
+    arch = {"x86_64": "x64", "amd64": "x64", "arm64": "arm64", "aarch64": "arm64"}.get(
+        machine, machine)
+    return f"{system}-{arch}"
 
 
 def reported_version(compiler: Path) -> str:
@@ -217,6 +218,16 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
+    # Before anything is built: a checkout prepared before setup_llvm.py recorded
+    # macos_min has LLVM lowered for this machine's macOS, so building links it
+    # with a warning per object, and check_floor refuses the result anyway.
+    if sys.platform == "darwin":
+        paths = REPO / "third_party" / "llvm-paths.json"
+        if not paths.is_file() or not json.loads(paths.read_text()).get("macos_min"):
+            die("the pinned LLVM was prepared before it recorded the macOS it needs",
+                "run `python3 tools/setup_llvm.py` (re-downloads and re-lowers LLVM once), "
+                "then `prismio build`")
+
     given = resolve_executable(args.build_with or args.compiler)
     if not given.is_file():
         die(f"no compiler at {given}")
@@ -251,7 +262,7 @@ def main() -> int:
             die(f"{compiler} is not a fixpoint -- it does not reproduce its own IR")
         print("   ok -- the frozen compiler reproduces its own IR")
 
-        stem = f"prismio-{version}-{host_triple()}"
+        stem = f"prismio-{version}-{host_platform()}"
         print(f"== packaging {stem}")
         staged = work / stem
         if staged.exists():

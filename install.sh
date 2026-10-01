@@ -237,8 +237,8 @@ else
     GITHUB_RELEASE_BASE="https://github.com/prismio-lang/prismio/releases/download/${RELEASE_TAG}"
 
     CANDIDATE_NAMES="
-prismio-${VERSION}-${ARCH_TRIPLE}-${PLATFORM_TRIPLE}.tar.gz
 prismio-${VERSION}-${OS_NAME}-${ARCH_NAME}.tar.gz
+prismio-${VERSION}-${ARCH_TRIPLE}-${PLATFORM_TRIPLE}.tar.gz
 prismio-${VERSION}-${ARCH_NAME}-${OS_NAME}.tar.gz
 "
 

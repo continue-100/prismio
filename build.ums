@@ -56,7 +56,7 @@ targets {
 }
 
 commands {
-    // A compiler release for this machine only: `dist/release/prismio-<version>-<triple>`
+    // A compiler release for this machine only: `dist/release/prismio-<version>-<os>-<arch>`
     // as `.tar.gz` (`.zip` on Windows) plus its `.sha256`. Other platforms each run
     // it on their own host -- RELEASE.md §3.
     //

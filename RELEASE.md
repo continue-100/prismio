@@ -89,7 +89,7 @@ so the archive always holds the checkout as it is now rather than whatever the
 last `prismio build` left behind.
 
 It refuses to build from a compiler that is not a fixpoint, packages, runs the
-separation checks, archives as `prismio-<version>-<triple>.tar.gz`, and writes a
+separation checks, archives as `prismio-<version>-<os>-<arch>.tar.gz` (`macos-arm64`, `linux-x64`, `windows-x64`; `.zip` on Windows), and writes a
 SHA-256 beside it. The three `.sha256` files concatenate into one manifest, which
 is what lets three machines produce one checksum file without any of them
 trusting the others.
@@ -119,9 +119,9 @@ Unpack somewhere that is **not** the checkout — the tree would otherwise suppl
 whatever the package forgot — and build a program the checkout does not contain:
 
 ```bash
-tar -xzf prismio-0.1.0-arm64-apple-darwin.tar.gz
-cd /tmp/clean && ./prismio-0.1.0-arm64-apple-darwin/bin/prismio --version
-./prismio-0.1.0-arm64-apple-darwin/bin/prismio build smoke.psm -o smoke && ./smoke
+tar -xzf prismio-0.1.0-macos-arm64.tar.gz
+cd /tmp/clean && ./prismio-0.1.0-macos-arm64/bin/prismio --version
+./prismio-0.1.0-macos-arm64/bin/prismio build smoke.psm -o smoke && ./smoke
 ```
 
 `smoke.psm` is the one in the CI step: it exercises `sort`, an **annotated**
