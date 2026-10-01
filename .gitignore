@@ -84,8 +84,6 @@ dist/
 !**/graphify-out/graph.html
 !**/graphify-out/GRAPH_REPORT.md
 !**/graphify-out/manifest.json
-!**/graphify-out/wiki/
-!**/graphify-out/obsidian/
 
 # Python bytecode. Interpreter-written build output for tools/ and tests/, keyed
 # on the CPython version that wrote it -- `tools/__pycache__/*.cpython-313.pyc`

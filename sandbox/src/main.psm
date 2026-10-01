@@ -1,34 +1,9 @@
-import std.display
 import std.io
-import std.map
-import std.string
 import std.vec
 
-enum Shape {
-    Circle(Float)
-    Rect(Float, Float)
-}
-
-fn area(s: Shape) -> Float {
-    match (s) {
-        Shape.Circle(r) => { return 3.14159 * r * r }
-        Shape.Rect(w, h) => { return w * h }
-    }
-}
-
 fn main() -> Int {
-    let shapes = [Shape.Circle(1.0), Shape.Rect(2.0, 3.0), Shape.Circle(0.5)]
 
-    let mut total = 0.0
-    for s in shapes {
-        total = total + area(s)
-    }
-    println("total area: ${total}")
-
-    let mut counts = mapNew<String, Int>()
-    for word in "a b a c b a".split(' ') {
-        counts.set(word, counts.getOr(word, 0) + 1)
-    }
-    println("a appears ${counts.getOr("a", 0)} times")
+    let x = [1,2,3,4]
+    print(x.contains(1))
     return 0
 }
