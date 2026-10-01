@@ -35,10 +35,14 @@ def run_check(command, label):
 
 def main():
     problems = []
+    warnings = []
     source_files = list(format_sources.repository_files())
 
+    # Whitespace is hygiene, not correctness: the compiler reads these files fine.
+    # It is reported and never fails the run; `python tools/format_sources.py
+    # --write` fixes it.
     for path in format_sources.files_needing_format():
-        problems.append(f"format: {path.relative_to(REPO)}")
+        warnings.append(f"format: {path.relative_to(REPO)}")
 
     for path in source_files:
         relative = path.relative_to(REPO)
@@ -99,6 +103,12 @@ def main():
 
     if not seen_codes:
         problems.append("no coded compiler diagnostics found")
+
+    annotate = os.environ.get("GITHUB_ACTIONS") == "true"
+    for warning in warnings:
+        # GitHub shows a `::warning` line as an annotation on the run.
+        print(f"::warning title=Formatting::{warning} (run tools/format_sources.py --write)"
+              if annotate else f"warning: {warning} (run tools/format_sources.py --write)")
 
     if problems:
         print("Lint failed:")

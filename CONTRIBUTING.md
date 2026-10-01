@@ -273,6 +273,10 @@ python3 tools/format_sources.py --check
 python3 tools/lint.py
 ```
 
+Formatting (LF endings, no trailing spaces, one final newline) is a **warning**, in
+CI and in `lint.py`: it never fails a run, and `--write` fixes it. Lint fails only
+on real problems: a syntax error, a tab in Prismio source, a bad diagnostic code.
+
 `python tools/sanitizer_smoke.py --compiler build/gen2` links representative ownership
 and concurrency programs with AddressSanitizer. `python3 benchmarks/run.py`
 builds, validates, and measures the Prismio/C++/Rust performance suite.

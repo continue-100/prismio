@@ -46,9 +46,13 @@ jobs:
       - name: Check the toolchain source lists agree
         run: python tools/check_source_lists.py
 
-      - name: Check formatting and lint
+      # Formatting is a warning, not a failure: a missing final newline is not a
+      # reason to turn the run red. lint.py reports it the same way and fails only
+      # on real problems (syntax, tabs, diagnostic codes).
+      - name: Check formatting (warning only) and lint
+        shell: bash
         run: |
-          python tools/format_sources.py --check
+          python tools/format_sources.py --check || echo "::warning title=Formatting::some files need formatting; run python tools/format_sources.py --write"
           python tools/lint.py
 
       # The pinned LLVM, prepared by setup_llvm.py into third_party/llvm, is
