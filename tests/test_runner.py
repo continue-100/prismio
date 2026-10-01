@@ -7387,10 +7387,12 @@ def run_aif_verify_test():
         # COLLECTIONS 1e. A removal with no live view releases at once; the peak
         # ceiling below is what says so, since parking balances the ledger too.
         "test_161_removal_releases_now": 0,
-        # The removals that must park. The 7 are the known shape, identical on
-        # the compiler before 1e: a Vec that hands an element out is not
-        # released (KNOWN_ISSUES). What this guards is the 0 violations.
-        "test_162_removal_parks_under_view": 7,
+        # The removals that must park. The 7 were the known shape, identical on
+        # the compiler before 1e: copies of one String site held by two Vecs were
+        # counted (T3), which a String cannot use, so none was released. A fresh
+        # String in two containers is no longer that (test_255), so they are
+        # released. What this guards is the 0 violations.
+        "test_162_removal_parks_under_view": 0,
         # Array fields are the struct's own bytes and release nothing. 0 since
         # 2026-09-30: `total(makeGrid(1).cells, 4)` reads a field off an unbound
         # temporary, which is released after the call now that the call's
@@ -7404,17 +7406,16 @@ def run_aif_verify_test():
         # jump skipping the scope drops between it and the loop it names.
         "test_165_ranges_repeat_labels": 0,
         # `for ... in` over every collection, computed ones bound to a hidden
-        # `let`. The 1 is the long String in `names`, and it is the known shape
-        # rather than the loops: another `Vec<String>` stored into a struct field
-        # and read through it stops the element release, identically on the
-        # compiler before this change with plain `while` loops (KNOWN_ISSUES).
-        "test_166_for_each_collections": 1,
+        # `let`. The 1 was the long String in `names`: its copy site was held by
+        # two Vecs and so counted, which a String cannot be released from. Fixed
+        # with test_255's rule; a 1 back here is that rule going away.
+        "test_166_for_each_collections": 0,
         # Fields of a struct on the frame. 22 leaked before its owned
         # temporaries had an owner; what this guards is that and the 0
-        # violations. The 1 is a long String element whose copy site is counted
-        # (T3) because two Vec literals share it -- a Vec holding a counted and
-        # an uncounted element of one type, the shape test_157 names.
-        "test_167_frame_struct_fields": 1,
+        # violations. The 1 was a long String element whose copy site was counted
+        # (T3) because two Vec literals share it; a fresh String in two
+        # containers is no longer counted (test_255).
+        "test_167_frame_struct_fields": 0,
         # std.term's methods chained on owned results. A leak here is a method
         # returning a helper's allocation -- a pass-through its caller gets no
         # drop for -- which leaks both strings of every `"x".red().bold()`.
@@ -7442,6 +7443,14 @@ def run_aif_verify_test():
         # hoist gave one. Each Vec may be handed the literal fallback, so neither
         # frees its elements.
         "test_186_view_pushed_directly": 18,
+        # Copying a Vec<String>: take, skip, concat, reversed, sorted, toVec, clone,
+        # filter, extend and a Map's keys. 273 leaked until a fresh String stored in
+        # two containers stopped counting as one value held twice (A-CONTAIN).
+        "test_255_string_vec_copies": 0,
+        # The shape that rule must not reach: an element read pushed into two
+        # containers is one block held three times. 0 violations is the guard; the
+        # 4 are the safe direction, and a drop to 0 would be a double free.
+        "test_256_string_view_pushed_twice": 4,
     }
 
     max_allocations = {

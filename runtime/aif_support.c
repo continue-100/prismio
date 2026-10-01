@@ -1756,6 +1756,11 @@ typedef struct {
     // that point on, which is what makes a container teardown a release point --
     // and what takes the value's own binding off the drop list.
     int in_container;
+    // Stored into a container *as a view*: the value was read out of another
+    // collection and pushed, not freshly made. Such a store aliases, so it is the
+    // one case where two containers holding a String site are holding one value --
+    // see A-CONTAIN's exemption for Strings.
+    int view_stored;
     // E by every rule except one: the E-RETURN of a bare `return name`, which
     // raises E and leaves this alone. `ret_key` is the binding key such a return
     // named (-1: none, -2: more than one binding). Together they say whether the
@@ -1871,6 +1876,7 @@ int aif_site_new(const char* type, int kind, int fn, int scope,
     s->foreign = 0;
     s->transferred = 0;
     s->in_container = 0;
+    s->view_stored = 0;
     s->alias_axiom = 0;
     s->alias_suppressed = 0;
     s->pin_tier = -1;
@@ -3047,6 +3053,10 @@ int aif_solve(int max_rounds) {
                     force_rule = AIF_RULE_A_CONTAIN;
                     for (int i = 0; i < vec_val.len; i++) {
                         int s = vec_val.v[i];
+                        if (!sites[s].view_stored) {
+                            sites[s].view_stored = 1;
+                            changed = moved(s);
+                        }
                         if (sites[s].kind == AIF_K_STRING) continue;
                         if (raise_alias(s, AIF_A_SHARED, -1)) changed = moved(s);
                     }
@@ -3226,8 +3236,26 @@ int aif_solve(int max_rounds) {
             // Making it Shared is not a workaround for the gap; it is the correct
             // reading, and it lands the value on the tier built for exactly this
             // shape. One container owns and frees (T2); two share and count (T3).
+            //
+            // **A String site that is never stored as a view is exempt.** One site
+            // is a *function's* allocation, not one value: every caller of
+            // `strClone` shares the allocation inside it, so two containers each
+            // receiving a clone read as two holders of one value. Made fresh and
+            // stored, a String cannot be that: a binding stored twice is "use of
+            // moved value" in sema, and a parameter is a borrow that cannot be
+            // retained. So two holders are two values, each released by its own
+            // container -- and Shared would send both to T3, which a String cannot
+            // use (no header to count in), so neither was released:
+            // `a.push(x.clone()); b.push(x.clone())` leaked both, and so did every
+            // Vec method that copies its String elements.
+            //
+            // An element read pushed (`c.push(s[0]); d.push(s[0])`) is the other
+            // thing: it stores the block it read, so three containers hold one
+            // value, and releasing it from each is a double free. `view_stored`
+            // keeps that on the old rule.
             synth_rule = AIF_RULE_A_CONTAIN;
-            if (bits_count_at_least_two(&container_of[s])
+            if ((sites[s].kind != AIF_K_STRING || sites[s].view_stored)
+                && bits_count_at_least_two(&container_of[s])
                 && raise_alias(s, AIF_A_SHARED, -1)) {
                 changed = moved(s);
             }

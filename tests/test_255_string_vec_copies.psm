@@ -1,0 +1,96 @@
+// Copying the Strings of a Vec used to leak every copy, and now releases them.
+// `take`, `skip`, `concat`, `reversed`, `sorted`, `toVec`, `clone`, `filter` and
+// `extend` each push `copyOf(element)` into a new Vec, and so does a Map's
+// `keyAt(i).clone()` pushed into a Vec of keys. All of those copies come from the
+// one allocation inside `strClone`; two containers each holding a result of it read
+// to the analysis as one value held twice (A-CONTAIN), which sent the site to the
+// counted tier, which a String cannot use, so no copy was released.
+//
+// A String that is made fresh and stored is never one value in two containers
+// (storing one binding twice is "use of moved value"), so that rule now exempts it.
+// test_256 is the shape that is not exempt. Run under --verify by
+// run_aif_verify_test: a leak here is the exemption going away.
+
+import std.io
+import std.vec
+import std.string
+import std.map
+
+fn word(i: Int) -> String {
+    return "word-".concat(i.toString(), "-long-enough-to-live-on-the-heap")
+}
+
+fn words(n: Int) -> Vec<String> {
+    let mut v: Vec<String> = []
+    for i in 0..<n { v.push(word(i)) }
+    return v
+}
+
+fn longOnes(v: Vec<String>) -> Vec<String> {
+    return v.filter(|s: String| s.length > 3)
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn chained(n: Int) -> Int {
+    let a = words(n)
+    let b = a.clone()
+    let c = b.take(2).concat(a.skip(1))
+    let d = c.reversed()
+    let e = longOnes(d.clone())
+    let mut f: Vec<String> = []
+    f.extend(e)
+    f.extend(a.clone())
+    return f.sorted().toVec().length
+}
+
+fn main() -> Int {
+    let a = words(5)
+    let b = a.clone()
+    if (b.length != 5 or b[4] != word(4)) { return fail("clone") }
+
+    let c = a.filter(|s: String| s != word(2))
+    if (c.length != 4 or c[2] != word(3)) { return fail("filter") }
+
+    let mut d: Vec<String> = []
+    d.extend(a)
+    d.extend(words(3))
+    if (d.length != 8 or d[5] != word(0)) { return fail("extend") }
+
+    let e = d.take(3)
+    let f = d.skip(6)
+    let g = e.concat(f)
+    if (g.length != 5 or g[3] != word(1)) { return fail("take, skip, concat") }
+
+    let h = g.reversed()
+    if (h[0] != word(2)) { return fail("reversed") }
+    let i = h.sorted().toVec()
+    if (i[0] != word(0) or i.length != 5) { return fail("sorted, toVec") }
+
+    // Two containers each given a clone of one String: the smallest shape.
+    let x = word(7)
+    let mut p: Vec<String> = []
+    let mut q: Vec<String> = []
+    p.push(x.clone())
+    q.push(x.clone())
+    if (p[0] != x or q[0] != x) { return fail("two containers") }
+
+    let mut m: Map<String, Int> = Map()
+    for k in 0..<5 { m.set(word(k + 40), k) }
+    let mut keys: Vec<String> = []
+    let mut again: Vec<String> = []
+    for k in 0..<m.length {
+        keys.push(m.keyAt(k).clone())
+        again.push(m.keyAt(k).clone())
+    }
+    if (keys.length != 5 or again.length != 5) { return fail("map keys") }
+
+    let mut total = 0
+    for k in 0..<4 { total = total + chained(k + 2) }
+    if (total != 32) { return fail("chained") }
+    return 0
+}

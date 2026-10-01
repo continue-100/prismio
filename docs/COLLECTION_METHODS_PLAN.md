@@ -89,14 +89,16 @@ property paths in `src/sema/checker.psm` next to Vec's lowering.
 
 ## 4 · Limits in 0.1
 
-- **Copying a `Vec<String>` leaks the copies.** `take`, `skip`, `concat`, `reversed`,
-  `toVec` on `String` elements, and the existing `clone`, `filter`, `extend`. It is
-  the leak `KNOWN_ISSUES.md` records for a String read out of one container and pushed,
-  cloned, into another (`r.push(s[0].clone())`: 8 allocated, 5 released; pushing a
-  literal is clean). It is in the AIF value-set analysis
-  (`container_may_hold_untracked`, `runtime/aif_support.c`), not in the library, and a
-  change there moves every program's release decisions. A scalar element type is
-  clean, and every read and every in-place change measured 0 leaked on `String`.
+- **Copying a `Vec<String>` is clean unless the program also pushes an element read
+  as it is.** `take`, `skip`, `concat`, `reversed`, `sorted`, `toVec`, `clone`,
+  `filter` and `extend` leaked every copy until 2026-10-01 (273 of 464 in
+  `test_255`): all callers share the one allocation in `strClone`, two containers
+  holding its results read as one value held twice, and a String cannot be
+  counted. A fresh String site is now exempt from that rule
+  (`runtime/aif_support.c`, A-CONTAIN; 273 -> 0, 0 violations). What stays on the
+  old rule, and leaks without ever double freeing: `c.push(s[0]); d.push(s[0])`
+  and a String moved out with `pop`/`removeFirst`/`swapRemove` into another Vec
+  (`test_256`; KNOWN_ISSUES.md). A scalar element type was always clean.
 - **An array's in-place changes** need a `let mut` array, and store only elements
   nothing owns (numbers, `Bool`, `Char`, enums without payloads): `reverse` on an
   `Array<String, N>` is refused at the store, as `a[i] = x` is. The reads work for

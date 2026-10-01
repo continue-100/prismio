@@ -1,0 +1,30 @@
+// An element read pushed into two containers, with the one it came from: three
+// holders of one block, with no copy. Releasing the block from each is a double
+// free, so a String that is ever stored as a view keeps the old A-CONTAIN rule
+// (Shared, counted tier, no release) even though test_255 shows a fresh String in
+// two containers is fine. `view_stored` in runtime/aif_support.c is what tells
+// them apart.
+//
+// The guard is `0 violation(s)`; the leak count is the price of the safe
+// direction and is pinned in run_aif_verify_test. The same goes for a value moved
+// out of one Vec with `pop`, `removeFirst` or `swapRemove` and stored in another.
+
+import std.io
+import std.vec
+import std.string
+import std.option
+
+fn word(i: Int) -> String {
+    return "word-".concat(i.toString(), "-long-enough-to-live-on-the-heap")
+}
+
+fn main() -> Int {
+    let mut s: Vec<String> = []
+    for i in 0..<4 { s.push(word(i)) }
+    let mut c: Vec<String> = []
+    let mut d: Vec<String> = []
+    c.push(s[0])
+    d.push(s[0])
+    if (c.length + d.length != 2 or c[0] != d[0]) { return 1 }
+    return 0
+}

@@ -6,10 +6,10 @@
     "semantic_hash": "f15ffb427ef83d084391e7ec1345a8af"
   },
   "tests/test_runner.py": {
-    "mtime": 1790824928.2185256,
-    "seen": 1790842029.524508,
-    "ast_hash": "f215acec9f770aedabdac27ae1291a5d",
-    "semantic_hash": "f215acec9f770aedabdac27ae1291a5d"
+    "mtime": 1790844678.0654364,
+    "seen": 1790844900.61411,
+    "ast_hash": "832b21bced13b25d79a3dba4f97065d4",
+    "semantic_hash": ""
   },
   "CONTRIBUTING.md": {
     "mtime": 1789754900.3647573,
@@ -36,10 +36,10 @@
     "semantic_hash": "cf5c9d3223288ed94f72fe7f0cb81a66"
   },
   "CLAUDE.md": {
-    "mtime": 1790787227.042603,
-    "seen": 1790842029.524549,
-    "ast_hash": "b3643c38b91c17cf8b6d37df22c92f2f",
-    "semantic_hash": "b3643c38b91c17cf8b6d37df22c92f2f"
+    "mtime": 1790843279.311714,
+    "seen": 1790844900.614153,
+    "ast_hash": "53b3ad7fbf737d42604eac65a015dd3e",
+    "semantic_hash": ""
   },
   "runtime/build_driver.c": {
     "mtime": 1790617921.3390398,
@@ -156,10 +156,10 @@
     "semantic_hash": "ae9e44817495795ec93a5fd1a9d99782"
   },
   "runtime/aif_support.c": {
-    "mtime": 1790746507.8990157,
-    "seen": 1790842029.524231,
-    "ast_hash": "1fcabec8d8d37141d9fa14d86a2a69cd",
-    "semantic_hash": "1fcabec8d8d37141d9fa14d86a2a69cd"
+    "mtime": 1790844380.0179944,
+    "seen": 1790844900.613791,
+    "ast_hash": "0c7a4cb7649b40c9d42e6c3e6bd91f35",
+    "semantic_hash": ""
   },
   "tools/aif_differential.py": {
     "mtime": 1790595301.4118285,
@@ -828,10 +828,10 @@
     "semantic_hash": "c87e831dc1ac8f91817b4bb5696a4167"
   },
   "RELEASE.md": {
-    "mtime": 1790365417.3136957,
-    "seen": 1790842029.524553,
-    "ast_hash": "f89975d1e6aa60eed1b1c1bf9c98d673",
-    "semantic_hash": "f89975d1e6aa60eed1b1c1bf9c98d673"
+    "mtime": 1790843279.3114069,
+    "seen": 1790844900.6141582,
+    "ast_hash": "2b4c301122ff9a613960621a1fa7fe77",
+    "semantic_hash": ""
   },
   "aif/evidence/RESULTS-v01-release-candidate.md": {
     "mtime": 1788422235.353977,
@@ -840,10 +840,10 @@
     "semantic_hash": "d13d131bb26851ed2a5fad3ac5c51120"
   },
   "README.md": {
-    "mtime": 1790407471.5248308,
-    "seen": 1790842029.5245519,
-    "ast_hash": "6bc94c34db3f3e7b67341fcf12b10106",
-    "semantic_hash": "6bc94c34db3f3e7b67341fcf12b10106"
+    "mtime": 1790843279.3122497,
+    "seen": 1790844900.614157,
+    "ast_hash": "1d94dbf8641baf106a0faaf68892e764",
+    "semantic_hash": ""
   },
   "aif/evidence/RESULTS-extern-alias-escape.md": {
     "mtime": 1790367221.872,
@@ -954,10 +954,10 @@
     "semantic_hash": "4efc94d69f24b872deaf1aaa36f139b6"
   },
   "aif/AIF_GAPS.md": {
-    "mtime": 1790367221.856,
-    "seen": 1790842029.524553,
-    "ast_hash": "16f978e48c0a0bd8c213e1e38116b8b0",
-    "semantic_hash": "16f978e48c0a0bd8c213e1e38116b8b0"
+    "mtime": 1790843279.312786,
+    "seen": 1790844900.614159,
+    "ast_hash": "f3bdb328c38ed25c3e50ee5cd8428378",
+    "semantic_hash": ""
   },
   "runtime/aif_containers.c": {
     "mtime": 1790191914.2170591,
@@ -1998,10 +1998,10 @@
     "semantic_hash": ""
   },
   "docs/KNOWN_ISSUES.md": {
-    "mtime": 1790840197.2565496,
-    "seen": 1790842029.52461,
-    "ast_hash": "afe9b61f5cc5a99dd66afba187a8656a",
-    "semantic_hash": "afe9b61f5cc5a99dd66afba187a8656a"
+    "mtime": 1790844709.4812841,
+    "seen": 1790844900.6142452,
+    "ast_hash": "05364c706829ea1c122d2b1f311acaaa",
+    "semantic_hash": ""
   },
   "docs/MEMORY_PLAN.md": {
     "mtime": 1790365417.3575027,
@@ -5730,9 +5730,9 @@
     "semantic_hash": "1b334de7b949c0c8a85c5c8c1b80cb3d"
   },
   "docs/COLLECTION_METHODS_PLAN.md": {
-    "mtime": 1790842993.8846433,
-    "seen": 1790843011.350759,
-    "ast_hash": "47b65d51bf96f7d93799e7d162b7c62d",
+    "mtime": 1790844709.4815097,
+    "seen": 1790844900.614243,
+    "ast_hash": "fd70cfc3a80c5215a0f43d38338b0a60",
     "semantic_hash": ""
   },
   "tests/neg_253_array_mutation_needs_mut.psm": {
@@ -5751,6 +5751,18 @@
     "mtime": 1790842760.648286,
     "seen": 1790843011.3505752,
     "ast_hash": "9caf1c2415f1ba1b335d97aea71ecae1",
+    "semantic_hash": ""
+  },
+  "tests/test_255_string_vec_copies.psm": {
+    "mtime": 1790844471.3849354,
+    "seen": 1790844900.614062,
+    "ast_hash": "fd84c207a1c337f46628f2c531938fd2",
+    "semantic_hash": ""
+  },
+  "tests/test_256_string_view_pushed_twice.psm": {
+    "mtime": 1790844455.1970372,
+    "seen": 1790844900.614063,
+    "ast_hash": "b26b499742ff09f3f5537f97e68ba99f",
     "semantic_hash": ""
   }
 }

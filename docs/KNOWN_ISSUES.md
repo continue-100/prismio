@@ -73,22 +73,28 @@ before the sweep's fixes and 210 after; test_236 pins the fixed shapes at 0.
 | any | AIF keys locals by (function, name), so a sent `v` and a received `v` in one function share a value set (see Concurrency). |
 
 
-**Copies of a Map's keys pushed into a returned Vec leak.** `for i in
-0..<mapLen(m) { out.push(mapKeyAt(m, i).clone()) }; return out` (or `copyOf`
-in place of `clone`) leaks every copy: 990 of 1,173 over ten calls on a
-100-key `Map<String, Int>`, and the same on the compiler at `2ae70c4`. `.concat("")` in place
-of `.clone()` is clean, and `clone` of an owned temporary is clean, so it is
-something about a String read out of the map's key list and cloned. It is why
-`Map` has no `keys()` method. Making `copyOf` for String use `concat("")` does
-not help: the map's own key copies then leak.
+**Copies of a Vec's or a Map's Strings leak only when the program also stores an
+element read.** `take`, `skip`, `concat`, `reversed`, `sorted`, `toVec`, `clone`,
+`filter`, `extend`, and `out.push(mapKeyAt(m, i).clone())` used to leak every copy
+(273 of 464 in `tests/test_255`; 990 of 1,173 for the Map keys). Cause: every
+caller of `strClone` shares the one allocation inside it, so two containers each
+receiving a clone read as *one value held twice* (A-CONTAIN), the site went to
+the counted tier, and a String has no header to count in, so nothing released
+either. Fixed 2026-10-01 in `runtime/aif_support.c`: a String site that is never
+stored as a view is exempt from that rule, because a fresh String cannot be one
+value in two containers (storing a binding twice is "use of moved value").
+Measured: 273 -> 0 leaked, 0 violations; `test_162`, `test_166` and `test_167`
+dropped to 0 with it. `Map` still has no `keys()`: the leak that blocked it is
+gone, but the method is a decision of its own.
 
-The same shape is why every Vec method that returns copies of its elements leaks
-on a `Vec<String>`: `clone`, `filter`, `extend`, `take`, `skip`, `concat` and
-`reversed` each read an element out of one Vec and push the copy into another.
-Minimal: `let s: Vec<String> = [a, b]` then `let mut r: Vec<String> = []` and
-`r.push(s[0].clone())` is 8 allocated, 5 released; pushing a literal is clean. A
-scalar element type is clean, and so are the methods that move or only read
-(`find`, `removeFirst`, `swapRemove`, `retain`, `dedup`, `fill`, `min`, `max`).
+What is still on the old rule, and leaks (never double frees): **a program that
+pushes an element read as it is** -- `c.push(s[0]); d.push(s[0])` stores one block
+under three owners, so `view_stored` keeps every String site that reaches it
+Shared, and the element key is per type, so that taints the clones of every
+`Vec<String>` in the program (`test_256` pins it at 4 leaked, 0 violations).
+The same goes for a String moved out of one Vec with `pop`, `removeFirst` or
+`swapRemove` and stored in another. Both want the copy-on-store the view rule
+already describes for slices, or a per-container element key.
 
 **One allocation site backs every `concat` in a program, so its ownership is
 decided by the whole program.** When `StringBuilder` first stored `concat`
