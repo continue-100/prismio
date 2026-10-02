@@ -6,15 +6,15 @@ import std.string
 
 // The first line is a title; everything after it is the body.
 fn main() -> Int {
-    let header = stdin.readLine()
-    match (header) {
-        Option.Some(title) => { println("title: " + title) }
-        Option.None => {
-            eprintln("no input")
-            return 1
-        }
+    let mut x = 0
+
+    let y = [1,2,3,4]
+
+    repeat (10) {
+        x += 2
     }
-    let body = stdin.readAll()
-    println("body: ${body.length} bytes")
+
+    println(x)
+
     return 0
 }

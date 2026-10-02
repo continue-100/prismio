@@ -1853,6 +1853,10 @@ void chan_free(void* handle) {
 // (no-color.org), when TERM is `dumb`, and when the descriptor is not a
 // terminal -- a pipe or a file would keep the escape bytes as text.
 //
+// FORCE_COLOR / CLICOLOR_FORCE (not "0") answer yes for a pipe, as they do for
+// the compiler's own diagnostics: an IDE run console is a pipe that renders
+// ANSI, and it sets one of them. NO_COLOR still wins.
+//
 // On Windows a console is a terminal but may not interpret the sequences:
 // conhost does so only once ENABLE_VIRTUAL_TERMINAL_PROCESSING is on. Asking is
 // the moment to turn it on, so a program that checks before styling gets colour
@@ -1864,6 +1868,9 @@ void chan_free(void* handle) {
 int prismio_rt_color_supported(int fd) {
     const char* no_color = getenv("NO_COLOR");
     if (no_color && no_color[0]) return 0;
+    const char* force = getenv("FORCE_COLOR");
+    if (!(force && force[0])) force = getenv("CLICOLOR_FORCE");
+    if (force && force[0] && !(force[0] == '0' && force[1] == '\0')) return 1;
     const char* term = getenv("TERM");
     if (term && strcmp(term, "dumb") == 0) return 0;
 #ifdef _WIN32
