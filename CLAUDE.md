@@ -45,7 +45,7 @@ Everything is a project command from `build.ums`, run from the checkout:
 `prismio build` (the compiler this checkout runs, `.prismio/build/debug/prismio`),
 `prismio suite` (fast loop), `prismio verify` (suite, source lists, externs, AIF
 differential), `prismio gate` (lint, then the release gate on a packaged candidate;
-run it before every push), `prismio release` (the archive and `.sha256` for this
+run it before every push; CI does not run on push, it is started by hand with `gh workflow run ci.yml --ref main`), `prismio release` (the archive and `.sha256` for this
 host), `prismio bench`. The `.py` and `.sh` files under `tools/` are what they call;
 reach for them directly only when a command cannot (bootstrapping, the seed).
 

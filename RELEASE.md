@@ -73,14 +73,18 @@ final word.
 
 ## 2 · The three-platform matrix — **needs authorisation**
 
-CI runs on push: source lists, a three-generation bootstrap **from the committed
+CI does not run on push: it is started by hand on the commit being judged.
+Once that commit is pushed, run it with `gh workflow run ci.yml --ref main` (or the
+Actions tab's **Run workflow**) and find the run with `gh run list --workflow ci.yml`.
+It does source lists, a three-generation bootstrap **from the committed
 seed**, the fixpoint, the suite, the AIF differential, the seed check, packaging,
 `verify_separation`, and a clean-environment smoke test of the packaged toolchain
 outside the checkout, on `windows-latest`, `ubuntu-latest` and `macos-latest`.
 
 ```bash
 git push origin main                       # needs the owner's go-ahead
-gh run watch --exit-status                 # then: wait for all three
+gh workflow run ci.yml --ref main          # nothing runs until this
+gh run watch --exit-status                 # pick the new run; wait for all three
 ```
 
 Do not go past this step until all three jobs are green **on the exact commit you

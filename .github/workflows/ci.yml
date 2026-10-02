@@ -7,15 +7,16 @@
 # rather than from an installed binary also verifies the thing a new contributor
 # actually does on a fresh checkout.
 #
-# This runs on every push because several regressions during development were
-# caught only by running the full loop -- the suite alone was green while `for`
-# with a string literal was completely broken.
+# **This does not run on push.** It is started by hand -- the Actions tab, or
+# `gh workflow run ci.yml --ref main` -- when a commit is ready to be judged, and
+# RELEASE.md says when that is. It used to run on every push because several
+# regressions during development were caught only by running the full loop (the
+# suite alone was green while `for` with a string literal was completely broken);
+# `prismio gate` is the local form of that loop and is what to run before a push.
 
 name: CI
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 # Kept in step with REQUIRED_MAJOR in tools/setup_llvm.py and
