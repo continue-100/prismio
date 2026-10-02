@@ -183,6 +183,13 @@ file under `cpp/` or `rust/`, the exact build command and the toolchain's own
 names what it reused (`cached_builds`, dated in `cached_built_at`). `--rebuild`
 forces a rebuild even then, and `--compile-runs N` times N builds of each arm.
 
+**The C++ arm uses LTO when the machine's linker can.** It is built `-O3 -flto` to match
+the Rust arm's fat LTO, but on Linux the pinned LLVM ships neither the gold plugin GNU ld
+needs nor an `ld.lld` that starts on every distribution, so `run.py` tries LTO with lld,
+LTO with the default linker, and then no LTO, on a one-line program, and uses the first
+that links. A run that fell back says so on stderr, and `build_commands` records the exact
+command either way. Without LTO the C++ arm can only be slower, never faster.
+
 **The compiler must be newer than its sources.** `prismio bench` measures
 `.prismio/build/debug/prismio`, which is whatever was last promoted there. If
 `src/`, `std/` or `runtime/` has been edited since, the bench refuses to run

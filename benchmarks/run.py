@@ -347,6 +347,33 @@ def run_timed(command, *, env=None):
     return result, wall, int(cpu)
 
 
+def cpp_lto_flags(cxx, env):
+    """The LTO flags the C++ arm can actually link with on this machine.
+
+    The Rust arm is built with fat LTO, so the C++ arm gets LTO too. Whether it can is a
+    property of the machine's linker, not of the benchmark: on Linux GNU ld reads bitcode
+    through LLVMgold.so, which the pinned LLVM does not ship (tools/setup_llvm.py prunes
+    every shared library from `lib/`), and the pinned `ld.lld` needs an ICU the host may
+    not have. So each candidate is tried on a one-line program, and the first that links
+    wins: LTO with lld, LTO with the default linker, then none. Without LTO the C++ arm
+    is slower than it would be, never faster, so a fallback cannot flatter Prismio; the
+    exact command is recorded in the report either way.
+    """
+    candidates = [["-flto", "-fuse-ld=lld"], ["-flto"], []] if sys.platform.startswith("linux") \
+        else [["-flto"], []]
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = Path(tmp) / "probe.cpp"
+        probe.write_text("int main() { return 0; }\n")
+        for flags in candidates:
+            tried = subprocess.run([cxx, "-O3", *flags, str(probe), "-o", str(Path(tmp) / "probe")],
+                                   capture_output=True, text=True, env=env)
+            if tried.returncode == 0:
+                if "-flto" not in flags:
+                    print("warning: no linker here can do LTO; the C++ arm is built without it", file=sys.stderr)
+                return flags
+    return []
+
+
 FRESHNESS_SOURCES = ("src/**/*.psm", "std/*.psm", "runtime/*.c", "runtime/*.h")
 
 
@@ -439,7 +466,7 @@ def build_all(args, progress):
     cxx = str(llvm_bin / "clang++") if llvm_bin and (llvm_bin / "clang++").exists() else "clang++"
     commands = {
         "prismio": [str(Path(args.compiler).resolve()), "build", str(HERE / "prismio/suite.psm"), "-o", str(BUILD / "prismio-suite")],
-        "cpp": [cxx, "-O3", "-flto", "-std=c++20", "-pthread", *(str(path) for path in CPP_SOURCES),
+        "cpp": [cxx, "-O3", *cpp_lto_flags(cxx, env), "-std=c++20", "-pthread", *(str(path) for path in CPP_SOURCES),
                 "-o", str(BUILD / "cpp-suite")],
         "rust": ["rustc", "-C", "opt-level=3", "-C", "lto=fat", "-C", "codegen-units=1", "--edition=2021", str(HERE / "rust/suite.rs"), "-o", str(BUILD / "rust-suite")],
     }
