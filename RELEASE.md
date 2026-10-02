@@ -133,6 +133,13 @@ cd /tmp/clean && ./prismio-0.1.0-macos-arm64/bin/prismio --version
 ./prismio-0.1.0-macos-arm64/bin/prismio build smoke.psm -o smoke && ./smoke
 ```
 
+The installer has its own check, because `curl ... | sh` is how most people arrive: from
+the unpacked archive's directory, `PRISMIO_INSTALL=$(mktemp -d)/p PRISMIO_NO_MODIFY_PATH=1
+PRISMIO_TARBALL=<archive> sh install.sh` must verify the `.sha256`, report the version, and
+leave a compiler that builds `smoke.psm`. After the tag, `curl -fsSL https://prismio.org/install.sh | sh`
+must do the same from the published release (the site's copy is
+`../website/apps/web/public/install.sh`; keep it identical to the root `install.sh`).
+
 `smoke.psm` is the program inlined in `.github/workflows/ci.yml`. It exercises
 `sort`, an annotated `Map<Int, Int>` and a `Channel<T>` round trip, and prints
 `18`: the annotated generic is the shape that once did not link, and the channel is

@@ -22,9 +22,11 @@ Thank you for your interest in contributing to Prismio. This document covers eve
 
 ## Overview for Contributors
 
-Prismio is a self-hosted systems programming language. The compiler — including the lexer, parser, AST, import resolver, and IR generator — is written in Prismio itself. **Contributors do not need to write or modify C++.** All compiler work is done in `.psm` files under `src/`.
+Prismio is a self-hosted systems programming language. The compiler — the lexer, parser, semantic analysis, allocation inference, and IR generator — is written in Prismio itself, in `.psm` files under `src/`. Most contributions are Prismio.
 
-A prebuilt bootstrap binary is used to compile the Prismio source files during toolchain setup. The compiler pipeline produces LLVM IR, which is then compiled to native machine code via `llvm-llc` and linked by Clang.
+The LLVM backend and the runtime are C, under `runtime/` (see [C_CODE_STYLE.md](C_CODE_STYLE.md)); you only need to touch them for a backend or runtime change. The compiler produces LLVM IR, optimises and generates machine code in process with the LLVM it links (AArch64, X86 and WebAssembly), and hands the object to the system's linker.
+
+A committed seed (`bootstrap/prismio-seed.ll`) builds the first compiler on a machine that has none.
 
 ---
 
@@ -46,7 +48,7 @@ For a list of open issues, see the [GitHub Issues tracker](https://github.com/pr
 
 | Dependency | Version | Notes |
 |---|---|---|
-| Python | 3.8+ | The one thing you install yourself: it runs setup, the test runner and the AIF differential |
+| Python | 3.9+ | The one thing you install yourself: it runs setup, the test runner and the AIF differential |
 | A system C toolchain | — | The platform linker and C library: Xcode Command Line Tools on macOS, `build-essential` on Linux, Visual Studio's C++ tools on Windows. `python tools/setup.py` probes it by compiling and linking a program, and `--install-system-deps` installs it (asks first) |
 | LLVM | 23.1.1, pinned | Provisioned into `third_party/llvm` by `python tools/setup.py` (through `tools/setup_llvm.py`) — do not install one |
 | Prismio | any | Optional. You do not need an installed compiler — the committed seed builds the first one |
@@ -131,24 +133,49 @@ the rest of the manifest is handled by the selected host.
 `build/gen2 --version` prints the compiler directory and the standard library it
 resolves, which is the fastest way to check you are running what you think.
 
+### The project commands
+
+Once you have a compiler (a bootstrapped generation, or an installed one), the
+checkout is a Prismio project and `build.ums` declares its commands:
+
+| Command | What it does |
+|---|---|
+| `prismio build` | builds the compiler this checkout runs (`.prismio/build/debug/prismio`) |
+| `prismio suite` | the test suite, for the fast loop |
+| `prismio verify` | suite, source lists, externs, AIF differential |
+| `prismio gate` | lint, then the whole release gate on a packaged candidate |
+
+Two things to know. **Do not run `prismio build`, or edit `src/`, while the suite
+is running**: one of its fixtures replaces the project compiler, and some compile the
+working tree. And the LLVM targets are listed twice, in `runtime/prismio_llvm.h` and
+`tools/setup_llvm.py`; `python tools/check_source_lists.py` fails if they disagree.
+
 ### Before opening a pull request
 
 ```bash
-python tools/release_gate.py --rc build/gen2
+prismio gate
 ```
 
 Fourteen gates in one command: source lists, two-generation bootstrap, IR
 fixpoint, self-reproduction, seed agreement, the full suite, the AIF oracle
 differential, the corpus, a `--verify` sweep, curated-runtime-off,
-object-cache-off, JIT, cross-target, and the packaged toolchain.
+object-cache-off, JIT, cross-target, and the packaged toolchain. It packages the
+compiler first and puts the pinned LLVM on `PATH`, because a bare bootstrap
+generation has no installed runtime and the system's `clang` cannot read LLVM 23
+bitcode; running `tools/release_gate.py` by hand against `build/gen2` fails for
+exactly those reasons.
 
 ### If you changed the syntax
 
 New syntax lands in **two commits**, and the order is not negotiable: the
 committed seed has to be able to parse `src/`, so teach the frontend first
 without using the syntax in `src/`, then `tools/refresh_seed.sh --compiler
-build/gen2`, and only then use it. Skipping this leaves a fresh clone unable to
+build/gen2` (`tools/refresh_seed.ps1` on Windows), and only then use it. Skipping this leaves a fresh clone unable to
 build. See [CODE_STYLE.md](CODE_STYLE.md).
+
+A seed that can parse `src/` can still be stale: CI only checks that it parses, and
+on Linux that it matches what a built compiler emits. Refresh it whenever `src/` has
+changed since it was written and commit it with that change.
 
 ---
 
@@ -340,7 +367,7 @@ Keep the subject line under 72 characters. Use the commit body (separated by a b
 - **Keep PRs focused** — one feature or fix per PR makes review faster and history cleaner.
 - **Write a clear description** — explain what the change does, why it is needed, and how it was tested.
 - **Link related issues** — reference any relevant GitHub issues using `Closes #<number>` or `Relates to #<number>` in the PR description.
-- **Ensure tests pass** — run `python test_runner.py` locally and confirm all tests pass before requesting review.
+- **Ensure tests pass** — run `prismio gate` locally (or at least `prismio suite`) and confirm everything is green before requesting review.
 - **Respond to review feedback** — address review comments with follow-up commits or discussion; do not force-push a branch after review has started without discussion.
 
 PRs that add new language behavior without accompanying tests are unlikely to be merged.

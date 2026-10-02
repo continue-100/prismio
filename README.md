@@ -44,7 +44,8 @@ curl -fsSL https://prismio.org/install.sh | sh
 
 Windows: download the archive for your machine from the
 [latest release](https://github.com/prismio-lang/prismio/releases/latest), unpack it, and
-put its `bin` directory on `PATH`.
+put its `bin` directory on `PATH`. Archives are named `prismio-<version>-<os>-<arch>`
+(`macos-arm64`, `linux-x64`, `windows-x64`) and come with a `.sha256`; they are not signed.
 
 The compiler carries its own LLVM, but it links programs with the system's linker, so you
 also need the platform's C tools: the Xcode Command Line Tools on macOS
@@ -113,15 +114,15 @@ it decided:
 $ prismio aif shapes.psm
 Storage plan
   Stack                   3
-  Arena                   2
-  Scoped heap             1
-  Unique heap             119
+  Arena                   5
+  Scoped heap             3
+  Unique heap             98
   Shared heap             0
   Cycle-managed heap      0
 ...
 ID   location                 type            storage          reason
-1    shapes.psm:21:19         [Shape]         scoped heap      scope-bound; no arena selected
-2    shapes.psm:21:25         Shape           stack            small value does not escape
+1    shapes.psm:20:19         [Shape]         scoped heap      scope-bound; no arena selected
+2    shapes.psm:20:25         Shape           stack            small value does not escape
 ```
 
 Then run it with the inference checked against every allocation and release:
@@ -156,15 +157,21 @@ each is listed with a reproducer in
 
 ## Performance
 
-On the maintained suite of 63 workloads, each written the same way in Prismio, C++
-and Rust, Prismio's geometric-mean time is **0.92× of C++ (clang -O2) and 0.92× of
-Rust (-C opt-level=3)**, with peak memory level with both. That was measured
-2026-09-25 on x86_64 Linux, 7 runs each
-([results](aif/evidence/RESULTS-v01-gate-2026-09-25.md)). It is slower on some
-workloads, `edit_distance` and `base64_codec` among them, and
-[docs/PERFORMANCE_PLAN.md](docs/PERFORMANCE_PLAN.md) lists where and why. The suite,
-and the rules that keep its three versions of each workload the same program, are
-in [`benchmarks/`](benchmarks/README.md).
+On the maintained suite of 62 workloads, each written the same way in Prismio, C++
+and Rust, Prismio's geometric-mean time is **0.87× of C++ (`clang++ -O3 -flto`) and
+0.84× of Rust (`-C opt-level=3 -C lto=fat`)**; peak memory is level with C++ and 4%
+below Rust. Measured on 2026-10-02 on an Apple M5 (arm64, macOS), 5 runs each
+([report](benchmarks/results/report.html), [raw data](benchmarks/results/results.json)).
+
+Against C++ it is faster on 20 workloads, level on 40 (inside the suite's noise rule)
+and slower on 2: `prime_sieve` and `large_buffer_copy`. Against Rust it is faster on
+23, level on 34 and slower on 5: `vector_growth`, `convolution`, `large_buffer_copy`,
+`base64_codec` and `indirect_calls`. Fifteen more workloads are listed in the suite but
+not implemented yet, and are not counted. These are one machine's numbers, not a
+promise about yours: [docs/PERFORMANCE_PLAN.md](docs/PERFORMANCE_PLAN.md) lists where
+Prismio is slower and why, and the suite, with the rules that keep its three versions
+of each workload the same program, is in [`benchmarks/`](benchmarks/README.md).
+`prismio bench` re-runs it.
 
 ## Language at a glance
 
@@ -187,7 +194,7 @@ processes and the environment, time, math, strings, and collections.
 ## Building from source
 
 To work on the compiler, or to run a platform the release does not ship for, build it
-yourself. Requirements: Python 3.8 or later, which is the one thing you install yourself, and a
+yourself. Requirements: Python 3.9 or later, which is the one thing you install yourself, and a
 C toolchain (Xcode Command Line Tools, `build-essential`, or Visual Studio's C++
 tools). `tools/setup.py` checks the toolchain by compiling and linking a program with
 it, says exactly what is missing, and can install it (`--install-system-deps`, which
@@ -209,6 +216,10 @@ a machine with no Prismio builds its first one. On Windows the script is
 `tools/bootstrap.ps1 -Seed bootstrap/prismio-seed.ll -Out build/gen0`, then
 `-Compiler build/gen0 -Out build/gen1`.
 
+Once a compiler exists, the checkout is itself a Prismio project: `prismio build` rebuilds
+the compiler, `prismio suite` and `prismio verify` test it, and `prismio gate` is the
+check to run before a push ([CONTRIBUTING.md](CONTRIBUTING.md)).
+
 With the compiler installed or built, start a project:
 
 ```console
@@ -222,11 +233,12 @@ Or compile a single file with `prismio run file.psm` or `prismio build file.psm`
 diagnostics, [IDE_PROTOCOL.md](IDE_PROTOCOL.md)) and `-g` for DWARF debug info
 ([docs/DEBUGGING.md](docs/DEBUGGING.md)).
 
-**Platforms.** CI builds and tests on Linux, macOS and Windows. Development happens
-on macOS (arm64) and Linux (x86_64), so Windows is the least exercised: a compiler
+**Platforms.** CI builds and tests Linux (x64), Windows (x64) and macOS (arm64).
+Development happens on macOS (arm64) and Linux, so Windows is the least exercised: a compiler
 self-hosted there has no export table, and some Windows-only paths are verified by
 CI alone. The compiler runs on macOS 14 or later, and the programs it builds on macOS 11
-or later. WebAssembly IR can be emitted but has no runtime yet. See
+or later. The compiler links three LLVM backends, so `--target` accepts AArch64, X86 and
+WebAssembly triples; WebAssembly IR can be emitted but has no runtime yet. See
 [Platform](docs/KNOWN_ISSUES.md#platform) and
 [targets](https://docs.prismio.org/compiler/targets).
 

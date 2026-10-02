@@ -18,7 +18,7 @@ What it will and will not change:
   Those are machine-wide, need administrator rights, and in Visual Studio's case
   a licence, so they are never a side effect.
 
-Python 3.8 or later is the one prerequisite this cannot install, since it is
+Python 3.9 or later is the one prerequisite this cannot install, since it is
 what runs it.
 
 Usage:
@@ -50,7 +50,7 @@ sys.path.insert(0, str(HERE))
 
 import setup_llvm  # noqa: E402  (after the path edit)
 
-MIN_PYTHON = (3, 8)
+MIN_PYTHON = (3, 9)
 
 # The download is 1-2 GiB, extraction needs the archive and the tree at once, and
 # preparing LLVM lowers a few thousand bitcode objects beside them.

@@ -5338,9 +5338,12 @@ def run_target_test():
     # disappear either. The datalayout is never stamped on any host -- only
     # LLVMSetTarget is called in that branch.
     if platform.system() == "Windows":
-        if 'target triple = "x86_64-pc-windows-msvc"' not in host_ir:
+        # The pin follows the host's architecture (ir_module_start): a native ARM64
+        # compiler stamping x86_64 merged aarch64 runtime bitcode into an x86_64 module.
+        arch = "aarch64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
+        if f'target triple = "{arch}-pc-windows-msvc"' not in host_ir:
             problems.append("a host build on Windows did not pin "
-                            "`x86_64-pc-windows-msvc` -- without it clang may pick "
+                            f"`{arch}-pc-windows-msvc` -- without it clang may pick "
                             "the mingw fork, which is a different ABI")
         if "target datalayout" in host_ir:
             problems.append("a host build emitted `target datalayout`; only the "

@@ -31,6 +31,21 @@ This policy currently applies to:
 - Package and build tooling
 - Official Prismio infrastructure and repositories
 
+## What to trust
+
+Building a project is running code, and the policy is written with that in mind:
+
+- A project's `build.ums` can declare commands that run scripts, `native` blocks that
+  compile and link C sources with the system's C compiler, and a `toolchain.host`
+  that is an executable the build runs. Do not build or run a project you do not trust
+  any more than you would run its install script.
+- Release archives are published with a SHA-256 beside each one. **They are not
+  signed**; the checksum proves the download is intact, not who made it. Take both
+  from the same release page, over HTTPS.
+- The compiler links one pinned LLVM (23.1.1, verified by SHA-256 when it is
+  downloaded) statically. LLVM's own vulnerabilities are reported to LLVM, and the
+  pin is moved when they require it.
+
 Third-party dependencies and external LLVM vulnerabilities should be reported to their respective maintainers when applicable.
 
 ---
@@ -53,11 +68,13 @@ Security support is currently focused on:
 
 | Version | Support Status |
 |---|---|
-| Latest development version | Fully supported |
-| Previous stable release | Critical issues only |
-| Older releases | Not actively supported |
+| `main` (development) | Fully supported |
+| 0.1.x, the latest release | Fully supported |
+| The previous minor release, once there is one | Critical issues only |
+| Anything older, and pre-release candidates | Not supported |
 
-Users are strongly encouraged to remain on the latest stable release.
+Prismio is pre-1.0: the language and library can change incompatibly between minor
+releases, and a security fix may ship only in the newest one. Stay on the latest.
 
 ---
 
