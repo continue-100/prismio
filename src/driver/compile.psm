@@ -21,6 +21,7 @@ import std.string
 import std.option
 import driver.imports
 import driver.workload
+import std.fs
 
 public extern fn compiler_build_executable(irFile: String, exeFile: String) -> Int
 public extern fn compiler_installed_runtime_hash() -> String produce(free)
@@ -45,13 +46,9 @@ public extern fn compiler_set_debug_info(on: Int)
 // same accounting as everything ir_alloc_object handed out.
 public extern fn compiler_set_verify_mode(on: Int)
 public extern fn compiler_temp_ir_path(sourcePath: String) -> String produce(free)
-public extern fn delete_file(path: String) -> Int
-public extern fn file_exists(path: String) -> Int
-public extern fn get_directory(path: String) -> String
 // `run --jit`: merges the imported standard-library bitcode into `irFile`, as a
 // build does, and runs `main` in this process.
 public extern fn compiler_jit_run(irFile: String borrow, programName: String borrow) -> Int
-public extern fn read_file(path: String) -> String
 
 // How one build is done. Every command that compiles -- a single file, a UMS
 // target, a project command's `.psm` tool -- fills one of these, and
@@ -159,7 +156,7 @@ private fn checkRuntimeFreshness() {
 // `kind`, of which MODULE is 0. See ast.psm.
 private fn analyzedModule(path: String) -> ASTNode {
     let content = readSource(path)
-    if (content.equals("") and file_exists(path) == 0) {
+    if (content.equals("") and fileExists(path) == false) {
         diag_error_code("P1005", "cannot read ".concat(path))
         return createNode(NodeKind.MODULE)
     }
@@ -171,13 +168,13 @@ private fn analyzedModule(path: String) -> ASTNode {
         diag_set_file_module(rootFile, emissionMod)
     }
     diag_progress("parsing")
-    let lex = createLexer(content, rootFile)
-    let headToken = lexAllTokens(lex)
+    let lex = Lexer.create(content, rootFile)
+    let headToken = lex.allTokens()
     let p = parserCreate(headToken)
     let astRoot = parseModule(p)
 
     diag_progress("resolving imports")
-    let baseDir = get_directory(path)
+    let baseDir = directoryOf(path)
     let mergedAst = resolveImports(astRoot, baseDir, path)
     lexCheckIdentifierSecurity()
 
@@ -334,8 +331,8 @@ public fn compileSource(path: String, outputFile: String, options: CompileOption
         outFile = compiler_temp_ir_path(path)
     }
 
-    let content = read_file(path)
-    if (content.equals("") and file_exists(path) == 0) {
+    let content = readFile(path)
+    if (content.equals("") and fileExists(path) == false) {
         diag_error_code("P1008", "cannot read ".concat(path))
         return 1
     }
@@ -346,13 +343,13 @@ public fn compileSource(path: String, outputFile: String, options: CompileOption
         diag_set_file_module(rootFile, emissionMod)
     }
     diag_progress("parsing")
-    let lex = createLexer(content, rootFile)
-    let headToken = lexAllTokens(lex)
+    let lex = Lexer.create(content, rootFile)
+    let headToken = lex.allTokens()
     let p = parserCreate(headToken)
     let astRoot = parseModule(p)
 
     diag_progress("resolving imports")
-    let baseDir = get_directory(path)
+    let baseDir = directoryOf(path)
     let mergedAst = resolveImports(astRoot, baseDir, path)
     lexCheckIdentifierSecurity()
 
@@ -509,7 +506,7 @@ public fn compileSource(path: String, outputFile: String, options: CompileOption
         // makes the two comparable in run_jit_test.
         diag_status("Running", path.concat(" (JIT)"))
         let status = compiler_jit_run(outFile, path)
-        if (emitIrOnly == false) { delete_file(outFile) }
+        if (emitIrOnly == false) { deleteFile(outFile) }
         return status
     }
 
@@ -519,20 +516,20 @@ public fn compileSource(path: String, outputFile: String, options: CompileOption
     }
 
     if (compiler_build_executable(outFile, outputFile) != 0) {
-        delete_file(outFile)
+        deleteFile(outFile)
         diag_error_code("P1011", "the native build step failed (llc/clang); see the output above")
         // A compiler is the one Prismio program that needs more than its own
         // manifest-free build, and a link failure is how building it the wrong way
         // shows up. Only then is the way to build it worth mentioning: printed
         // after every link failure, a user missing a native library was told to
         // bootstrap the compiler.
-        if (path.endsWith("src/main.psm") and file_exists("runtime/llvm-api-backend.c") == 1) {
+        if (path.endsWith("src/main.psm") and fileExists("runtime/llvm-api-backend.c")) {
             diag_note("the Prismio compiler is built from its checkout with `prismio build`, which reads its build.ums")
         }
         return 1
     }
 
-    delete_file(outFile)
+    deleteFile(outFile)
 
     diag_result("Built ", "Built", outputFile, buildDetail(options.debugInfo, options.verify))
 

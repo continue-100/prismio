@@ -12,6 +12,11 @@ someone's source of truth:
   are `prismio_toolchain_files[]` in build_driver.c (what `runtime-hash`
   hashes) and `RUNTIME_BITCODE` in tools/package.py (what is packaged).
 
+The LLVM backends are listed twice: `PRISMIO_LLVM_TARGET_LIST` in
+prismio_llvm.h (what the compiler initialises) and `TARGET_COMPONENTS` in
+tools/setup_llvm.py (what it links). One without the other fails the link or
+ships dead weight.
+
 One value rides along because it is written down twice the same way: the macOS
 a program is built for, `PRISMIO_MACOS_FLOOR` in llvm-api-backend.c and
 `MACOS_FLOOR` in tools/package.py, which builds the runtime bitcode for it.
@@ -115,6 +120,16 @@ def macos_floors():
     return c.group(1), py.group(1)
 
 
+def llvm_targets():
+    """(initialised by the backend, linked by setup_llvm.py), lower-cased."""
+    h = re.search(r"#define PRISMIO_LLVM_TARGET_LIST\(X\)(.*)", read(RUNTIME / "prismio_llvm.h"))
+    py = re.search(r"^TARGET_COMPONENTS = \[(.*?)\]", read(TOOLS / "setup_llvm.py"), re.M | re.S)
+    if not h or not py:
+        raise Failure("could not find PRISMIO_LLVM_TARGET_LIST / TARGET_COMPONENTS")
+    return (sorted(x.lower() for x in re.findall(r"X\((\w+)\)", h.group(1))),
+            sorted(re.findall(r'"(\w+)"', py.group(1))))
+
+
 def main() -> int:
     problems = []
 
@@ -141,6 +156,8 @@ def main() -> int:
         compare("tools/package.py RUNTIME_BITCODE", package_runtime_bitcode(), runtime)
         c_floor, py_floor = macos_floors()
         compare("tools/package.py MACOS_FLOOR vs PRISMIO_MACOS_FLOOR", [py_floor], [c_floor])
+        initialised, linked = llvm_targets()
+        compare("tools/setup_llvm.py TARGET_COMPONENTS vs PRISMIO_LLVM_TARGET_LIST", linked, initialised)
         missing = [name for name in runtime if name not in compiler]
         if missing:
             problems.append("runtime sources the compiler does not compile: " + " ".join(missing))

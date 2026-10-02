@@ -7,8 +7,6 @@ import ums.targets.target
 import std.string
 import std.fs
 
-extern fn file_exists(path: String borrow) -> Int
-extern fn join_path(directory: String borrow, child: String borrow) -> String produce(free)
 
 // Public because `prismio init` derives a project name from a directory and must
 // reject it by the *same* rule this validates it by. A second copy of the rule in
@@ -155,8 +153,8 @@ impl UmsProjectModel {
     private fn requireFile(self, inout diagnostics: Vec<UmsDiagnostic>, value: String,
                            line: Int, col: Int, len: Int, code: String, what: String) {
         let mut path = value.clone()
-        if (umsAbsolutePath(value) == false) { path = join_path(self.root, value) }
-        if (file_exists(path) == 0) {
+        if (umsAbsolutePath(value) == false) { path = joinPath(self.root, value) }
+        if (fileExists(path) == false) {
             umsDiagnosticAdd(diagnostics, code, self.manifestPath, line, col, len,
                              what.concat(" does not exist: ", value))
         }
@@ -205,8 +203,8 @@ impl UmsProjectModel {
                 self.validationError(diagnostics, self.metadata.licenseFileSpan, "UMS2318",
                                    "project.licenseFile must be a non-empty project-relative path")
             } else {
-                let licensePath = join_path(self.root, self.metadata.licenseFile)
-                if (file_exists(licensePath) == 0) {
+                let licensePath = joinPath(self.root, self.metadata.licenseFile)
+                if (fileExists(licensePath) == false) {
                     self.validationError(diagnostics, self.metadata.licenseFileSpan, "UMS2319",
                         "project.licenseFile does not exist: ".concat(self.metadata.licenseFile))
                 }
@@ -249,8 +247,8 @@ impl UmsProjectModel {
                     target.line, target.col, target.len,
                     "target '".concat(target.name, "' requires an entry source"))
             } else {
-                let sourcePath = join_path(self.root, target.entry)
-                if (file_exists(sourcePath) == 0) {
+                let sourcePath = joinPath(self.root, target.entry)
+                if (fileExists(sourcePath) == false) {
                     umsDiagnosticAdd(diagnostics, "UMS2310", self.manifestPath,
                         target.line, target.col, target.len,
                         "target '".concat(target.name, "' entry does not exist: ", target.entry))
@@ -293,7 +291,7 @@ impl UmsProjectModel {
                                          input.len, "UMS2324", "native source")
                     }
                 } else if (input.kind == UmsNativeKind.INCLUDE) {
-                    if (directoryExists(join_path(self.root, input.value)) == false) {
+                    if (directoryExists(joinPath(self.root, input.value)) == false) {
                         umsDiagnosticAdd(diagnostics, "UMS2325", self.manifestPath,
                             input.line, input.col, input.len,
                             "native include directory does not exist: ".concat(input.value))
@@ -370,7 +368,7 @@ impl UmsProjectModel {
                             step.line, step.col, step.len,
                             "run names no declared target, and '".concat(step.subject,
                                                                          "' is not a .py or .psm file; use shell for anything else"))
-                    } else if (file_exists(join_path(self.root, step.subject)) == 0) {
+                    } else if (fileExists(joinPath(self.root, step.subject)) == false) {
                         umsDiagnosticAdd(diagnostics, "UMS2607", self.manifestPath,
                             step.line, step.col, step.len,
                             "run cannot find '".concat(step.subject, "' under the project root"))

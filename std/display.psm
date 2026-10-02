@@ -16,6 +16,7 @@
 // does not cover is covered by writing `impl Display for MyType` beside the
 // type, with no change here.
 
+import std.io
 import std.string
 
 trait Display {
@@ -123,4 +124,46 @@ impl Display for Bool? {
         if (self == none) { return strFromNone() }
         return expect(self).show()
     }
+}
+
+// A `String?` shows as the string, or as `none`.
+impl Display for String? {
+    fn show(self) -> String {
+        if (self == none) { return strFromNone() }
+        return expect(self).show()
+    }
+}
+
+// An `Option<T>` shows as its value, or as `none` -- the text a scalar `T?` shows.
+// Here and not in std.option because an implementation lives with the trait or the
+// type it is for, and std.option cannot import this module without a cycle.
+impl<T: Display> Display for Option<T> {
+    fn show(self) -> String {
+        match (self) {
+            Option.Some(value) => { return value.show() }
+            Option.None => { return strFromNone() }
+        }
+    }
+}
+
+// The print family for anything that can show itself, so `println(version)` works
+// for a type with an `impl Display`, and for the optionals above, once this module
+// is imported. **Here and not in std.io**, which every printing program imports: a
+// generic `print<T: Display>` there would put this module, and std.string under it,
+// into programs that never print anything but a literal. The overloads std.io has
+// for its own types are exact matches, and an exact match wins over these.
+public fn print<T: Display>(value: T) {
+    print(value.show())
+}
+
+public fn println<T: Display>(value: T) {
+    println(value.show())
+}
+
+public fn eprint<T: Display>(value: T) {
+    eprint(value.show())
+}
+
+public fn eprintln<T: Display>(value: T) {
+    eprintln(value.show())
 }

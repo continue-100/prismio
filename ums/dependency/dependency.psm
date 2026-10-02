@@ -38,10 +38,12 @@ impl UmsDependency {
     // produced it is a file nobody will check.
 }
 internal fn umsDependencyScopeName(scope: UmsDependencyScope) -> String {
-    if (scope == UmsDependencyScope.IMPLEMENTATION) { return "implementation".clone() }
-    if (scope == UmsDependencyScope.API) { return "api".clone() }
-    if (scope == UmsDependencyScope.TEST_IMPLEMENTATION) {
-        return "testImplementation".clone()
+    match (scope) {
+        UmsDependencyScope.IMPLEMENTATION => { return "implementation".clone() }
+        UmsDependencyScope.API => { return "api".clone() }
+        UmsDependencyScope.TEST_IMPLEMENTATION => {
+            return "testImplementation".clone()
+        }
     }
     return "unknown".clone()
 }

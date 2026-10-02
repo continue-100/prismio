@@ -85,11 +85,15 @@
 // the same reason, though it is not debug info and a reader should not have to
 // know the two coincide.
 //
-// Resolving a triple means LLVMInitializeAllTargets, which is generated from the
-// set of backends LLVM was built with -- there is no portable way to write it
-// out by hand below. Without it the host is the only target that can be named,
-// and ir_target_select() refuses anything else instead of guessing a layout.
+// Resolving a triple means initialising its backend, and a backend can only be
+// initialised if it is linked. These are the ones the compiler links, so they are
+// the `--target` triples it accepts; anything else is refused by name in
+// ir_target_select() instead of guessed at. **tools/setup_llvm.py
+// (TARGET_COMPONENTS) names the same set**: a target listed here and not linked
+// fails the link, and one linked and not listed costs megabytes for nothing.
+// Without PRISMIO_TARGETS the host is the only target that can be named.
 #define PRISMIO_TARGETS 1
+#define PRISMIO_LLVM_TARGET_LIST(X) X(AArch64) X(X86) X(WebAssembly)
 
 #else
 

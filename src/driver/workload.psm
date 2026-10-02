@@ -20,6 +20,7 @@ import aif.*
 import std.string
 import std.option
 import driver.imports
+import std.fs
 
 public extern fn compiler_build_executable(irFile: String, exeFile: String) -> Int
 extern fn compiler_publish_file(fromPath: String, toPath: String) -> Int
@@ -43,8 +44,6 @@ extern fn compiler_temp_path_for(sourcePath: String, suffix: String) -> String p
 // load. `compiler_publish_file` is how the one artifact that *is* supposed to
 // have a predictable name gets there afterwards.
 extern fn compiler_temp_private_path(sourcePath: String, suffix: String) -> String produce(free)
-public extern fn delete_file(path: String) -> Int
-public extern fn file_exists(path: String) -> Int
 
 public fn runWorkloadProfile(module: ASTNode, sourcePath: String, verifyMode: Bool) -> String {
     let count = moduleWorkloadCount(module)
@@ -82,7 +81,7 @@ public fn runWorkloadProfile(module: ASTNode, sourcePath: String, verifyMode: Bo
     // that the path carries the pid a leftover is someone else's rather than
     // this build's, which is a stronger reason to delete it rather than a
     // weaker one: it cannot be ours, so it can only mislead.
-    delete_file(profilePath)
+    deleteFile(profilePath)
 
     ir_reset()
     // A verify build swaps the allocator names; the driver must not inherit that,
@@ -128,7 +127,7 @@ public fn runWorkloadProfile(module: ASTNode, sourcePath: String, verifyMode: Bo
             failure = "the workload failed to build; using the static profile (driver IR kept at ".concat(driverIr,
                                                                                                           ")")
         } else {
-            delete_file(driverIr)
+            deleteFile(driverIr)
 
             // 60 seconds. A build-time budget has to be short enough that a
             // runaway workload is an inconvenience rather than a hung CI job, and
@@ -136,10 +135,10 @@ public fn runWorkloadProfile(module: ASTNode, sourcePath: String, verifyMode: Bo
             // not time out a workload that would finish. `repeat` is the knob for
             // the second half.
             let ran = compiler_run_workload(driverExe, 60)
-            delete_file(driverExe)
+            deleteFile(driverExe)
             if (ran != 0) {
                 failure = "the workload exited with a failure status or timed out; using the static profile"
-            } else if (file_exists(profilePath) == 0) {
+            } else if (fileExists(profilePath) == false) {
                 failure = "the workload ran but wrote no profile; using the static profile"
             }
         }
@@ -165,7 +164,7 @@ public fn runWorkloadProfile(module: ASTNode, sourcePath: String, verifyMode: Bo
 // consumer of the path runWorkloadProfile returns has to.
 public fn discardWorkloadProfile(profilePath: String) {
     if (profilePath.equals("") == false) {
-        delete_file(profilePath)
+        deleteFile(profilePath)
     }
 }
 

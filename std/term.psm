@@ -22,6 +22,7 @@
 // On Windows, asking also turns on escape-sequence processing in a console that
 // has it off.
 
+import std.display
 import std.string
 
 private extern fn prismio_rt_color_supported(fd: Int) -> Int
@@ -354,4 +355,160 @@ impl String {
         termPutVisible(out, self)
         return out
     }
+}
+
+// ---------------------------------------------------------------------------
+// Anything that can show itself
+// ---------------------------------------------------------------------------
+//
+// `42.red()`, `version.bold()`, `maybeName.dim()`: every style above also takes a
+// value with an `impl Display`, which is shown first and then styled. These are
+// separate functions rather than a bound on the methods because the `String`
+// methods build their result in place (see the header), and a `String` argument
+// still resolves to those -- an exact match wins over a generic one -- so styling
+// a string costs what it always did. Only the styles are repeated here:
+// `plain` strips sequences out of text, and a value that is not text has none.
+
+public fn black<T: Display>(value: T) -> String {
+    return value.show().black()
+}
+
+public fn red<T: Display>(value: T) -> String {
+    return value.show().red()
+}
+
+public fn green<T: Display>(value: T) -> String {
+    return value.show().green()
+}
+
+public fn yellow<T: Display>(value: T) -> String {
+    return value.show().yellow()
+}
+
+public fn blue<T: Display>(value: T) -> String {
+    return value.show().blue()
+}
+
+public fn magenta<T: Display>(value: T) -> String {
+    return value.show().magenta()
+}
+
+public fn cyan<T: Display>(value: T) -> String {
+    return value.show().cyan()
+}
+
+public fn white<T: Display>(value: T) -> String {
+    return value.show().white()
+}
+
+public fn gray<T: Display>(value: T) -> String {
+    return value.show().gray()
+}
+
+public fn brightRed<T: Display>(value: T) -> String {
+    return value.show().brightRed()
+}
+
+public fn brightGreen<T: Display>(value: T) -> String {
+    return value.show().brightGreen()
+}
+
+public fn brightYellow<T: Display>(value: T) -> String {
+    return value.show().brightYellow()
+}
+
+public fn brightBlue<T: Display>(value: T) -> String {
+    return value.show().brightBlue()
+}
+
+public fn brightMagenta<T: Display>(value: T) -> String {
+    return value.show().brightMagenta()
+}
+
+public fn brightCyan<T: Display>(value: T) -> String {
+    return value.show().brightCyan()
+}
+
+public fn brightWhite<T: Display>(value: T) -> String {
+    return value.show().brightWhite()
+}
+
+public fn onBlack<T: Display>(value: T) -> String {
+    return value.show().onBlack()
+}
+
+public fn onRed<T: Display>(value: T) -> String {
+    return value.show().onRed()
+}
+
+public fn onGreen<T: Display>(value: T) -> String {
+    return value.show().onGreen()
+}
+
+public fn onYellow<T: Display>(value: T) -> String {
+    return value.show().onYellow()
+}
+
+public fn onBlue<T: Display>(value: T) -> String {
+    return value.show().onBlue()
+}
+
+public fn onMagenta<T: Display>(value: T) -> String {
+    return value.show().onMagenta()
+}
+
+public fn onCyan<T: Display>(value: T) -> String {
+    return value.show().onCyan()
+}
+
+public fn onWhite<T: Display>(value: T) -> String {
+    return value.show().onWhite()
+}
+
+public fn onGray<T: Display>(value: T) -> String {
+    return value.show().onGray()
+}
+
+public fn bold<T: Display>(value: T) -> String {
+    return value.show().bold()
+}
+
+public fn dim<T: Display>(value: T) -> String {
+    return value.show().dim()
+}
+
+public fn italic<T: Display>(value: T) -> String {
+    return value.show().italic()
+}
+
+public fn underline<T: Display>(value: T) -> String {
+    return value.show().underline()
+}
+
+public fn inverse<T: Display>(value: T) -> String {
+    return value.show().inverse()
+}
+
+public fn strikethrough<T: Display>(value: T) -> String {
+    return value.show().strikethrough()
+}
+
+public fn rgb<T: Display>(value: T, r: Int, g: Int, b: Int) -> String {
+    return value.show().rgb(r, g, b)
+}
+
+public fn onRgb<T: Display>(value: T, r: Int, g: Int, b: Int) -> String {
+    return value.show().onRgb(r, g, b)
+}
+
+public fn color<T: Display>(value: T, index: Int) -> String {
+    return value.show().color(index)
+}
+
+public fn onColor<T: Display>(value: T, index: Int) -> String {
+    return value.show().onColor(index)
+}
+
+public fn forTerminal<T: Display>(value: T) -> String {
+    return value.show().forTerminal()
 }

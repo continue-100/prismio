@@ -18,6 +18,7 @@ import ums.model.workspace
 import ums.model.diagnostic
 import ums.targets.target
 import project.ums_cli
+import std.fs
 
 // Project-host executables are built beside their active local generation. The
 // candidate has to start before it can replace that generation, and promotion
@@ -44,11 +45,10 @@ public extern fn compiler_promote_executable(candidateFile: String borrow,
 // The checkout a toolchain host's runtime and standard library are built from:
 // the project's own root, before any search relative to the working directory.
 public extern fn compiler_set_toolchain_root(root: String borrow)
-public extern fn executable_directory() -> String produce(free)
 
 private fn checkUmsCompilerCandidate(candidate: String) -> Int {
     if (compiler_check_executable(candidate) != 0) {
-        delete_file(candidate)
+        deleteFile(candidate)
         diag_error_code("P1054", "the compiler candidate did not start; the active local compiler was kept")
         return 1
     }
@@ -60,7 +60,7 @@ private fn checkUmsCompilerCandidate(candidate: String) -> Int {
 public fn promoteUmsCompilerCandidate(candidate: String, active: String) -> Int {
     if (checkUmsCompilerCandidate(candidate.clone()) != 0) { return 1 }
     if (compiler_promote_executable(candidate, active) != 0) {
-        delete_file(candidate)
+        deleteFile(candidate)
         diag_error_code("P1055", "could not promote the compiler candidate; the active local compiler was kept")
         return 1
     }
@@ -115,7 +115,7 @@ private fn announceToolchain(kind: String, path: String) {
 // holds `debug/prismio`, `lib/runtime/*.bc` and `stdlib/*.plib` in exactly the
 // shape an install has.
 private fn emitUmsToolchainLibraries(hostPath: String, compilerPath: String) -> Int {
-    let root = get_directory(get_directory(hostPath))
+    let root = directoryOf(directoryOf(hostPath))
     let modules = compiler_emit_local_toolchain(root, compilerPath)
     if (modules < 0) {
         diag_error_code("P1067", "the project compiler was built without its runtime and standard library")
@@ -144,7 +144,7 @@ public fn isUmsHostTarget(workspace: UmsWorkspace, target: UmsTarget) -> Bool {
 public fn buildUmsHostTarget(workspace: UmsWorkspace, target: UmsTarget,
                               options: CompileOptions) -> Int {
     let candidate = target.outputPath.clone().concat(".next")
-    if (file_exists(candidate) == 1) { delete_file(candidate) }
+    if (fileExists(candidate)) { deleteFile(candidate) }
 
     let replacesSelf = compiler_is_current_executable(target.outputPath) == 1
     if (replacesSelf and compiler_is_hosted() == 0) {
@@ -158,7 +158,7 @@ public fn buildUmsHostTarget(workspace: UmsWorkspace, target: UmsTarget,
     compiler_set_toolchain_root(workspace.project.root)
     let built = compileSource(target.sourcePath, candidate.clone(), options)
     if (built != 0) {
-        delete_file(candidate)
+        deleteFile(candidate)
         diag_error_code("P1053", "the compiler candidate did not build; the active local compiler was kept")
         return 1
     }
@@ -251,8 +251,8 @@ public fn dispatchToUmsHost() -> Int {
         return -1
     }
 
-    let currentPath = join_path(executable_directory(), pathLeaf(process.args[0]))
-    if (file_exists(host) == 0) {
+    let currentPath = joinPath(executableDirectory(), pathLeaf(process.args[0]))
+    if (fileExists(host) == false) {
         announceToolchain("global", currentPath)
         return -1
     }
@@ -321,12 +321,12 @@ public fn dispatchToUmsHost() -> Int {
     }
 
     let candidate = host.clone().concat(".next")
-    if (file_exists(candidate) == 1) { delete_file(candidate) }
+    if (fileExists(candidate)) { deleteFile(candidate) }
 
     announceToolchain("local", host)
     let result = compiler_forward_cli(host)
     if (result != 0) {
-        if (file_exists(candidate) == 1) { delete_file(candidate) }
+        if (fileExists(candidate)) { deleteFile(candidate) }
         return result
     }
 
@@ -337,15 +337,15 @@ public fn dispatchToUmsHost() -> Int {
     // not this project's build output, and `clean` leaves it where it is.
     if (cleaning and umsProjectOwnsHost(".") == false) { return 0 }
     if (cleaning) {
-        if (file_exists(host) == 1 and delete_file(host) != 0) {
+        if (fileExists(host) and deleteFile(host) == false) {
             diag_error_code("P1056", "could not remove the project compiler after clean")
             return 1
         }
         let stamp = host.clone().concat(".trusted")
-        if (file_exists(stamp) == 1) { delete_file(stamp) }
+        if (fileExists(stamp)) { deleteFile(stamp) }
         return 0
     }
-    if (file_exists(candidate) == 1) {
+    if (fileExists(candidate)) {
         return promoteUmsCompilerCandidate(candidate, host)
     }
     return 0

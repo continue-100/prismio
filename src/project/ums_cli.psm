@@ -19,6 +19,7 @@ import ums.targets.target
 import ums.dependency.resolve
 import project.host
 import project.commands
+import std.fs
 
 public extern fn compiler_default_exe_path(sourcePath: String) -> String produce(free)
 public extern fn compiler_is_current_executable(path: String borrow) -> Int
@@ -44,20 +45,13 @@ public extern fn compiler_set_installed_runtime(on: Int)
 // runtime/build_driver.c.
 public extern fn compiler_remove_tree(path: String borrow) -> Int
 public extern fn host_is_windows() -> Int
-public extern fn current_directory() -> String produce(free)
-public extern fn delete_file(path: String) -> Int
-public extern fn file_exists(path: String) -> Int
 // `file_exists` opens the path, and opening a directory fails on Windows, so a
 // directory is asked about with this one: `clean` reported "nothing to remove"
 // for a profile directory that was there.
-public extern fn directory_exists(path: String borrow) -> Int
-public extern fn join_path(directory: String, filename: String) -> String
-public extern fn make_directory(path: String borrow) -> Int
 // The writer half of the filesystem surface, for `init`. Both return 0 for
 // success, which is the C convention here and the opposite of `file_exists`;
 // std/fs.psm normalises that for applications, and this file cannot import it
 // because the two would declare the same symbols twice.
-public extern fn write_file(path: String borrow, content: String borrow) -> Int
 
 public fn pathLeaf(path: String) -> String {
     let mut cut = path.lastIndexOf('/')
@@ -81,7 +75,7 @@ public fn initUmsProject(nameArg: String) -> Int {
     let mut root = "."
     let mut name = ""
     if (nameArg.equals("")) {
-        name = pathLeaf(current_directory())
+        name = pathLeaf(currentDirectory())
     } else {
         root = nameArg.clone()
         name = nameArg.clone()
@@ -96,14 +90,14 @@ public fn initUmsProject(nameArg: String) -> Int {
         return 1
     }
 
-    let manifestPath = join_path(root, "build.ums")
-    if (file_exists(manifestPath) == 1) {
+    let manifestPath = joinPath(root, "build.ums")
+    if (fileExists(manifestPath)) {
         diag_error_code("P1014", manifestPath.concat(" already exists"))
         return 1
     }
 
-    if (make_directory(join_path(root, "src")) != 0) {
-        diag_error_code("P1015", "could not create ".concat(join_path(root, "src")))
+    if (makeDirectory(joinPath(root, "src")) == false) {
+        diag_error_code("P1015", "could not create ".concat(joinPath(root, "src")))
         return 1
     }
 
@@ -113,15 +107,15 @@ public fn initUmsProject(nameArg: String) -> Int {
                                        "\"\n}\n\ntargets {\n    executable(\"",
                                        name)
     let manifestText = manifestBody.concat("\") {\n        entry = \"src/main.psm\"\n    }\n}\n")
-    if (write_file(manifestPath, manifestText) != 0) {
+    if (writeFile(manifestPath, manifestText) == false) {
         diag_error_code("P1016", "could not write ".concat(manifestPath))
         return 1
     }
 
-    let entryPath = join_path(join_path(root, "src"), "main.psm")
-    if (file_exists(entryPath) == 0) {
-        if (write_file(entryPath,
-                "import std.io\n\nfn main() -> Int {\n    println(\"Hello, Prismio!\")\n    return 0\n}\n") != 0) {
+    let entryPath = joinPath(joinPath(root, "src"), "main.psm")
+    if (fileExists(entryPath) == false) {
+        if (writeFile(entryPath,
+                "import std.io\n\nfn main() -> Int {\n    println(\"Hello, Prismio!\")\n    return 0\n}\n") == false) {
             diag_error_code("P1017", "could not write ".concat(entryPath))
             return 1
         }
@@ -130,9 +124,9 @@ public fn initUmsProject(nameArg: String) -> Int {
     // `.prismio/` is build output, and a project that commits it ships one
     // machine's binaries. Written only when absent, so an existing ignore file
     // is never rewritten from under its author.
-    let ignorePath = join_path(root, ".gitignore")
-    if (file_exists(ignorePath) == 0) {
-        if (write_file(ignorePath, ".prismio/\n") != 0) {
+    let ignorePath = joinPath(root, ".gitignore")
+    if (fileExists(ignorePath) == false) {
+        if (writeFile(ignorePath, ".prismio/\n") == false) {
             diag_error_code("P1018", "could not write ".concat(ignorePath))
             return 1
         }
@@ -170,7 +164,7 @@ public fn umsNativePath(root: String, value: String) -> String {
     if (length > 1 and value.charAt(1) == ':') {
         return value.clone()
     }
-    return join_path(root, value)
+    return joinPath(root, value)
 }
 
 // Hands one target's native inputs to the driver: what it links, the C it
@@ -183,30 +177,42 @@ private fn configureUmsTargetLink(root: String, target: UmsTarget) -> Int {
     let mut failed = 0
     for i in 0..<target.links.length {
         let input = target.links[i]
-        if (input.kind == UmsLinkKind.LIBRARY) {
-            failed = failed + compiler_link_library(input.value)
-        } else if (input.kind == UmsLinkKind.SEARCH) {
-            failed = failed + compiler_link_search(umsNativePath(root, input.value))
-        } else if (input.kind == UmsLinkKind.FILE) {
-            failed = failed + compiler_link_file(umsNativePath(root, input.value))
-        } else if (input.kind == UmsLinkKind.FRAMEWORK) {
-            failed = failed + compiler_link_framework(input.value)
-        } else if (input.kind == UmsLinkKind.RESPONSE_FILE) {
-            failed = failed + compiler_link_response_file(umsNativePath(root, input.value))
+        match (input.kind) {
+            UmsLinkKind.LIBRARY => {
+                failed = failed + compiler_link_library(input.value)
+            }
+            UmsLinkKind.SEARCH => {
+                failed = failed + compiler_link_search(umsNativePath(root, input.value))
+            }
+            UmsLinkKind.FILE => {
+                failed = failed + compiler_link_file(umsNativePath(root, input.value))
+            }
+            UmsLinkKind.FRAMEWORK => {
+                failed = failed + compiler_link_framework(input.value)
+            }
+            UmsLinkKind.RESPONSE_FILE => {
+                failed = failed + compiler_link_response_file(umsNativePath(root, input.value))
+            }
         }
     }
     for i in 0..<target.natives.length {
         let input = target.natives[i]
-        if (input.kind == UmsNativeKind.SOURCE) {
-            failed = failed + compiler_native_source(umsNativePath(root, input.value))
-        } else if (input.kind == UmsNativeKind.INCLUDE) {
-            failed = failed + compiler_native_include(umsNativePath(root, input.value))
-        } else if (input.kind == UmsNativeKind.DEFINE) {
-            failed = failed + compiler_native_define(input.value)
-        } else if (input.kind == UmsNativeKind.FLAG) {
-            failed = failed + compiler_native_flag(input.value)
-        } else if (input.kind == UmsNativeKind.RESPONSE_FILE) {
-            failed = failed + compiler_native_response_file(umsNativePath(root, input.value))
+        match (input.kind) {
+            UmsNativeKind.SOURCE => {
+                failed = failed + compiler_native_source(umsNativePath(root, input.value))
+            }
+            UmsNativeKind.INCLUDE => {
+                failed = failed + compiler_native_include(umsNativePath(root, input.value))
+            }
+            UmsNativeKind.DEFINE => {
+                failed = failed + compiler_native_define(input.value)
+            }
+            UmsNativeKind.FLAG => {
+                failed = failed + compiler_native_flag(input.value)
+            }
+            UmsNativeKind.RESPONSE_FILE => {
+                failed = failed + compiler_native_response_file(umsNativePath(root, input.value))
+            }
         }
     }
     if (target.runtime.equals("none")) {
@@ -551,9 +557,9 @@ public fn cleanUmsProject(profile: String) -> Int {
     let workspace = umsLoadProject(".", profile)
     if (umsProjectUsable(workspace) == false) { return 1 }
 
-    let profileRoot = join_path(workspace.plan.artifactRoot, profile)
+    let profileRoot = joinPath(workspace.plan.artifactRoot, profile)
     let mut removed: Vec<String> = []
-    if (directory_exists(profileRoot) == 1) {
+    if (directoryExists(profileRoot)) {
         if (compiler_remove_tree(profileRoot) != 0) {
             diag_error_code("P1020", "could not remove everything under ".concat(profileRoot))
             return 1
@@ -563,13 +569,13 @@ public fn cleanUmsProject(profile: String) -> Int {
 
     let host = workspace.project.toolchain.host
     if (__builtin_string_len(host) > 0 and
-        get_directory(umsHostExecutable(workspace.project.root, host)).equals(profileRoot)) {
-        let toolchainLib = join_path(workspace.plan.artifactRoot, "lib")
-        let toolchainStd = join_path(workspace.plan.artifactRoot, "stdlib")
-        if (directory_exists(toolchainLib) == 1 and compiler_remove_tree(toolchainLib) == 0) {
+        directoryOf(umsHostExecutable(workspace.project.root, host)).equals(profileRoot)) {
+        let toolchainLib = joinPath(workspace.plan.artifactRoot, "lib")
+        let toolchainStd = joinPath(workspace.plan.artifactRoot, "stdlib")
+        if (directoryExists(toolchainLib) and compiler_remove_tree(toolchainLib) == 0) {
             removed.push(toolchainLib)
         }
-        if (directory_exists(toolchainStd) == 1 and compiler_remove_tree(toolchainStd) == 0) {
+        if (directoryExists(toolchainStd) and compiler_remove_tree(toolchainStd) == 0) {
             removed.push(toolchainStd)
         }
     }

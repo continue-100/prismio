@@ -29,104 +29,106 @@ private fn aifSitesOf(nodePtr: Ptr, fnId: Int, scope: Int) -> Int {
     aif_con_at(e.file, e.line, e.col)
     let ty = aifNodeType(e)
 
-    if (e.kind == NodeKind.STRUCT_LITERAL_EXPR) {
-        // Re-derived rather than `sname = ty`. Strings are affine, and `ty` is
-        // read again by the branches below -- a move here would poison it for
-        // every one of them, because move state is per name over the whole body.
-        let mut sname = e.s1
-        if (sname.equals("")) { sname = aifNodeType(e) }
+    match (e.kind) {
+        NodeKind.STRUCT_LITERAL_EXPR => {
+            // Re-derived rather than `sname = ty`. Strings are affine, and `ty` is
+            // read again by the branches below -- a move here would poison it for
+            // every one of them, because move state is per name over the whole body.
+            let mut sname = e.s1
+            if (sname.equals("")) { sname = aifNodeType(e) }
 
-        let sid = aifNewSite(sname, fnId, scope, nodePtr)
-        let owner = aifVsOfSite(sid)
+            let sid = aifNewSite(sname, fnId, scope, nodePtr)
+            let owner = aifVsOfSite(sid)
 
-        let mut fPtr = e.child1
-        while (nodeExists(fPtr)) {
-            let f = ptr_to_node(fPtr)
-            if (nodeExists(f.child1)) {
-                // E-STORE / A-STORE: a field initialiser is a store into the
-                // field, and the literal is the container it is stored into.
-                aif_field_access(sname, f.s1, aifLoopDepth)
-                aif_con_store(aif_key_field(sname, f.s1),
-                              aifSitesOf(f.child1, fnId, scope), owner)
-                // SPEC 5.2.1's obligation 2. The owner here is this literal's
-                // own site and so is provably local -- recorded anyway, because
-                // a clause that is exempted by an argument in a comment is a
-                // clause that stops being checked the moment the argument stops
-                // holding.
+            let mut fPtr = e.child1
+            while (nodeExists(fPtr)) {
+                let f = ptr_to_node(fPtr)
+                if (nodeExists(f.child1)) {
+                    // E-STORE / A-STORE: a field initialiser is a store into the
+                    // field, and the literal is the container it is stored into.
+                    aif_field_access(sname, f.s1, aifLoopDepth)
+                    aif_con_store(aif_key_field(sname, f.s1),
+                                  aifSitesOf(f.child1, fnId, scope), owner)
+                    // SPEC 5.2.1's obligation 2. The owner here is this literal's
+                    // own site and so is provably local -- recorded anyway, because
+                    // a clause that is exempted by an argument in a comment is a
+                    // clause that stops being checked the moment the argument stops
+                    // holding.
+                    aif_note_owner_use(fnId, owner)
+                }
+                fPtr = f.next
+            }
+            return aifVsOfSite(sid)
+        }
+
+        NodeKind.ARRAY_LITERAL_EXPR => {
+            let mut aname = aifNodeType(e)
+            if (aname.equals("")) { aname = "Array" }
+
+            let sid = aifNewSite(aname, fnId, scope, nodePtr)
+            let owner = aifVsOfSite(sid)
+
+            // Elements are stored into the array, exactly as a struct literal's
+            // initialisers are stored into its fields. There is no field name to
+            // key on, so all elements share one -- field-insensitive within the
+            // array type, which is the same granularity the struct case uses.
+            let mut elPtr = e.child1
+            while (nodeExists(elPtr)) {
+                let el = ptr_to_node(elPtr)
+                aif_con_store(aif_key_field(aname, "[]"),
+                              aifSitesOf(elPtr, fnId, scope), owner)
                 aif_note_owner_use(fnId, owner)
+                elPtr = el.next
             }
-            fPtr = f.next
+            return aifVsOfSite(sid)
         }
-        return aifVsOfSite(sid)
-    }
 
-    if (e.kind == NodeKind.ARRAY_LITERAL_EXPR) {
-        let mut aname = aifNodeType(e)
-        if (aname.equals("")) { aname = "Array" }
-
-        let sid = aifNewSite(aname, fnId, scope, nodePtr)
-        let owner = aifVsOfSite(sid)
-
-        // Elements are stored into the array, exactly as a struct literal's
-        // initialisers are stored into its fields. There is no field name to
-        // key on, so all elements share one -- field-insensitive within the
-        // array type, which is the same granularity the struct case uses.
-        let mut elPtr = e.child1
-        while (nodeExists(elPtr)) {
-            let el = ptr_to_node(elPtr)
-            aif_con_store(aif_key_field(aname, "[]"),
-                          aifSitesOf(elPtr, fnId, scope), owner)
-            aif_note_owner_use(fnId, owner)
-            elPtr = el.next
-        }
-        return aifVsOfSite(sid)
-    }
-
-    if (e.kind == NodeKind.LITERAL_EXPR) {
-        // A string literal is not an allocation. It lowers to an LLVM global --
-        // static, immortal, zero cost -- so it has no place on a ladder that
-        // ranks ways of reclaiming heap memory. Counted so the exclusion is
-        // visible in the manifest rather than silent.
-        // Untracked, but not a hazard: codegen tags its pair borrowed, so any
-        // release it reaches is a no-op (aif_vs_mark_literal).
-        if (ty.equals("String")) {
-            aifLiteralStrings = aifLiteralStrings + 1
-            return aifVsLiteral()
-        }
-        return aifVsEmpty()
-    }
-
-    if (e.kind == NodeKind.IDENTIFIER_EXPR) {
-        if (aifIsRef(ty)) {
-            // M3.2b. Every read of a reference passes through here, which is what
-            // makes this the one place a last use can be counted without a second
-            // traversal disagreeing with this one about what a use is.
-            aif_var_note_use(fnId, e.s1, scope)
-            let read = aifVsOfKey(aif_key_var(fnId, e.s1))
-            // A module-level `let` this function never declared. Its
-            // initialiser is a constant, so what it holds may be static storage,
-            // and a field it is stored into must not free that. Function -1 is
-            // where aifDeclare records the globals.
-            if (aif_var_scope(fnId, e.s1) < 0 and aif_var_scope(0 - 1, e.s1) >= 0) {
-                return aif_vs_union(read, aifVsUntracked())
+        NodeKind.LITERAL_EXPR => {
+            // A string literal is not an allocation. It lowers to an LLVM global --
+            // static, immortal, zero cost -- so it has no place on a ladder that
+            // ranks ways of reclaiming heap memory. Counted so the exclusion is
+            // visible in the manifest rather than silent.
+            // Untracked, but not a hazard: codegen tags its pair borrowed, so any
+            // release it reaches is a no-op (aif_vs_mark_literal).
+            if (ty.equals("String")) {
+                aifLiteralStrings = aifLiteralStrings + 1
+                return aifVsLiteral()
             }
-            return read
+            return aifVsEmpty()
         }
-        return aifVsEmpty()
-    }
+
+        NodeKind.IDENTIFIER_EXPR => {
+            if (aifIsRef(ty)) {
+                // M3.2b. Every read of a reference passes through here, which is what
+                // makes this the one place a last use can be counted without a second
+                // traversal disagreeing with this one about what a use is.
+                aif_var_note_use(fnId, e.s1, scope)
+                let read = aifVsOfKey(aif_key_var(fnId, e.s1))
+                // A module-level `let` this function never declared. Its
+                // initialiser is a constant, so what it holds may be static storage,
+                // and a field it is stored into must not free that. Function -1 is
+                // where aifDeclare records the globals.
+                if (aif_var_scope(fnId, e.s1) < 0 and aif_var_scope(0 - 1, e.s1) >= 0) {
+                    return aif_vs_union(read, aifVsUntracked())
+                }
+                return read
+            }
+            return aifVsEmpty()
+        }
 
     // M4.1 / SPEC 8.4. A slice allocates nothing: it is three words describing
     // a view. Its value set exists only to carry provenance to E-VIEW, which
     // raises the List's escape whenever the slice is bound, returned, stored or
     // passed on. A nested slice points at the previous view; resolve_views
     // follows that chain back to the original List sites.
-    if (e.kind == NodeKind.SLICE_EXPR) {
-        let collection = aifSitesOf(e.child1, fnId, scope)
-        aifSitesOf(e.child2, fnId, scope)
-        aifSitesOf(e.child3, fnId, scope)
-        let view = aif_vs_new()
-        aif_vs_view_of(view, collection)
-        return view
+        NodeKind.SLICE_EXPR => {
+            let collection = aifSitesOf(e.child1, fnId, scope)
+            aifSitesOf(e.child2, fnId, scope)
+            aifSitesOf(e.child3, fnId, scope)
+            let view = aif_vs_new()
+            aif_vs_view_of(view, collection)
+            return view
+        }
     }
 
     // `List[i]` and `Slice[i]` both read the List element field. References are
@@ -153,49 +155,50 @@ private fn aifSitesOf(nodePtr: Ptr, fnId: Int, scope: Int) -> Int {
         }
     }
 
-    if (e.kind == NodeKind.MEMBER_ACCESS_EXPR) {
-        if (nodeExists(e.child1)) {
-            let obj = ptr_to_node(e.child1)
-            let objTy = aifNodeType(obj)
-            if (aifIsRef(objTy)) {
-                // LAYOUT 2.1's profile, statically estimated. Every field access
-                // in the program passes through here or through the assignment
-                // case, so one count per syntactic access is the whole profile.
-                // Reads and writes are not separated: the only thing this
-                // compiler can act on is field *order*, and order is decided by
-                // how often a field is touched, not by which way.
-                aif_field_access(aifBaseType(objTy), e.s1, aifLoopDepth)
-                // The value of the access is the field's key, not the object's
-                // sites -- but a *reference*-shaped field is a *view* of the
-                // object it was read out of, exactly as a `List` element is a
-                // view of the List above. Recording that is what lets
-                // `fn_may_return_view_of_param` see a function that returns a
-                // field of a parameter.
-                //
-                // **Without it the caller frees the argument before reading the
-                // result.** `optionOr(maybeName(), "!")` returns the String
-                // inside the Option it was handed; the release for that unbound
-                // temporary was emitted immediately after the call and before
-                // the `println` that reads it, so the value came back empty.
-                // Neither existing fact could see it: the return is not the
-                // parameter (`fn_may_return_param` compares sites, and a field's
-                // sites are not the struct's), and with no view edge here
-                // `key_views` was empty. `--verify` could not see it either --
-                // both releases are ledger-legal, so the run reported
-                // `4 allocated, 4 released, 0 violation(s)` and the wrong answer.
-                //
-                // A scalar field is a copy and gets no edge, which is the same
-                // split the element rule above makes. The value set is fresh per
-                // read (aifVsOfKey allocates one), so the edge belongs to this
-                // access rather than to every read of the field everywhere.
-                let container = aifSitesOf(e.child1, fnId, scope)
-                let field = aifVsOfKey(aif_key_field(aifBaseType(objTy), e.s1))
-                if (aifIsRef(ty)) { aif_vs_view_of(field, container) }
-                return field
+    match (e.kind) {
+        NodeKind.MEMBER_ACCESS_EXPR => {
+            if (nodeExists(e.child1)) {
+                let obj = ptr_to_node(e.child1)
+                let objTy = aifNodeType(obj)
+                if (aifIsRef(objTy)) {
+                    // LAYOUT 2.1's profile, statically estimated. Every field access
+                    // in the program passes through here or through the assignment
+                    // case, so one count per syntactic access is the whole profile.
+                    // Reads and writes are not separated: the only thing this
+                    // compiler can act on is field *order*, and order is decided by
+                    // how often a field is touched, not by which way.
+                    aif_field_access(aifBaseType(objTy), e.s1, aifLoopDepth)
+                    // The value of the access is the field's key, not the object's
+                    // sites -- but a *reference*-shaped field is a *view* of the
+                    // object it was read out of, exactly as a `List` element is a
+                    // view of the List above. Recording that is what lets
+                    // `fn_may_return_view_of_param` see a function that returns a
+                    // field of a parameter.
+                    //
+                    // **Without it the caller frees the argument before reading the
+                    // result.** `optionOr(maybeName(), "!")` returns the String
+                    // inside the Option it was handed; the release for that unbound
+                    // temporary was emitted immediately after the call and before
+                    // the `println` that reads it, so the value came back empty.
+                    // Neither existing fact could see it: the return is not the
+                    // parameter (`fn_may_return_param` compares sites, and a field's
+                    // sites are not the struct's), and with no view edge here
+                    // `key_views` was empty. `--verify` could not see it either --
+                    // both releases are ledger-legal, so the run reported
+                    // `4 allocated, 4 released, 0 violation(s)` and the wrong answer.
+                    //
+                    // A scalar field is a copy and gets no edge, which is the same
+                    // split the element rule above makes. The value set is fresh per
+                    // read (aifVsOfKey allocates one), so the edge belongs to this
+                    // access rather than to every read of the field everywhere.
+                    let container = aifSitesOf(e.child1, fnId, scope)
+                    let field = aifVsOfKey(aif_key_field(aifBaseType(objTy), e.s1))
+                    if (aifIsRef(ty)) { aif_vs_view_of(field, container) }
+                    return field
+                }
             }
+            return aifVsEmpty()
         }
-        return aifVsEmpty()
-    }
 
     // REQUIREMENTS 4. `none` denotes nothing, so it contributes no site. It
     // would fall through to the child walk below and reach the same answer, but
@@ -206,13 +209,13 @@ private fn aifSitesOf(nodePtr: Ptr, fnId: Int, scope: Int) -> Int {
     // The release it derives has to tolerate a null, and all four dispositions
     // now do -- `free(NULL)` is a no-op, list_release and rc_release guard, and
     // the generated release opens with a null test.
-    if (e.kind == NodeKind.NONE_LITERAL_EXPR) {
-        return aifVsEmpty()
-    }
+        NodeKind.NONE_LITERAL_EXPR => {
+            return aifVsEmpty()
+        }
 
-    if (e.kind == NodeKind.CALL_EXPR) {
-        return aifCallSites(nodePtr, fnId, scope)
-    }
+        NodeKind.CALL_EXPR => {
+            return aifCallSites(nodePtr, fnId, scope)
+        }
 
     // REQUIREMENTS 15. `spawn f(a, b)`.
     //
@@ -226,27 +229,28 @@ private fn aifSitesOf(nodePtr: Ptr, fnId: Int, scope: Int) -> Int {
     // The task handle contributes no site. It is a runtime object this
     // compilation did not allocate, so there is nothing to place, count or
     // release -- the same reason `none` returns empty two cases up.
-    if (e.kind == NodeKind.SPAWN_EXPR) {
-        if (nodeIsNull(e.child1)) { return aifVsEmpty() }
-        let call = ptr_to_node(e.child1)
-        aifCallSites(e.child1, fnId, scope)
+        NodeKind.SPAWN_EXPR => {
+            if (nodeIsNull(e.child1)) { return aifVsEmpty() }
+            let call = ptr_to_node(e.child1)
+            aifCallSites(e.child1, fnId, scope)
 
-        let mut args = aifVsEmpty()
-        let mut argPtr = call.child2
-        while (nodeExists(argPtr)) {
-            let argNode = ptr_to_node(argPtr)
-            args = aif_vs_union(args, aifSitesOf(argPtr, fnId, scope))
-            argPtr = argNode.next
+            let mut args = aifVsEmpty()
+            let mut argPtr = call.child2
+            while (nodeExists(argPtr)) {
+                let argNode = ptr_to_node(argPtr)
+                args = aif_vs_union(args, aifSitesOf(argPtr, fnId, scope))
+                argPtr = argNode.next
+            }
+            aif_con_spawn(args, scope, e.i1)
+            return aifVsEmpty()
         }
-        aif_con_spawn(args, scope, e.i1)
-        return aifVsEmpty()
-    }
 
     // `join t` yields an Int. Nothing allocates, and the handle it consumes was
     // never a site -- so like `none`, this is empty rather than falling through
     // to the child walk that would reach the same answer more slowly.
-    if (e.kind == NodeKind.JOIN_EXPR) {
-        return aifVsEmpty()
+        NodeKind.JOIN_EXPR => {
+            return aifVsEmpty()
+        }
     }
 
     // Everything else contributes whatever its children do.
@@ -570,18 +574,20 @@ private fn aifCallSites(callPtr: Ptr, fnId: Int, scope: Int) -> Int {
 // ---------------------------------------------------------------------------
 
 private fn aifIsStatementKind(k: NodeKind) -> Bool {
-    if (k == NodeKind.BLOCK) { return true }
-    if (k == NodeKind.VARIABLE_DECL) { return true }
-    if (k == NodeKind.ASSIGNMENT_STATEMENT) { return true }
-    if (k == NodeKind.RETURN_STATEMENT) { return true }
-    if (k == NodeKind.IF_STATEMENT) { return true }
-    if (k == NodeKind.WHILE_STATEMENT) { return true }
-    if (k == NodeKind.FOR_STATEMENT) { return true }
-    if (k == NodeKind.LOOP_STATEMENT) { return true }
-    if (k == NodeKind.MATCH_STATEMENT) { return true }
-    if (k == NodeKind.MATCH_ARM) { return true }
-    if (k == NodeKind.EXPRESSION_STATEMENT) { return true }
-    if (k == NodeKind.REGION_STATEMENT) { return true }
+    match (k) {
+        NodeKind.BLOCK => { return true }
+        NodeKind.VARIABLE_DECL => { return true }
+        NodeKind.ASSIGNMENT_STATEMENT => { return true }
+        NodeKind.RETURN_STATEMENT => { return true }
+        NodeKind.IF_STATEMENT => { return true }
+        NodeKind.WHILE_STATEMENT => { return true }
+        NodeKind.FOR_STATEMENT => { return true }
+        NodeKind.LOOP_STATEMENT => { return true }
+        NodeKind.MATCH_STATEMENT => { return true }
+        NodeKind.MATCH_ARM => { return true }
+        NodeKind.EXPRESSION_STATEMENT => { return true }
+        NodeKind.REGION_STATEMENT => { return true }
+    }
     return false
 }
 
@@ -653,176 +659,177 @@ private fn aifWalk(nodePtr: Ptr, fnId: Int, scope: Int) {
     // and not where, which is the half a reader cannot supply themselves.
     aif_con_at(n.file, n.line, n.col)
 
-    if (n.kind == NodeKind.BLOCK) {
-        // Every scope is an implicit region (INFERENCE 2.1), which is what makes
-        // the T0/T1 boundary a size question rather than an escape question.
-        // Which of them gets a real arena is LAYOUT 7.1's cost decision, and it
-        // needs the block back to tell codegen where to bracket it.
-        let inner = aif_scope_new(scope, fnId)
-        aif_scope_note_node(inner, nodePtr)
-        aif_scope_set_loop_depth(inner, aifLoopDepth)
-        // M3.2. The three chains are one statement list, so they share one
-        // numbering. Saved and restored because `aifWalk` below descends into
-        // nested blocks, each of which numbers its own statements from 0.
-        let savedCursor = aifStmtCursor
-        aifStmtCursor = 1
-        aifWalkChain(n.child1, fnId, inner)
-        aifWalkChain(n.child2, fnId, inner)
-        aifWalkChain(n.child3, fnId, inner)
-        aifStmtCursor = savedCursor
-        return
-    }
+    match (n.kind) {
+        NodeKind.BLOCK => {
+            // Every scope is an implicit region (INFERENCE 2.1), which is what makes
+            // the T0/T1 boundary a size question rather than an escape question.
+            // Which of them gets a real arena is LAYOUT 7.1's cost decision, and it
+            // needs the block back to tell codegen where to bracket it.
+            let inner = aif_scope_new(scope, fnId)
+            aif_scope_note_node(inner, nodePtr)
+            aif_scope_set_loop_depth(inner, aifLoopDepth)
+            // M3.2. The three chains are one statement list, so they share one
+            // numbering. Saved and restored because `aifWalk` below descends into
+            // nested blocks, each of which numbers its own statements from 0.
+            let savedCursor = aifStmtCursor
+            aifStmtCursor = 1
+            aifWalkChain(n.child1, fnId, inner)
+            aifWalkChain(n.child2, fnId, inner)
+            aifWalkChain(n.child3, fnId, inner)
+            aifStmtCursor = savedCursor
+            return
+        }
 
     // A loop body allocates once per iteration, not once per entry of the
     // enclosing scope. Tracking the depth is what lets the benefit of an arena
     // inside a loop be weighed against one outside it. The header is outside the
     // body: a `while` condition and a `for` range are evaluated in the enclosing
     // scope, and an allocation there is not the loop's.
-    if (n.kind == NodeKind.WHILE_STATEMENT) {
-        aifWalkChildren(n.child1, fnId, scope)
-        aifLoopDepth = aifLoopDepth + 1
-        aif_traversal_begin()
-        aifWalkChildren(n.child2, fnId, scope)
-        aif_traversal_end()
-        aifLoopDepth = aifLoopDepth - 1
-        return
-    }
+        NodeKind.WHILE_STATEMENT => {
+            aifWalkChildren(n.child1, fnId, scope)
+            aifLoopDepth = aifLoopDepth + 1
+            aif_traversal_begin()
+            aifWalkChildren(n.child2, fnId, scope)
+            aif_traversal_end()
+            aifLoopDepth = aifLoopDepth - 1
+            return
+        }
 
-    if (n.kind == NodeKind.LOOP_STATEMENT) {
-        aifLoopDepth = aifLoopDepth + 1
-        aif_traversal_begin()
-        aifWalkChildren(n.child1, fnId, scope)
-        aif_traversal_end()
-        aifLoopDepth = aifLoopDepth - 1
-        return
-    }
+        NodeKind.LOOP_STATEMENT => {
+            aifLoopDepth = aifLoopDepth + 1
+            aif_traversal_begin()
+            aifWalkChildren(n.child1, fnId, scope)
+            aif_traversal_end()
+            aifLoopDepth = aifLoopDepth - 1
+            return
+        }
 
-    if (n.kind == NodeKind.FOR_STATEMENT) {
-        aifWalkChildren(n.child1, fnId, scope)
-        aifWalkChildren(n.child2, fnId, scope)
-        aifLoopDepth = aifLoopDepth + 1
-        aif_traversal_begin()
-        aifWalkChildren(n.child3, fnId, scope)
-        aif_traversal_end()
-        aifLoopDepth = aifLoopDepth - 1
-        return
-    }
+        NodeKind.FOR_STATEMENT => {
+            aifWalkChildren(n.child1, fnId, scope)
+            aifWalkChildren(n.child2, fnId, scope)
+            aifLoopDepth = aifLoopDepth + 1
+            aif_traversal_begin()
+            aifWalkChildren(n.child3, fnId, scope)
+            aif_traversal_end()
+            aifLoopDepth = aifLoopDepth - 1
+            return
+        }
 
     // SPEC 5.2. The scope it opens is an ordinary one -- the escape fact would
     // have been the same without the keyword. Naming it is what changes: an
     // allocation whose escape bottoms at or below this scope may be served from
     // an arena rather than the heap, and the manifest can say which one.
-    if (n.kind == NodeKind.REGION_STATEMENT) {
-        let inner = aif_scope_new(scope, fnId)
-        aif_scope_set_region(inner, n.s1)
-        aif_scope_set_region_span(inner, n.file, n.line, n.col)
-        // REQUIREMENTS 19. `region work pin(4096)` asserts a cap on what this
-        // arena serves. Recorded here and checked once the facts have converged,
-        // for the same reason SPEC 5.4's pins are: the estimate reads tiers.
-        if (n.i1 > 0) {
-            aif_scope_set_budget(inner, n.i1, n.file, n.line, n.col)
-        }
-        aifWalk(n.child1, fnId, inner)
-        return
-    }
-
-    if (n.kind == NodeKind.VARIABLE_DECL) {
-        // Recorded whether or not there is an initialiser: a later assignment to
-        // this name needs the declaring scope, and `let x: T` with no value is
-        // still a declaration.
-        aif_var_note_scope(fnId, n.s1, scope)
-        if (nodeExists(n.child2)) {
-            // LAYOUT 5's `order`. A binding of a container element inside a loop
-            // is the shape the cost model calls sequential: the records are
-            // visited in container order, which is the only thing that makes a
-            // smaller hot record worth anything. Anything else stays a pointer
-            // chase, where a split costs a second miss instead.
-            let init = ptr_to_node(n.child2)
-            if (init.kind == NodeKind.CALL_EXPR) {
-                if (nodeExists(init.child1)) {
-                    let callee = ptr_to_node(init.child1)
-                    if (callee.s1.equals("list_get")) {
-                        aif_traversal_elem(aifBaseType(aifNodeType(n)), 1)
-                    }
-                }
+        NodeKind.REGION_STATEMENT => {
+            let inner = aif_scope_new(scope, fnId)
+            aif_scope_set_region(inner, n.s1)
+            aif_scope_set_region_span(inner, n.file, n.line, n.col)
+            // REQUIREMENTS 19. `region work pin(4096)` asserts a cap on what this
+            // arena serves. Recorded here and checked once the facts have converged,
+            // for the same reason SPEC 5.4's pins are: the estimate reads tiers.
+            if (n.i1 > 0) {
+                aif_scope_set_budget(inner, n.i1, n.file, n.line, n.col)
             }
-            let v = aifSitesOf(n.child2, fnId, scope)
-            aif_con_bind(aif_key_var(fnId, n.s1), v)
-            aif_con_live_in(v, scope, fnId)
-            aifApplyAnnotations(n, v)
-        }
-        return
-    }
-
-    if (n.kind == NodeKind.ASSIGNMENT_STATEMENT) {
-        // Value before target, because both may allocate and site identity is
-        // creation order. Nothing downstream depends on it, but the oracle
-        // orders them this way and a difference here would be invisible until
-        // it was not.
-        let mut val = aifVsEmpty()
-        if (nodeExists(n.child2)) {
-            val = aifSitesOf(n.child2, fnId, scope)
-        }
-
-        if (nodeExists(n.child1)) {
-            let tgt = ptr_to_node(n.child1)
-            if (tgt.kind == NodeKind.IDENTIFIER_EXPR) {
-                aif_con_bind(aif_key_var(fnId, tgt.s1), val)
-                // E-BIND against the *variable's* scope, not the assignment's.
-                // A value created in a loop body and assigned to a binding
-                // declared outside it survives the iteration, so its escape has
-                // to say so. Using the assignment's scope instead reads as "dies
-                // at the end of this iteration", which is how a hoisted T0
-                // alloca would hand two live values the same slot.
-                //
-                // Falls back to the assignment's scope for a name with no
-                // declaration on record -- a global, which lives longer than any
-                // scope anyway and is handled by the store path.
-                let mut holderScope = aif_var_scope(fnId, tgt.s1)
-                if (holderScope < 0) { holderScope = scope }
-                aif_con_live_in(val, holderScope, fnId)
-            } else if (tgt.kind == NodeKind.MEMBER_ACCESS_EXPR) {
-                let mut owner = aifVsEmpty()
-                let mut base = ""
-                if (nodeExists(tgt.child1)) {
-                    let obj = ptr_to_node(tgt.child1)
-                    base = aifBaseType(aifNodeType(obj))
-                    owner = aifSitesOf(tgt.child1, fnId, scope)
-                }
-                aif_field_access(base, tgt.s1, aifLoopDepth)
-                aif_con_store(aif_key_field(base, tgt.s1), val, owner)
-                // SPEC 5.2.1's obligation 2, and the case that can actually
-                // fail it: `param.field = Foo{}` stores into an object this
-                // function did not allocate, so the Foo outlives any region a
-                // caller could bracket the call with.
-                aif_note_owner_use(fnId, owner)
-            }
-        }
-        return
-    }
-
-    if (n.kind == NodeKind.RETURN_STATEMENT) {
-        // `return none` hands back no value at all, which is not the same as a
-        // value with no site behind it: binding its empty set marked the
-        // function as returning something untracked (fn_returns_partial), and
-        // every caller of `find() -> Node?` declined to own the Node the other
-        // return makes -- one leak per call. A null is released by nothing, and
-        // every release tests for it.
-        if (nodeExists(n.child1) and ptr_to_node(n.child1).kind == NodeKind.NONE_LITERAL_EXPR) {
+            aifWalk(n.child1, fnId, inner)
             return
         }
-        if (nodeExists(n.child1)) {
-            let v = aifSitesOf(n.child1, fnId, scope)
-            aif_con_bind(aif_key_ret(fnId), v)
-            let value = ptr_to_node(n.child1)
-            if (value.kind == NodeKind.IDENTIFIER_EXPR) {
-                aif_con_return_binding(v, fnId, aif_key_var(fnId, value.s1))
-            } else {
-                aif_con_return(v, fnId)
+
+        NodeKind.VARIABLE_DECL => {
+            // Recorded whether or not there is an initialiser: a later assignment to
+            // this name needs the declaring scope, and `let x: T` with no value is
+            // still a declaration.
+            aif_var_note_scope(fnId, n.s1, scope)
+            if (nodeExists(n.child2)) {
+                // LAYOUT 5's `order`. A binding of a container element inside a loop
+                // is the shape the cost model calls sequential: the records are
+                // visited in container order, which is the only thing that makes a
+                // smaller hot record worth anything. Anything else stays a pointer
+                // chase, where a split costs a second miss instead.
+                let init = ptr_to_node(n.child2)
+                if (init.kind == NodeKind.CALL_EXPR) {
+                    if (nodeExists(init.child1)) {
+                        let callee = ptr_to_node(init.child1)
+                        if (callee.s1.equals("list_get")) {
+                            aif_traversal_elem(aifBaseType(aifNodeType(n)), 1)
+                        }
+                    }
+                }
+                let v = aifSitesOf(n.child2, fnId, scope)
+                aif_con_bind(aif_key_var(fnId, n.s1), v)
+                aif_con_live_in(v, scope, fnId)
+                aifApplyAnnotations(n, v)
             }
+            return
         }
-        return
-    }
+
+        NodeKind.ASSIGNMENT_STATEMENT => {
+            // Value before target, because both may allocate and site identity is
+            // creation order. Nothing downstream depends on it, but the oracle
+            // orders them this way and a difference here would be invisible until
+            // it was not.
+            let mut val = aifVsEmpty()
+            if (nodeExists(n.child2)) {
+                val = aifSitesOf(n.child2, fnId, scope)
+            }
+
+            if (nodeExists(n.child1)) {
+                let tgt = ptr_to_node(n.child1)
+                if (tgt.kind == NodeKind.IDENTIFIER_EXPR) {
+                    aif_con_bind(aif_key_var(fnId, tgt.s1), val)
+                    // E-BIND against the *variable's* scope, not the assignment's.
+                    // A value created in a loop body and assigned to a binding
+                    // declared outside it survives the iteration, so its escape has
+                    // to say so. Using the assignment's scope instead reads as "dies
+                    // at the end of this iteration", which is how a hoisted T0
+                    // alloca would hand two live values the same slot.
+                    //
+                    // Falls back to the assignment's scope for a name with no
+                    // declaration on record -- a global, which lives longer than any
+                    // scope anyway and is handled by the store path.
+                    let mut holderScope = aif_var_scope(fnId, tgt.s1)
+                    if (holderScope < 0) { holderScope = scope }
+                    aif_con_live_in(val, holderScope, fnId)
+                } else if (tgt.kind == NodeKind.MEMBER_ACCESS_EXPR) {
+                    let mut owner = aifVsEmpty()
+                    let mut base = ""
+                    if (nodeExists(tgt.child1)) {
+                        let obj = ptr_to_node(tgt.child1)
+                        base = aifBaseType(aifNodeType(obj))
+                        owner = aifSitesOf(tgt.child1, fnId, scope)
+                    }
+                    aif_field_access(base, tgt.s1, aifLoopDepth)
+                    aif_con_store(aif_key_field(base, tgt.s1), val, owner)
+                    // SPEC 5.2.1's obligation 2, and the case that can actually
+                    // fail it: `param.field = Foo{}` stores into an object this
+                    // function did not allocate, so the Foo outlives any region a
+                    // caller could bracket the call with.
+                    aif_note_owner_use(fnId, owner)
+                }
+            }
+            return
+        }
+
+        NodeKind.RETURN_STATEMENT => {
+            // `return none` hands back no value at all, which is not the same as a
+            // value with no site behind it: binding its empty set marked the
+            // function as returning something untracked (fn_returns_partial), and
+            // every caller of `find() -> Node?` declined to own the Node the other
+            // return makes -- one leak per call. A null is released by nothing, and
+            // every release tests for it.
+            if (nodeExists(n.child1) and ptr_to_node(n.child1).kind == NodeKind.NONE_LITERAL_EXPR) {
+                return
+            }
+            if (nodeExists(n.child1)) {
+                let v = aifSitesOf(n.child1, fnId, scope)
+                aif_con_bind(aif_key_ret(fnId), v)
+                let value = ptr_to_node(n.child1)
+                if (value.kind == NodeKind.IDENTIFIER_EXPR) {
+                    aif_con_return_binding(v, fnId, aif_key_var(fnId, value.s1))
+                } else {
+                    aif_con_return(v, fnId)
+                }
+            }
+            return
+        }
 
     // REQUIREMENTS 18. A payload arm binds names out of the scrutinee's fields,
     // and codegen lowers each one as exactly that field load
@@ -844,18 +851,19 @@ private fn aifWalk(nodePtr: Ptr, fnId: Int, scope: Int) {
     //
     // The scrutinee is evaluated once here, as codegen evaluates it once, and
     // the arms are then walked exactly as the fall-through below would.
-    if (n.kind == NodeKind.MATCH_STATEMENT) {
-        let scrutinee = aifSitesOf(n.child1, fnId, scope)
-        let scrutType = aifBaseType(aifNodeType(ptr_to_node(n.child1)))
-        let mut armPtr = n.child2
-        while (nodeExists(armPtr)) {
-            let arm = ptr_to_node(armPtr)
-            aifBindPayloadArm(arm, scrutType, scrutinee, fnId, scope)
-            armPtr = arm.next
+        NodeKind.MATCH_STATEMENT => {
+            let scrutinee = aifSitesOf(n.child1, fnId, scope)
+            let scrutType = aifBaseType(aifNodeType(ptr_to_node(n.child1)))
+            let mut armPtr = n.child2
+            while (nodeExists(armPtr)) {
+                let arm = ptr_to_node(armPtr)
+                aifBindPayloadArm(arm, scrutType, scrutinee, fnId, scope)
+                armPtr = arm.next
+            }
+            aifWalkChildren(n.child2, fnId, scope)
+            aifWalkChildren(n.child3, fnId, scope)
+            return
         }
-        aifWalkChildren(n.child2, fnId, scope)
-        aifWalkChildren(n.child3, fnId, scope)
-        return
     }
 
     aifWalkChildren(n.child1, fnId, scope)
@@ -957,10 +965,12 @@ private fn aifExprHasJoinOf(ptr: Ptr, name: String) -> Bool {
 
 // A join in this statement's own expression -- not in any block it contains.
 private fn aifStmtDirectJoin(n: ASTNode, name: String) -> Bool {
-    if (n.kind == NodeKind.VARIABLE_DECL) { return aifExprHasJoinOf(n.child2, name) }
-    if (n.kind == NodeKind.EXPRESSION_STATEMENT) { return aifExprHasJoinOf(n.child1, name) }
-    if (n.kind == NodeKind.RETURN_STATEMENT) { return aifExprHasJoinOf(n.child1, name) }
-    if (n.kind == NodeKind.ASSIGNMENT_STATEMENT) { return aifExprHasJoinOf(n.child2, name) }
+    match (n.kind) {
+        NodeKind.VARIABLE_DECL => { return aifExprHasJoinOf(n.child2, name) }
+        NodeKind.EXPRESSION_STATEMENT => { return aifExprHasJoinOf(n.child1, name) }
+        NodeKind.RETURN_STATEMENT => { return aifExprHasJoinOf(n.child1, name) }
+        NodeKind.ASSIGNMENT_STATEMENT => { return aifExprHasJoinOf(n.child2, name) }
+    }
     return false
 }
 
@@ -989,41 +999,43 @@ private fn aifStmtEscapesUnjoined(n: ASTNode, name: String, inLoop: Bool) -> Boo
         if (n.s1.equals("") == false) { return true }
         return inLoop == false
     }
-    if (n.kind == NodeKind.IF_STATEMENT) {
-        if (aifChainEscapesUnjoined(aifBlockChain(n.child2), name, inLoop)) { return true }
-        if (nodeIsNull(n.child3)) { return false }
-        let elseNode = ptr_to_node(n.child3)
-        if (elseNode.kind == NodeKind.IF_STATEMENT) {
-            return aifStmtEscapesUnjoined(elseNode, name, inLoop)
+    match (n.kind) {
+        NodeKind.IF_STATEMENT => {
+            if (aifChainEscapesUnjoined(aifBlockChain(n.child2), name, inLoop)) { return true }
+            if (nodeIsNull(n.child3)) { return false }
+            let elseNode = ptr_to_node(n.child3)
+            if (elseNode.kind == NodeKind.IF_STATEMENT) {
+                return aifStmtEscapesUnjoined(elseNode, name, inLoop)
+            }
+            return aifChainEscapesUnjoined(elseNode.child1, name, inLoop)
         }
-        return aifChainEscapesUnjoined(elseNode.child1, name, inLoop)
-    }
-    if (n.kind == NodeKind.WHILE_STATEMENT) {
-        return aifChainEscapesUnjoined(aifBlockChain(n.child2), name, true)
-    }
-    if (n.kind == NodeKind.LOOP_STATEMENT) {
-        return aifChainEscapesUnjoined(aifBlockChain(n.child1), name, true)
-    }
-    if (n.kind == NodeKind.FOR_STATEMENT) {
-        return aifChainEscapesUnjoined(aifBlockChain(n.child3), name, true)
-    }
+        NodeKind.WHILE_STATEMENT => {
+            return aifChainEscapesUnjoined(aifBlockChain(n.child2), name, true)
+        }
+        NodeKind.LOOP_STATEMENT => {
+            return aifChainEscapesUnjoined(aifBlockChain(n.child1), name, true)
+        }
+        NodeKind.FOR_STATEMENT => {
+            return aifChainEscapesUnjoined(aifBlockChain(n.child3), name, true)
+        }
     // A region is not a loop, so a break inside one belongs to whatever encloses
     // it and `inLoop` passes through unchanged -- the same reading
     // semaBlockBreaksOut takes.
-    if (n.kind == NodeKind.REGION_STATEMENT) {
-        return aifChainEscapesUnjoined(aifBlockChain(n.child1), name, inLoop)
-    }
-    if (n.kind == NodeKind.BLOCK) {
-        return aifChainEscapesUnjoined(n.child1, name, inLoop)
-    }
-    if (n.kind == NodeKind.MATCH_STATEMENT) {
-        let mut armPtr = n.child2
-        while (nodeExists(armPtr)) {
-            let arm = ptr_to_node(armPtr)
-            if (aifChainEscapesUnjoined(aifBlockChain(arm.child2), name, inLoop)) { return true }
-            armPtr = arm.next
+        NodeKind.REGION_STATEMENT => {
+            return aifChainEscapesUnjoined(aifBlockChain(n.child1), name, inLoop)
         }
-        return false
+        NodeKind.BLOCK => {
+            return aifChainEscapesUnjoined(n.child1, name, inLoop)
+        }
+        NodeKind.MATCH_STATEMENT => {
+            let mut armPtr = n.child2
+            while (nodeExists(armPtr)) {
+                let arm = ptr_to_node(armPtr)
+                if (aifChainEscapesUnjoined(aifBlockChain(arm.child2), name, inLoop)) { return true }
+                armPtr = arm.next
+            }
+            return false
+        }
     }
     return false
 }
@@ -1032,22 +1044,24 @@ private fn aifStmtEscapesUnjoined(n: ASTNode, name: String, inLoop: Bool) -> Boo
 private fn aifStmtAlwaysJoins(n: ASTNode, name: String, inLoop: Bool) -> Bool {
     if (aifStmtDirectJoin(n, name)) { return true }
 
-    if (n.kind == NodeKind.IF_STATEMENT) {
-        // Without an else there is a path that runs none of the arm, so the
-        // fall-through decides it and the enclosing chain is what sees that.
-        if (nodeIsNull(n.child3)) { return false }
-        if (aifChainJoins(aifBlockChain(n.child2), name, inLoop) == false) { return false }
-        let elseNode = ptr_to_node(n.child3)
-        if (elseNode.kind == NodeKind.IF_STATEMENT) {
-            return aifStmtAlwaysJoins(elseNode, name, inLoop)
+    match (n.kind) {
+        NodeKind.IF_STATEMENT => {
+            // Without an else there is a path that runs none of the arm, so the
+            // fall-through decides it and the enclosing chain is what sees that.
+            if (nodeIsNull(n.child3)) { return false }
+            if (aifChainJoins(aifBlockChain(n.child2), name, inLoop) == false) { return false }
+            let elseNode = ptr_to_node(n.child3)
+            if (elseNode.kind == NodeKind.IF_STATEMENT) {
+                return aifStmtAlwaysJoins(elseNode, name, inLoop)
+            }
+            return aifChainJoins(elseNode.child1, name, inLoop)
         }
-        return aifChainJoins(elseNode.child1, name, inLoop)
-    }
-    if (n.kind == NodeKind.BLOCK) {
-        return aifChainJoins(n.child1, name, inLoop)
-    }
-    if (n.kind == NodeKind.REGION_STATEMENT) {
-        return aifChainJoins(aifBlockChain(n.child1), name, inLoop)
+        NodeKind.BLOCK => {
+            return aifChainJoins(n.child1, name, inLoop)
+        }
+        NodeKind.REGION_STATEMENT => {
+            return aifChainJoins(aifBlockChain(n.child1), name, inLoop)
+        }
     }
 
     // Deliberately **not** MATCH, even though exhaustiveness is checked and

@@ -1,0 +1,78 @@
+// `print`, `println`, `eprint` and `eprintln` accept anything with an `impl Display`
+// once std.display is imported -- a user's own type, an `Option<T>`, a `String?` --
+// and the multi-argument form goes through the same overloads.
+
+import std.display
+import std.io
+import std.option
+import std.process
+import std.string
+import std.vec
+
+struct Version {
+    major: Int,
+    minor: Int
+}
+
+impl Display for Version {
+    fn show(self) -> String {
+        return self.major.show().concat(".", self.minor.show())
+    }
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn maybeName(present: Bool) -> String? {
+    if (present) { return "ada" }
+    return none
+}
+
+fn child() {
+    let v = Version { major: 1, minor: 4 }
+    println(v)
+    println("version:", v)
+
+    let some: Option<String> = Option<String>.Some("hi")
+    let absent: Option<String> = Option<String>.None
+    println(some)
+    println(absent)
+    println(Option<Int>.Some(7))
+    println("header:", some)
+
+    println(maybeName(true))
+    println(maybeName(false))
+    println("name:", maybeName(true))
+
+    print(v)
+    print(" ")
+    println(7)
+    eprintln(v)
+}
+
+fn main() -> Int {
+    if (process.args.count > 1) {
+        child()
+        return 0
+    }
+
+    let c = Process()
+    c.program = process.args[0]
+    c.arguments = ["child"]
+    c.stdout = StreamMode.Pipe
+    c.stderr = StreamMode.Pipe
+    let running = c.spawn()
+    let out = running.stdout.readAll()
+    let err = running.stderr.readAll()
+    running.wait()
+
+    let want = "1.4\nversion: 1.4\nhi\nnone\n7\nheader: hi\nada\nnone\nname: ada\n1.4 7\n"
+    if (out.equals(want) == false) { return fail("stdout: ".concat(out)) }
+    if (err.equals("1.4\n") == false) { return fail("stderr: ".concat(err)) }
+
+    println("PASS: display print")
+    return 0
+}

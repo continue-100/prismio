@@ -16,8 +16,6 @@ import ast.nodes
 import common.diagnostics
 import std.string
 
-public extern fn exit(code: Int)
-
 // `allowStructLit` is off while reading the bounds of a `for`, so that
 // `for i in 0..n { ... }` reads the body as a block rather than `n { ... }` as a
 // struct literal. It was a module-level global until it became clear it is
@@ -367,7 +365,7 @@ impl Parser {
         loop {
             if (self.check(TokenType.EOF)) { break }
 
-            let stmt = parseDeclaration(self)
+            let stmt = self.parseDeclaration()
 
             // An `impl` block's methods are spliced into the module's own chain, and
             // that splice is the whole lowering: a method is a free function whose

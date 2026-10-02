@@ -111,10 +111,16 @@ ZSTD_VERSION = "1.5.7"
 ZSTD_URL = "https://github.com/facebook/zstd/releases/download/v{v}/zstd-{v}.tar.gz"
 ZSTD_SHA256 = "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3"
 
-# What the backend calls into. `all-targets` because `--target` accepts any
-# triple LLVM knows and the backend initialises every target it was built with.
+# The backends the compiler links, and so the `--target` triples it accepts: the
+# three the documentation names. LLVM's `all-targets` is 25 backends and put 50 MB
+# of AMDGPU, Hexagon, PowerPC and the rest into a compiler nobody could aim at
+# them. **runtime/prismio_llvm.h (PRISMIO_LLVM_TARGET_LIST) initialises the same
+# set**; add a target in both places, and in docs/ (compiler/targets).
+TARGET_COMPONENTS = ["aarch64", "x86", "webassembly"]
+
+# What the backend calls into.
 COMPONENTS = [
-    "all-targets", "core", "analysis", "bitreader", "bitwriter", "irreader",
+    *TARGET_COMPONENTS, "core", "analysis", "bitreader", "bitwriter", "irreader",
     "linker", "orcjit", "passes", "target", "transformutils", "ipo",
 ]
 

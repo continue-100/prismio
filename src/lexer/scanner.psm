@@ -13,8 +13,6 @@ import std.string
 import std.unicode
 import ast.nodes
 
-public extern fn exit(code: Int)
-
 // `length` is the input's size, measured once. Every character read used to go
 // through str_char_at, which calls strlen -- so scanning a file cost O(n) per
 // character and O(n^2) overall. Holding the length here lets the reads below
@@ -31,174 +29,188 @@ struct Lexer {
     // Inside `${...}` the scanner is lexing an ordinary expression, and the `}`
     // that ends it is the one at brace depth zero -- so a struct literal or a
     // closure body in there closes its own braces without ending the string.
-    // `interpOpen` is how many interpolations are currently open (0 or 1) and
-    // `interpBrace` the depth within the innermost one.
-    interpOpen: Int,
+    // `interpolation` says which kind of string the open `${` belongs to, and
+    // `interpBrace` is the depth within it.
+    interpolation: Interpolation,
     interpBrace: Int
 }
 
-public fn createLexer(input: String, file: Int) -> Lexer {
-    // Skip a UTF-8 byte order mark. Most Windows editors write one by default
-    // (PowerShell's -Encoding utf8 among them), and without this the first token
-    // is garbage and the file fails with "Unknown declaration" -- a baffling
-    // error for a file that looks perfectly fine.
-    let mut start = 0
-    if (charCode(input.charAt(0)) == 239) {
-        if (charCode(input.charAt(1)) == 187 and charCode(input.charAt(2)) == 191) {
-            start = 3
-        }
-    }
-
-    return Lexer {
-        input: input,
-        pos: start,
-        line: 1,
-        col: 1,
-        file: file,
-        length: __builtin_string_len(input),
-        interpOpen: 0,
-        interpBrace: 0
-    }
+// Whether the scanner is inside the `${...}` of a string, and of which kind: the
+// resumption after the `}` differs, because a triple-quoted string continues across
+// lines. There is never more than one open.
+enum Interpolation {
+    Off,
+    InString,
+    InTripleString
 }
 
-// Every token is built here, so none can be produced without a span. `startPos`
-// is where the token began, which is what makes `len` the token's real source
-// width -- including the quotes of a string literal and any escape that decoded
-// to a shorter value.
-private fn lexerToken(lex: Lexer, t: TokenType, value: String, startLine: Int, startCol: Int, startPos: Int) -> Token {
-    return Token {
-        type: t,
-        value: value,
-        line: startLine,
-        col: startCol,
-        len: lex.pos - startPos,
-        file: lex.file,
-        tokNext: ptr_null()
-    }
-}
-
-// A lexer error, reported against the span that is open at the time. The scanner
-// has no way to resynchronise -- it cannot know what the malformed text was meant
-// to be -- so this is the one place in the frontend that still stops at the first
-// error rather than recovering.
-private fn lexerFatal(lex: Lexer, line: Int, col: Int, message: String) {
-    diag_error_at_code("P2001", lex.file, line, col, 1, message)
-    diag_finish()
-    exit(1)
-}
-
-private fn lexerPeek(lex: Lexer, offset: Int) -> Char {
-    let at = lex.pos + offset
-    if (at < 0 or at > lex.length) { return '\0' }
-    return __builtin_string_byte_at(lex.input, at)
-}
-
-private fn lexerCurrent(lex: Lexer) -> Char {
-    if (lex.pos < 0 or lex.pos > lex.length) { return '\0' }
-    return __builtin_string_byte_at(lex.input, lex.pos)
-}
-
-private fn lexerAdvance(lex: Lexer) {
-    lex.pos = lex.pos + 1
-    lex.col = lex.col + 1
-}
-
-// A newline inside a token still has to move the line counter, or every
-// diagnostic after it points at the wrong line.
-private fn lexerNewline(lex: Lexer) {
-    lex.line = lex.line + 1
-    lex.col = 0
-}
-
-// **Trojan Source (CVE-2021-42574).** The bidirectional overrides and isolates,
-// U+202A-U+202E and U+2066-U+2069, reorder how a line is *displayed* without
-// changing its bytes, so a comment or string holding one can make an editor or a
-// code review show code that is not the code that compiles -- a `return` that
-// reads as commented out, a check that reads as inside a string. rustc and GCC
-// refuse them unescaped for the same reason. A program that wants one writes
-// `\u{202E}`, which says so. Every one of them encodes with lead byte 0xE2 (226),
-// which is the only byte the loops test before calling this.
-private fn lexerRefuseBidiControl(lex: Lexer, place: String) {
-    let scalar = lexerScalar(lex)
-    let override = scalar >= 8234 and scalar <= 8238
-    let isolate = scalar >= 8294 and scalar <= 8297
-    if (override == false and isolate == false) { return }
-
-    let notation = lexerScalarNotation(scalar)
-    let mut advice = "write it as `\\u{".concat(notation.substring(2, 4), "}` so it is visible")
-    if (place.equals("a comment")) { advice = "remove it" }
-    diag_error_at_code("P2002", lex.file, lex.line, lex.col, 3,
-        "unescaped bidirectional control ".concat(notation, " in ", place,
-            ": it reorders how the line is displayed, so what a reader sees is not what compiles; ",
-            advice))
-    diag_finish()
-    exit(1)
-}
-
-// `/* ... */`, and they nest.
-//
-// **Nesting is the whole point.** The C form cannot comment out a region that
-// already contains a comment, which is the one thing anybody reaches for a block
-// comment to do -- the inner `*/` ends the outer comment and the rest of the
-// region becomes code again, usually without a syntax error to say so. Rust and
-// Swift nest for this reason. The depth counter is why this is a loop with an
-// explicit exit rather than a scan for the first `*/`.
-//
-// Skipped rather than tokenized, like `//`: the parser never sees a comment, so
-// there is no token kind to add and nothing downstream to teach.
-private fn lexerSkipBlockComment(lex: Lexer) {
-    let line = lex.line
-    let col = lex.col
-
-    lexerAdvance(lex)
-    lexerAdvance(lex)
-
-    let mut depth = 1
-    while (depth > 0) {
-        let current = lexerCurrent(lex)
-
-        // Reported where the comment *opened*, not at the end of the file. The
-        // position of the unclosed `/*` is the only part of this a reader can act
-        // on; the end of the file is where every unterminated comment lands.
-        if (current == '\0') {
-            lexerFatal(lex, line, col, "unterminated block comment")
-            return
-        }
-
-        if (current == '\n') { lexerNewline(lex) }
-
-        if (current == '/' and lexerPeek(lex, 1) == '*') {
-            depth = depth + 1
-            lexerAdvance(lex)
-            lexerAdvance(lex)
-        } else if (current == '*' and lexerPeek(lex, 1) == '/') {
-            depth = depth - 1
-            lexerAdvance(lex)
-            lexerAdvance(lex)
-        } else {
-            if (charCode(current) == 226) { lexerRefuseBidiControl(lex, "a comment") }
-            lexerAdvance(lex)
-        }
-    }
-}
-
-private fn lexerSkipWhitespace(lex: Lexer) {
-    loop {
-        if (isSpace(lexerCurrent(lex))) {
-            if (lexerCurrent(lex) == '\n') { lexerNewline(lex) }
-            lexerAdvance(lex)
-        } else if (lexerCurrent(lex) == '/' and lexerPeek(lex, 1) == '/') {
-            while (lexerCurrent(lex) != '\n' and lexerCurrent(lex) != '\0') {
-                if (charCode(lexerCurrent(lex)) == 226) { lexerRefuseBidiControl(lex, "a comment") }
-                lexerAdvance(lex)
+impl Lexer {
+    // The scanner for `input`, positioned at its first character.
+    public fn create(input: String, file: Int) -> Lexer {
+        // Skip a UTF-8 byte order mark. Most Windows editors write one by default
+        // (PowerShell's -Encoding utf8 among them), and without this the first token
+        // is garbage and the file fails with "Unknown declaration" -- a baffling
+        // error for a file that looks perfectly fine.
+        let mut start = 0
+        if (charCode(input.charAt(0)) == 239) {
+            if (charCode(input.charAt(1)) == 187 and charCode(input.charAt(2)) == 191) {
+                start = 3
             }
-        } else if (lexerCurrent(lex) == '/' and lexerPeek(lex, 1) == '*') {
-            lexerSkipBlockComment(lex)
-        } else {
-            break
+        }
+
+        return Lexer {
+            input: input,
+            pos: start,
+            line: 1,
+            col: 1,
+            file: file,
+            length: __builtin_string_len(input),
+            interpolation: Interpolation.Off,
+            interpBrace: 0
+        }
+    }
+
+
+    // Every token is built here, so none can be produced without a span. `startPos`
+    // is where the token began, which is what makes `len` the token's real source
+    // width -- including the quotes of a string literal and any escape that decoded
+    // to a shorter value.
+    private fn token(self, t: TokenType, value: String, startLine: Int, startCol: Int, startPos: Int) -> Token {
+        return Token {
+            type: t,
+            value: value,
+            line: startLine,
+            col: startCol,
+            len: self.pos - startPos,
+            file: self.file,
+            tokNext: ptr_null()
+        }
+    }
+
+    // A lexer error, reported against the span that is open at the time. The scanner
+    // has no way to resynchronise -- it cannot know what the malformed text was meant
+    // to be -- so this is the one place in the frontend that still stops at the first
+    // error rather than recovering.
+    private fn fatal(self, line: Int, col: Int, message: String) {
+        diag_error_at_code("P2001", self.file, line, col, 1, message)
+        diag_finish()
+        exit(1)
+    }
+
+    private fn peek(self, offset: Int) -> Char {
+        let at = self.pos + offset
+        if (at < 0 or at > self.length) { return '\0' }
+        return __builtin_string_byte_at(self.input, at)
+    }
+
+    private fn current(self) -> Char {
+        if (self.pos < 0 or self.pos > self.length) { return '\0' }
+        return __builtin_string_byte_at(self.input, self.pos)
+    }
+
+    private fn advance(self) {
+        self.pos = self.pos + 1
+        self.col = self.col + 1
+    }
+
+    // A newline inside a token still has to move the line counter, or every
+    // diagnostic after it points at the wrong line.
+    private fn newline(self) {
+        self.line = self.line + 1
+        self.col = 0
+    }
+
+    // **Trojan Source (CVE-2021-42574).** The bidirectional overrides and isolates,
+    // U+202A-U+202E and U+2066-U+2069, reorder how a line is *displayed* without
+    // changing its bytes, so a comment or string holding one can make an editor or a
+    // code review show code that is not the code that compiles -- a `return` that
+    // reads as commented out, a check that reads as inside a string. rustc and GCC
+    // refuse them unescaped for the same reason. A program that wants one writes
+    // `\u{202E}`, which says so. Every one of them encodes with lead byte 0xE2 (226),
+    // which is the only byte the loops test before calling this.
+    private fn refuseBidiControl(self, place: String) {
+        let scalar = self.currentScalar()
+        let override = scalar >= 8234 and scalar <= 8238
+        let isolate = scalar >= 8294 and scalar <= 8297
+        if (override == false and isolate == false) { return }
+
+        let notation = lexerScalarNotation(scalar)
+        let mut advice = "write it as `\\u{".concat(notation.substring(2, 4), "}` so it is visible")
+        if (place.equals("a comment")) { advice = "remove it" }
+        diag_error_at_code("P2002", self.file, self.line, self.col, 3,
+            "unescaped bidirectional control ".concat(notation, " in ", place,
+                ": it reorders how the line is displayed, so what a reader sees is not what compiles; ",
+                advice))
+        diag_finish()
+        exit(1)
+    }
+
+    // `/* ... */`, and they nest.
+    //
+    // **Nesting is the whole point.** The C form cannot comment out a region that
+    // already contains a comment, which is the one thing anybody reaches for a block
+    // comment to do -- the inner `*/` ends the outer comment and the rest of the
+    // region becomes code again, usually without a syntax error to say so. Rust and
+    // Swift nest for this reason. The depth counter is why this is a loop with an
+    // explicit exit rather than a scan for the first `*/`.
+    //
+    // Skipped rather than tokenized, like `//`: the parser never sees a comment, so
+    // there is no token kind to add and nothing downstream to teach.
+    private fn skipBlockComment(self) {
+        let line = self.line
+        let col = self.col
+
+        self.advance()
+        self.advance()
+
+        let mut depth = 1
+        while (depth > 0) {
+            let current = self.current()
+
+            // Reported where the comment *opened*, not at the end of the file. The
+            // position of the unclosed `/*` is the only part of this a reader can act
+            // on; the end of the file is where every unterminated comment lands.
+            if (current == '\0') {
+                self.fatal(line, col, "unterminated block comment")
+                return
+            }
+
+            if (current == '\n') { self.newline() }
+
+            if (current == '/' and self.peek(1) == '*') {
+                depth = depth + 1
+                self.advance()
+                self.advance()
+            } else if (current == '*' and self.peek(1) == '/') {
+                depth = depth - 1
+                self.advance()
+                self.advance()
+            } else {
+                if (charCode(current) == 226) { self.refuseBidiControl("a comment") }
+                self.advance()
+            }
+        }
+    }
+
+    private fn skipWhitespace(self) {
+        loop {
+            if (isSpace(self.current())) {
+                if (self.current() == '\n') { self.newline() }
+                self.advance()
+            } else if (self.current() == '/' and self.peek(1) == '/') {
+                while (self.current() != '\n' and self.current() != '\0') {
+                    if (charCode(self.current()) == 226) { self.refuseBidiControl("a comment") }
+                    self.advance()
+                }
+            } else if (self.current() == '/' and self.peek(1) == '*') {
+                self.skipBlockComment()
+            } else {
+                break
+            }
         }
     }
 }
+
 
 // The value of one hex digit, or -1.
 private fn hexDigitValue(c: Char) -> Int {
@@ -230,121 +242,124 @@ private fn utf8Text(code: Int) -> String {
     let second = byteText(128 + (code / 4096) % 64)
     return lead.concat(second, middle, last)
 }
+impl Lexer {
 
-// `\xHH`: exactly two hex digits, one byte. The escape starts at `at`.
-private fn lexerHexByteEscape(lex: Lexer, raw: String, at: Int, line: Int, baseCol: Int) -> Int {
-    let hi = hexDigitValue(raw.charAt(at + 2))
-    let lo = hexDigitValue(raw.charAt(at + 3))
-    if (hi < 0 or lo < 0 or at + 3 >= __builtin_string_len(raw)) {
-        lexerFatal(lex, line, baseCol + at,
-            "`\\x` takes exactly two hex digits, as in `\\x1b`")
+    // `\xHH`: exactly two hex digits, one byte. The escape starts at `at`.
+    private fn hexByteEscape(self, raw: String, at: Int, line: Int, baseCol: Int) -> Int {
+        let hi = hexDigitValue(raw.charAt(at + 2))
+        let lo = hexDigitValue(raw.charAt(at + 3))
+        if (hi < 0 or lo < 0 or at + 3 >= __builtin_string_len(raw)) {
+            self.fatal(line, baseCol + at,
+                "`\\x` takes exactly two hex digits, as in `\\x1b`")
+        }
+        let code = hi * 16 + lo
+        if (code == 0) {
+            self.fatal(line, baseCol + at,
+                "a NUL escape cannot appear in a string literal, because String is NUL-terminated")
+        }
+        return code
     }
-    let code = hi * 16 + lo
-    if (code == 0) {
-        lexerFatal(lex, line, baseCol + at,
-            "a NUL escape cannot appear in a string literal, because String is NUL-terminated")
-    }
-    return code
-}
 
-// `\u{1F600}`: one to six hex digits naming a Unicode scalar value. Answers the
-// value; the escape's length is the digits' count plus four.
-private fn lexerUnicodeEscape(lex: Lexer, raw: String, at: Int, line: Int, baseCol: Int) -> Int {
-    let n = __builtin_string_len(raw)
-    if (raw.charAt(at + 2) != '{') {
-        lexerFatal(lex, line, baseCol + at,
-            "`\\u` takes a code point in braces, as in `\\u{1F600}`")
-    }
-    let mut j = at + 3
-    let mut code = 0
-    while (j < n and raw.charAt(j) != '}') {
-        let digit = hexDigitValue(raw.charAt(j))
-        if (digit < 0 or j - at - 3 >= 6) {
-            lexerFatal(lex, line, baseCol + at,
+    // `\u{1F600}`: one to six hex digits naming a Unicode scalar value. Answers the
+    // value; the escape's length is the digits' count plus four.
+    private fn unicodeEscape(self, raw: String, at: Int, line: Int, baseCol: Int) -> Int {
+        let n = __builtin_string_len(raw)
+        if (raw.charAt(at + 2) != '{') {
+            self.fatal(line, baseCol + at,
+                "`\\u` takes a code point in braces, as in `\\u{1F600}`")
+        }
+        let mut j = at + 3
+        let mut code = 0
+        while (j < n and raw.charAt(j) != '}') {
+            let digit = hexDigitValue(raw.charAt(j))
+            if (digit < 0 or j - at - 3 >= 6) {
+                self.fatal(line, baseCol + at,
+                    "`\\u{...}` holds one to six hex digits, as in `\\u{1F600}`")
+            }
+            code = code * 16 + digit
+            j = j + 1
+        }
+        if (j >= n or j == at + 3) {
+            self.fatal(line, baseCol + at,
                 "`\\u{...}` holds one to six hex digits, as in `\\u{1F600}`")
         }
-        code = code * 16 + digit
-        j = j + 1
-    }
-    if (j >= n or j == at + 3) {
-        lexerFatal(lex, line, baseCol + at,
-            "`\\u{...}` holds one to six hex digits, as in `\\u{1F600}`")
-    }
-    // Zero, past U+10FFFF, or a UTF-16 surrogate half, which no UTF-8 text holds.
-    if (code == 0 or code > 1114111 or (code >= 55296 and code <= 57343)) {
-        lexerFatal(lex, line, baseCol + at,
-            "`\\u{...}` must name a Unicode scalar value other than NUL")
-    }
-    return code
-}
-
-// Turns the raw text between the quotes into the string's actual value. Char
-// literals have always decoded their escapes; string literals did not, so the two
-// disagreed and there was no way at all to put a newline, a tab or a quote inside
-// a string -- the backslash simply survived into the output.
-//
-// A NUL escape is rejected rather than supported: String is a NUL-terminated C
-// pointer, so an embedded NUL would silently truncate the value instead of
-// storing it. Better to say so than to lose half the string.
-//
-// `baseCol` is the column of the first character inside the quotes, so an
-// offending escape can be pointed at exactly rather than blamed on the literal as
-// a whole.
-//
-// `\e` is ESC, which is what every terminal colour and cursor sequence starts
-// with -- `"\e[31m"` is red. `\xHH` is any one byte, and `\u{...}` a Unicode
-// scalar value, written into the String as UTF-8.
-private fn lexerDecodeEscapes(lex: Lexer, raw: String, line: Int, baseCol: Int) -> String {
-    let mut out = ""
-    let mut i = 0
-    let n = __builtin_string_len(raw)
-
-    while (i < n) {
-        let ch = raw.charAt(i)
-
-        if (ch == '\\' and i + 1 < n and raw.charAt(i + 1) == 'x') {
-            out = out.concat(byteText(lexerHexByteEscape(lex, raw, i, line, baseCol)))
-            i = i + 4
-        } else if (ch == '\\' and i + 1 < n and raw.charAt(i + 1) == 'u') {
-            let code = lexerUnicodeEscape(lex, raw, i, line, baseCol)
-            out = out.concat(utf8Text(code))
-            i = raw.indexOf("}", i) + 1
-        } else if (ch == '\\' and i + 1 < n) {
-            let esc = raw.charAt(i + 1)
-            let mut decoded = esc
-            let mut known = true
-
-            if (esc == 'n') { decoded = '\n' }
-            else if (esc == 'e') { decoded = 27 as Char }
-            else if (esc == 't') { decoded = '\t' }
-            else if (esc == 'r') { decoded = '\r' }
-            else if (esc == '\\') { decoded = '\\' }
-            else if (esc == '"') { decoded = '"' }
-            else if (esc == '\'') { decoded = '\'' }
-            // So that a literal `${` can be written in a string that would
-            // otherwise interpolate there.
-            else if (esc == '$') { decoded = '$' }
-            else if (esc == '0') {
-                lexerFatal(lex, line, baseCol + i,
-                    "a NUL escape cannot appear in a string literal, because String is NUL-terminated")
-            }
-            else { known = false }
-
-            if (known == false) {
-                lexerFatal(lex, line, baseCol + i,
-                    "unknown escape sequence \\".concat(esc.toString()))
-            }
-
-            out = out.concat(decoded.toString())
-            i = i + 2
-        } else {
-            out = out.concat(ch.toString())
-            i = i + 1
+        // Zero, past U+10FFFF, or a UTF-16 surrogate half, which no UTF-8 text holds.
+        if (code == 0 or code > 1114111 or (code >= 55296 and code <= 57343)) {
+            self.fatal(line, baseCol + at,
+                "`\\u{...}` must name a Unicode scalar value other than NUL")
         }
+        return code
     }
 
-    return out
+    // Turns the raw text between the quotes into the string's actual value. Char
+    // literals have always decoded their escapes; string literals did not, so the two
+    // disagreed and there was no way at all to put a newline, a tab or a quote inside
+    // a string -- the backslash simply survived into the output.
+    //
+    // A NUL escape is rejected rather than supported: String is a NUL-terminated C
+    // pointer, so an embedded NUL would silently truncate the value instead of
+    // storing it. Better to say so than to lose half the string.
+    //
+    // `baseCol` is the column of the first character inside the quotes, so an
+    // offending escape can be pointed at exactly rather than blamed on the literal as
+    // a whole.
+    //
+    // `\e` is ESC, which is what every terminal colour and cursor sequence starts
+    // with -- `"\e[31m"` is red. `\xHH` is any one byte, and `\u{...}` a Unicode
+    // scalar value, written into the String as UTF-8.
+    private fn decodeEscapes(self, raw: String, line: Int, baseCol: Int) -> String {
+        let mut out = ""
+        let mut i = 0
+        let n = __builtin_string_len(raw)
+
+        while (i < n) {
+            let ch = raw.charAt(i)
+
+            if (ch == '\\' and i + 1 < n and raw.charAt(i + 1) == 'x') {
+                out = out.concat(byteText(self.hexByteEscape(raw, i, line, baseCol)))
+                i = i + 4
+            } else if (ch == '\\' and i + 1 < n and raw.charAt(i + 1) == 'u') {
+                let code = self.unicodeEscape(raw, i, line, baseCol)
+                out = out.concat(utf8Text(code))
+                i = raw.indexOf("}", i) + 1
+            } else if (ch == '\\' and i + 1 < n) {
+                let esc = raw.charAt(i + 1)
+                let mut decoded = esc
+                let mut known = true
+
+                if (esc == 'n') { decoded = '\n' }
+                else if (esc == 'e') { decoded = 27 as Char }
+                else if (esc == 't') { decoded = '\t' }
+                else if (esc == 'r') { decoded = '\r' }
+                else if (esc == '\\') { decoded = '\\' }
+                else if (esc == '"') { decoded = '"' }
+                else if (esc == '\'') { decoded = '\'' }
+                // So that a literal `${` can be written in a string that would
+                // otherwise interpolate there.
+                else if (esc == '$') { decoded = '$' }
+                else if (esc == '0') {
+                    self.fatal(line, baseCol + i,
+                        "a NUL escape cannot appear in a string literal, because String is NUL-terminated")
+                }
+                else { known = false }
+
+                if (known == false) {
+                    self.fatal(line, baseCol + i,
+                        "unknown escape sequence \\".concat(esc.toString()))
+                }
+
+                out = out.concat(decoded.toString())
+                i = i + 2
+            } else {
+                out = out.concat(ch.toString())
+                i = i + 1
+            }
+        }
+
+        return out
+    }
 }
+
 
 // Identifiers are UAX #31's Default Identifiers -- XID_Start then XID_Continue*
 // -- in this profile of them:
@@ -378,57 +393,60 @@ private fn lexerIsIdentifierContinue(scalar: Int) -> Bool {
     if (scalar == 8204 or scalar == 8205) { return false }
     return isXidContinue(scalar)
 }
+impl Lexer {
 
-// The scalar at the scanner's position, or -1 for a byte that does not begin a
-// well-formed UTF-8 sequence.
-private fn lexerScalar(lex: Lexer) -> Int {
-    return lex.input.scalarAt(lex.pos)
-}
-
-// Past one scalar. Columns stay in UTF-8 bytes, which is what IDE_PROTOCOL.md
-// promises a plugin, so this is `lexerAdvance` once per byte.
-private fn lexerAdvanceScalar(lex: Lexer) {
-    let mut width = lex.input.scalarWidthAt(lex.pos)
-    if (width == 0) { width = 1 }
-    while (width > 0) {
-        lexerAdvance(lex)
-        width = width - 1
+    // The scalar at the scanner's position, or -1 for a byte that does not begin a
+    // well-formed UTF-8 sequence.
+    private fn currentScalar(self) -> Int {
+        return self.input.scalarAt(self.pos)
     }
-}
 
-private fn lexIdentifier(lex: Lexer) -> Token {
-    let line = lex.line
-    let col = lex.col
-    let start = lex.pos
-
-    let mut ascii = true
-    loop {
-        let c = lexerCurrent(lex)
-        if (isIdentPart(c)) {
-            lexerAdvance(lex)
-        } else if (charCode(c) >= 128 and lex.pos < lex.length
-                   and (lex.pos > start or lexerIsIdentifierStart(lexerScalar(lex)))
-                   and lexerIsIdentifierContinue(lexerScalar(lex))) {
-            ascii = false
-            lexerAdvanceScalar(lex)
-        } else {
-            break
+    // Past one scalar. Columns stay in UTF-8 bytes, which is what IDE_PROTOCOL.md
+    // promises a plugin, so this is `lexerAdvance` once per byte.
+    private fn advanceScalar(self) {
+        let mut width = self.input.scalarWidthAt(self.pos)
+        if (width == 0) { width = 1 }
+        while (width > 0) {
+            self.advance()
+            width = width - 1
         }
     }
-    let mut value = lex.input.substring(start, lex.pos - start)
-    if (ascii == false) {
-        value = value.normalizeNfc()
-        lexerSawNonAscii = true
-    }
 
-    if (isKeyword(value)) {
-        if (isBoolean(value)) {
-            return lexerToken(lex, TokenType.BOOL_LITERAL, value, line, col, start)
+    private fn identifier(self) -> Token {
+        let line = self.line
+        let col = self.col
+        let start = self.pos
+
+        let mut ascii = true
+        loop {
+            let c = self.current()
+            if (isIdentPart(c)) {
+                self.advance()
+            } else if (charCode(c) >= 128 and self.pos < self.length
+                       and (self.pos > start or lexerIsIdentifierStart(self.currentScalar()))
+                       and lexerIsIdentifierContinue(self.currentScalar())) {
+                ascii = false
+                self.advanceScalar()
+            } else {
+                break
+            }
         }
-        return lexerToken(lex, TokenType.KEYWORD, value, line, col, start)
+        let mut value = self.input.substring(start, self.pos - start)
+        if (ascii == false) {
+            value = value.normalizeNfc()
+            lexerSawNonAscii = true
+        }
+
+        if (isKeyword(value)) {
+            if (isBoolean(value)) {
+                return self.token(TokenType.BOOL_LITERAL, value, line, col, start)
+            }
+            return self.token(TokenType.KEYWORD, value, line, col, start)
+        }
+        return self.token(TokenType.IDENTIFIER, value, line, col, start)
     }
-    return lexerToken(lex, TokenType.IDENTIFIER, value, line, col, start)
 }
+
 
 private fn isHexDigit(c: Char) -> Bool {
     if (isDigit(c)) { return true }
@@ -443,379 +461,382 @@ private fn isRadixDigit(c: Char, radix: Int) -> Bool {
     if (radix == 2) { return c == '0' or c == '1' }
     return isDigit(c)
 }
+impl Lexer {
 
-// **`1_000_000`, `0xFF_FF`.** One run of digits, where `_` may sit between two
-// of them and means nothing. Answers whether it saw one, so the caller strips
-// them only then and a literal without separators costs no allocation.
-//
-// A separator needs a digit on both sides. `1_` and `1_.5` are refused rather
-// than read as `1` followed by the name `_`, which is what they lexed as before
-// separators existed -- and which no grammar rule accepts, so the only thing
-// that reading bought was a worse message.
-private fn lexDigitRun(lex: Lexer, radix: Int) -> Bool {
-    let mut separated = false
-    while (isRadixDigit(lexerCurrent(lex), radix)) {
-        lexerAdvance(lex)
-        if (lexerCurrent(lex) == '_') {
-            let mut ahead = 1
-            while (lexerPeek(lex, ahead) == '_') { ahead = ahead + 1 }
-            if (isRadixDigit(lexerPeek(lex, ahead), radix) == false) {
-                lexerFatal(lex, lex.line, lex.col,
-                    "a digit separator `_` goes between two digits, as in `1_000_000`")
-            }
-            repeat(ahead) {
-                lexerAdvance(lex)
-            }
-            separated = true
-        }
-    }
-    return separated
-}
-
-// `0xFF`, `0o755`, `0b1010`. The prefix is kept in the token text rather than
-// converted here, so the range check in sema reads the same spelling the
-// backend does.
-//
-// **A leading zero is not octal.** `010` is ten, as it has always been, because
-// C's rule -- where a zero-padded decimal silently changes base -- is a defect
-// every language designed since has declined to repeat. Octal is `0o` and only
-// `0o`.
-//
-// Each prefix needs at least one digit after it or it is not one: `0x` alone
-// stays the number 0 followed by the name `x`, which is what a lexer that
-// consumed the prefix eagerly would have made unspellable. Answers the radix,
-// or 10 when the `0` at the cursor starts no prefix.
-private fn lexRadixPrefix(lex: Lexer) -> Int {
-    let marker = lexerPeek(lex, 1)
-    let mut radix = 10
-    if (marker == 'x' or marker == 'X') { radix = 16 }
-    if (marker == 'o' or marker == 'O') { radix = 8 }
-    if (marker == 'b' or marker == 'B') { radix = 2 }
-    if (radix == 10) { return 10 }
-
-    if (lexerPeek(lex, 2) == '_') {
-        let mut ahead = 3
-        while (lexerPeek(lex, ahead) == '_') { ahead = ahead + 1 }
-        if (isRadixDigit(lexerPeek(lex, ahead), radix)) {
-            lexerFatal(lex, lex.line, lex.col + 2,
-                "a digit separator `_` goes between two digits, not after the prefix, as in `0xFF_FF`")
-        }
-    }
-    if (isRadixDigit(lexerPeek(lex, 2), radix) == false) { return 10 }
-    lexerAdvance(lex)
-    lexerAdvance(lex)
-    return radix
-}
-
-// The literal's text with its separators taken out, so every later reader --
-// the range check, the backend's constant, the AIF oracle -- sees plain digits
-// and none of them has to know separators exist. The token's `len` still spans
-// the source as written, so a diagnostic underlines all of it.
-private fn lexNumberText(lex: Lexer, start: Int, separated: Bool) -> String {
-    let raw = lex.input.substring(start, lex.pos - start)
-    if (separated) {
-        return raw.replaceAll("_", "")
-    }
-    return raw
-}
-
-private fn lexNumber(lex: Lexer) -> Token {
-    let line = lex.line
-    let col = lex.col
-    let start = lex.pos
-    let mut isFloat = false
-
-    if (lexerCurrent(lex) == '0') {
-        let radix = lexRadixPrefix(lex)
-        if (radix != 10) {
-            let separated = lexDigitRun(lex, radix)
-            let radixText = lexNumberText(lex, start, separated)
-            return lexerToken(lex, TokenType.NUMBER_LITERAL, radixText, line, col, start)
-        }
-    }
-
-    let mut separated = lexDigitRun(lex, 10)
-
-    // A '.' only continues the number when a digit follows it, so `0..n` scans
-    // as `0`, `..`, `n` rather than as the float `0.` followed by `.n`.
-    if (lexerCurrent(lex) == '.' and isDigit(lexerPeek(lex, 1))) {
-        isFloat = true
-        lexerAdvance(lex)
-        if (lexDigitRun(lex, 10)) { separated = true }
-    }
-
-    // **`6.022e23`, and `1e9` without a dot.** Scientific notation was not
-    // lexed at all, which made a whole range of values unwritable -- and made
-    // `strFromFloat` asymmetric with the language, because the text it produces
-    // for a large or small value (`1e+21`, `1e-308`) could not be typed back
-    // into a program as the literal it names.
+    // **`1_000_000`, `0xFF_FF`.** One run of digits, where `_` may sit between two
+    // of them and means nothing. Answers whether it saw one, so the caller strips
+    // them only then and a literal without separators costs no allocation.
     //
-    // Consumed only when a digit actually follows the `e` and its optional sign,
-    // so an identifier is never eaten: `1e` is the number 1 followed by the name
-    // `e`, exactly as it was. The backend needs nothing -- a double constant is
-    // `atof` of this text, and `atof` has read exponents since C89.
-    let exponent = lexerCurrent(lex) == 'e' or lexerCurrent(lex) == 'E'
-    if (exponent) {
-        let signed = lexerPeek(lex, 1) == '+' or lexerPeek(lex, 1) == '-'
-        let mut digitAt = 1
-        if (signed) { digitAt = 2 }
-        if (lexerPeek(lex, digitAt) == '_') {
-            let mut ahead = digitAt + 1
-            while (lexerPeek(lex, ahead) == '_') { ahead = ahead + 1 }
-            if (isDigit(lexerPeek(lex, ahead))) {
-                lexerFatal(lex, lex.line, lex.col + digitAt,
-                    "a digit separator `_` goes between two digits, not after the exponent, as in `1e1_0`")
+    // A separator needs a digit on both sides. `1_` and `1_.5` are refused rather
+    // than read as `1` followed by the name `_`, which is what they lexed as before
+    // separators existed -- and which no grammar rule accepts, so the only thing
+    // that reading bought was a worse message.
+    private fn digitRun(self, radix: Int) -> Bool {
+        let mut separated = false
+        while (isRadixDigit(self.current(), radix)) {
+            self.advance()
+            if (self.current() == '_') {
+                let mut ahead = 1
+                while (self.peek(ahead) == '_') { ahead = ahead + 1 }
+                if (isRadixDigit(self.peek(ahead), radix) == false) {
+                    self.fatal(self.line, self.col,
+                        "a digit separator `_` goes between two digits, as in `1_000_000`")
+                }
+                repeat(ahead) {
+                    self.advance()
+                }
+                separated = true
             }
         }
-        if (isDigit(lexerPeek(lex, digitAt))) {
+        return separated
+    }
+
+    // `0xFF`, `0o755`, `0b1010`. The prefix is kept in the token text rather than
+    // converted here, so the range check in sema reads the same spelling the
+    // backend does.
+    //
+    // **A leading zero is not octal.** `010` is ten, as it has always been, because
+    // C's rule -- where a zero-padded decimal silently changes base -- is a defect
+    // every language designed since has declined to repeat. Octal is `0o` and only
+    // `0o`.
+    //
+    // Each prefix needs at least one digit after it or it is not one: `0x` alone
+    // stays the number 0 followed by the name `x`, which is what a lexer that
+    // consumed the prefix eagerly would have made unspellable. Answers the radix,
+    // or 10 when the `0` at the cursor starts no prefix.
+    private fn radixPrefix(self) -> Int {
+        let marker = self.peek(1)
+        let mut radix = 10
+        if (marker == 'x' or marker == 'X') { radix = 16 }
+        if (marker == 'o' or marker == 'O') { radix = 8 }
+        if (marker == 'b' or marker == 'B') { radix = 2 }
+        if (radix == 10) { return 10 }
+
+        if (self.peek(2) == '_') {
+            let mut ahead = 3
+            while (self.peek(ahead) == '_') { ahead = ahead + 1 }
+            if (isRadixDigit(self.peek(ahead), radix)) {
+                self.fatal(self.line, self.col + 2,
+                    "a digit separator `_` goes between two digits, not after the prefix, as in `0xFF_FF`")
+            }
+        }
+        if (isRadixDigit(self.peek(2), radix) == false) { return 10 }
+        self.advance()
+        self.advance()
+        return radix
+    }
+
+    // The literal's text with its separators taken out, so every later reader --
+    // the range check, the backend's constant, the AIF oracle -- sees plain digits
+    // and none of them has to know separators exist. The token's `len` still spans
+    // the source as written, so a diagnostic underlines all of it.
+    private fn numberText(self, start: Int, separated: Bool) -> String {
+        let raw = self.input.substring(start, self.pos - start)
+        if (separated) {
+            return raw.replaceAll("_", "")
+        }
+        return raw
+    }
+
+    private fn number(self) -> Token {
+        let line = self.line
+        let col = self.col
+        let start = self.pos
+        let mut isFloat = false
+
+        if (self.current() == '0') {
+            let radix = self.radixPrefix()
+            if (radix != 10) {
+                let separated = self.digitRun(radix)
+                let radixText = self.numberText(start, separated)
+                return self.token(TokenType.NUMBER_LITERAL, radixText, line, col, start)
+            }
+        }
+
+        let mut separated = self.digitRun(10)
+
+        // A '.' only continues the number when a digit follows it, so `0..n` scans
+        // as `0`, `..`, `n` rather than as the float `0.` followed by `.n`.
+        if (self.current() == '.' and isDigit(self.peek(1))) {
             isFloat = true
-            lexerAdvance(lex)
-            if (signed) { lexerAdvance(lex) }
-            if (lexDigitRun(lex, 10)) { separated = true }
+            self.advance()
+            if (self.digitRun(10)) { separated = true }
         }
+
+        // **`6.022e23`, and `1e9` without a dot.** Scientific notation was not
+        // lexed at all, which made a whole range of values unwritable -- and made
+        // `strFromFloat` asymmetric with the language, because the text it produces
+        // for a large or small value (`1e+21`, `1e-308`) could not be typed back
+        // into a program as the literal it names.
+        //
+        // Consumed only when a digit actually follows the `e` and its optional sign,
+        // so an identifier is never eaten: `1e` is the number 1 followed by the name
+        // `e`, exactly as it was. The backend needs nothing -- a double constant is
+        // `atof` of this text, and `atof` has read exponents since C89.
+        let exponent = self.current() == 'e' or self.current() == 'E'
+        if (exponent) {
+            let signed = self.peek(1) == '+' or self.peek(1) == '-'
+            let mut digitAt = 1
+            if (signed) { digitAt = 2 }
+            if (self.peek(digitAt) == '_') {
+                let mut ahead = digitAt + 1
+                while (self.peek(ahead) == '_') { ahead = ahead + 1 }
+                if (isDigit(self.peek(ahead))) {
+                    self.fatal(self.line, self.col + digitAt,
+                        "a digit separator `_` goes between two digits, not after the exponent, as in `1e1_0`")
+                }
+            }
+            if (isDigit(self.peek(digitAt))) {
+                isFloat = true
+                self.advance()
+                if (signed) { self.advance() }
+                if (self.digitRun(10)) { separated = true }
+            }
+        }
+
+        let value = self.numberText(start, separated)
+        if (isFloat) {
+            return self.token(TokenType.FLOAT_LITERAL, value, line, col, start)
+        }
+        return self.token(TokenType.NUMBER_LITERAL, value, line, col, start)
     }
 
-    let value = lexNumberText(lex, start, separated)
-    if (isFloat) {
-        return lexerToken(lex, TokenType.FLOAT_LITERAL, value, line, col, start)
-    }
-    return lexerToken(lex, TokenType.NUMBER_LITERAL, value, line, col, start)
-}
+    // One run of literal text, ending at the closing quote or at an unescaped `${`.
+    // Single-line strings cannot span across newlines; multiline strings use `"""..."""`.
+    private fn stringChunk(self) -> String {
+        let bodyStart = self.pos
+        let bodyCol = self.col
+        let startLine = self.line
+        let mut hasEscape = false
 
-// One run of literal text, ending at the closing quote or at an unescaped `${`.
-// Single-line strings cannot span across newlines; multiline strings use `"""..."""`.
-private fn lexStringChunk(lex: Lexer) -> String {
-    let bodyStart = lex.pos
-    let bodyCol = lex.col
-    let startLine = lex.line
-    let mut hasEscape = false
-
-    while (lex.pos < lex.length) {
-        let c = lexerCurrent(lex)
-        if (c == '"') { break }
-        if (c == '\n' or c == '\r') {
-            lexerFatal(lex, startLine, bodyCol,
-                "unterminated string literal; multiline strings require triple quotes \"\"\"...\"\"\"")
-        }
-        if (c == '$' and lexerPeek(lex, 1) == '{') { break }
-        if (charCode(c) == 226) { lexerRefuseBidiControl(lex, "a string literal") }
-        if (c == '\\') {
-            hasEscape = true
-            lexerAdvance(lex) // consume the backslash; the pair is skipped below
-            if (lexerCurrent(lex) == '\n' or lexerCurrent(lex) == '\r') {
-                lexerFatal(lex, startLine, bodyCol,
+        while (self.pos < self.length) {
+            let c = self.current()
+            if (c == '"') { break }
+            if (c == '\n' or c == '\r') {
+                self.fatal(startLine, bodyCol,
                     "unterminated string literal; multiline strings require triple quotes \"\"\"...\"\"\"")
             }
-        }
-        lexerAdvance(lex)
-    }
-
-    let mut value = lex.input.substring(bodyStart, lex.pos - bodyStart)
-    // Decoded in place rather than through a second `raw` binding: strings are
-    // affine, so `let value = raw` moves and the decode call would then be
-    // reading a moved-from name.
-    if (hasEscape) {
-        value = lexerDecodeEscapes(lex, value, startLine, bodyCol)
-    }
-    return value
-}
-
-// **Interpolation is a lexer mode, not a second grammar.**
-//
-// `"total: ${count} items"` becomes INTERP_BEGIN("total: "), the real tokens of
-// `count`, INTERP_END(" items"). The expression's tokens are lexed from the
-// source at their own positions, which is the whole reason for doing it here: a
-// mistake inside `${...}` underlines what the author wrote, rather than a
-// reconstruction of it with invented line numbers.
-private fn lexString(lex: Lexer) -> Token {
-    let line = lex.line
-    let col = lex.col
-    let start = lex.pos
-
-    lexerAdvance(lex)
-    let value = lexStringChunk(lex)
-
-    if (lexerCurrent(lex) == '$') {
-        if (lex.interpOpen > 0) {
-            lexerFatal(lex, line, col,
-                "an interpolated string cannot contain another interpolated string")
-        }
-        lexerAdvance(lex)
-        lexerAdvance(lex)
-        lex.interpOpen = 1
-        lex.interpBrace = 0
-        return lexerToken(lex, TokenType.INTERP_BEGIN, value, line, col, start)
-    }
-
-    if (lexerCurrent(lex) == '"') {
-        lexerAdvance(lex)
-    } else {
-        lexerFatal(lex, line, col, "unterminated string literal")
-    }
-
-    return lexerToken(lex, TokenType.STRING_LITERAL, value, line, col, start)
-}
-
-// One run of literal text inside a triple-quoted string, ending at the closing
-// """ or at an unescaped `${`.
-//
-// A line break in the literal is `\n` whatever the file's own line endings are,
-// as it is in Kotlin, Python, Rust and Swift. Taken verbatim, a CRLF checkout --
-// git's default on Windows -- gave `test_150`'s three-line string a `\r` at the
-// end of each line, and the same source two different values on two platforms.
-// Only a CR that starts a CRLF pair goes; a lone CR is kept as written.
-private fn lexTripleStringChunk(lex: Lexer) -> String {
-    let bodyStart = lex.pos
-    let mut sawCrlf = false
-
-    while (lex.pos < lex.length) {
-        let c = lexerCurrent(lex)
-        if (c == '"' and lexerPeek(lex, 1) == '"' and lexerPeek(lex, 2) == '"') {
-            break
-        }
-        if (c == '$' and lexerPeek(lex, 1) == '{') {
-            break
-        }
-        if (c == '\r' and lexerPeek(lex, 1) == '\n') {
-            sawCrlf = true
-        }
-        if (charCode(c) == 226) { lexerRefuseBidiControl(lex, "a string literal") }
-        if (c == '\n') {
-            lexerNewline(lex)
-        }
-        lexerAdvance(lex)
-    }
-
-    let raw = lex.input.substring(bodyStart, lex.pos - bodyStart)
-    if (sawCrlf) {
-        return raw.replaceAll("\r\n", "\n")
-    }
-    return raw
-}
-
-// Kotlin-style triple-quoted multiline strings: `"""..."""`.
-// May span newlines; single and double quotes inside are preserved verbatim.
-private fn lexTripleString(lex: Lexer) -> Token {
-    let line = lex.line
-    let col = lex.col
-    let start = lex.pos
-
-    // Consume the opening """
-    lexerAdvance(lex)
-    lexerAdvance(lex)
-    lexerAdvance(lex)
-
-    let value = lexTripleStringChunk(lex)
-
-    if (lexerCurrent(lex) == '$') {
-        if (lex.interpOpen > 0) {
-            lexerFatal(lex, line, col,
-                "an interpolated string cannot contain another interpolated string")
-        }
-        lexerAdvance(lex)
-        lexerAdvance(lex)
-        lex.interpOpen = 2
-        lex.interpBrace = 0
-        return lexerToken(lex, TokenType.INTERP_BEGIN, value, line, col, start)
-    }
-
-    if (lexerCurrent(lex) == '"' and lexerPeek(lex, 1) == '"' and lexerPeek(lex, 2) == '"') {
-        lexerAdvance(lex)
-        lexerAdvance(lex)
-        lexerAdvance(lex)
-    } else {
-        lexerFatal(lex, line, col, "unterminated triple-quoted string literal")
-    }
-
-    return lexerToken(lex, TokenType.STRING_LITERAL, value, line, col, start)
-}
-
-// The `}` that closes an interpolation, and the literal run after it. Reached
-// from lexerNextToken when the brace depth inside the interpolation is zero --
-// so a struct literal or an `if` in there closes its own braces first.
-private fn lexInterpolationResume(lex: Lexer) -> Token {
-    let line = lex.line
-    let col = lex.col
-    let start = lex.pos
-
-    lexerAdvance(lex)
-    let isTriple = lex.interpOpen == 2
-    let mut value = ""
-    if (isTriple) {
-        value = lexTripleStringChunk(lex)
-    } else {
-        value = lexStringChunk(lex)
-    }
-
-    if (lexerCurrent(lex) == '$') {
-        lexerAdvance(lex)
-        lexerAdvance(lex)
-        return lexerToken(lex, TokenType.INTERP_PART, value, line, col, start)
-    }
-
-    if (isTriple) {
-        if (lexerCurrent(lex) == '"' and lexerPeek(lex, 1) == '"' and lexerPeek(lex, 2) == '"') {
-            lexerAdvance(lex)
-            lexerAdvance(lex)
-            lexerAdvance(lex)
-        } else {
-            lexerFatal(lex, line, col, "unterminated triple-quoted string literal")
-        }
-    } else {
-        if (lexerCurrent(lex) == '"') {
-            lexerAdvance(lex)
-        } else {
-            lexerFatal(lex, line, col, "unterminated string literal")
-        }
-    }
-    lex.interpOpen = 0
-    return lexerToken(lex, TokenType.INTERP_END, value, line, col, start)
-}
-
-// The value is stored as the character's numeric code, not as its text, so that
-// everything downstream treats a Char as the integer it lowers to.
-private fn lexChar(lex: Lexer) -> Token {
-    let line = lex.line
-    let col = lex.col
-    let start = lex.pos
-
-    lexerAdvance(lex)
-    let mut value = lexerCurrent(lex)
-
-    if (value == '\\') {
-        lexerAdvance(lex)
-        let esc = lexerCurrent(lex)
-        if (esc == 'n') { value = '\n' }
-        if (esc == 't') { value = '\t' }
-        if (esc == 'r') { value = '\r' }
-        if (esc == '0') { value = '\0' }
-        if (esc == '\\') { value = '\\' }
-        if (esc == '\'') { value = '\'' }
-        if (esc == '"') { value = '"' }
-        if (esc == 'e') { value = 27 as Char }
-        // `'\x1b'`: exactly two hex digits.
-        if (esc == 'x') {
-            lexerAdvance(lex)
-            let hi = hexDigitValue(lexerCurrent(lex))
-            lexerAdvance(lex)
-            let lo = hexDigitValue(lexerCurrent(lex))
-            if (hi < 0 or lo < 0) {
-                lexerFatal(lex, line, col, "`\\x` takes exactly two hex digits, as in `'\\x1b'`")
+            if (c == '$' and self.peek(1) == '{') { break }
+            if (charCode(c) == 226) { self.refuseBidiControl("a string literal") }
+            if (c == '\\') {
+                hasEscape = true
+                self.advance() // consume the backslash; the pair is skipped below
+                if (self.current() == '\n' or self.current() == '\r') {
+                    self.fatal(startLine, bodyCol,
+                        "unterminated string literal; multiline strings require triple quotes \"\"\"...\"\"\"")
+                }
             }
-            value = (hi * 16 + lo) as Char
+            self.advance()
         }
+
+        let mut value = self.input.substring(bodyStart, self.pos - bodyStart)
+        // Decoded in place rather than through a second `raw` binding: strings are
+        // affine, so `let value = raw` moves and the decode call would then be
+        // reading a moved-from name.
+        if (hasEscape) {
+            value = self.decodeEscapes(value, startLine, bodyCol)
+        }
+        return value
     }
 
-    lexerAdvance(lex)
-    if (lexerCurrent(lex) == '\'') {
-        lexerAdvance(lex)
-    } else {
-        lexerFatal(lex, line, col,
-            "unterminated character literal (a Char holds exactly one character)")
+    // **Interpolation is a lexer mode, not a second grammar.**
+    //
+    // `"total: ${count} items"` becomes INTERP_BEGIN("total: "), the real tokens of
+    // `count`, INTERP_END(" items"). The expression's tokens are lexed from the
+    // source at their own positions, which is the whole reason for doing it here: a
+    // mistake inside `${...}` underlines what the author wrote, rather than a
+    // reconstruction of it with invented line numbers.
+    private fn string(self) -> Token {
+        let line = self.line
+        let col = self.col
+        let start = self.pos
+
+        self.advance()
+        let value = self.stringChunk()
+
+        if (self.current() == '$') {
+            if (self.interpolation != Interpolation.Off) {
+                self.fatal(line, col,
+                    "an interpolated string cannot contain another interpolated string")
+            }
+            self.advance()
+            self.advance()
+            self.interpolation = Interpolation.InString
+            self.interpBrace = 0
+            return self.token(TokenType.INTERP_BEGIN, value, line, col, start)
+        }
+
+        if (self.current() == '"') {
+            self.advance()
+        } else {
+            self.fatal(line, col, "unterminated string literal")
+        }
+
+        return self.token(TokenType.STRING_LITERAL, value, line, col, start)
     }
 
-    return lexerToken(lex, TokenType.CHAR_LITERAL, charCode(value).toString(), line, col, start)
+    // One run of literal text inside a triple-quoted string, ending at the closing
+    // """ or at an unescaped `${`.
+    //
+    // A line break in the literal is `\n` whatever the file's own line endings are,
+    // as it is in Kotlin, Python, Rust and Swift. Taken verbatim, a CRLF checkout --
+    // git's default on Windows -- gave `test_150`'s three-line string a `\r` at the
+    // end of each line, and the same source two different values on two platforms.
+    // Only a CR that starts a CRLF pair goes; a lone CR is kept as written.
+    private fn tripleStringChunk(self) -> String {
+        let bodyStart = self.pos
+        let mut sawCrlf = false
+
+        while (self.pos < self.length) {
+            let c = self.current()
+            if (c == '"' and self.peek(1) == '"' and self.peek(2) == '"') {
+                break
+            }
+            if (c == '$' and self.peek(1) == '{') {
+                break
+            }
+            if (c == '\r' and self.peek(1) == '\n') {
+                sawCrlf = true
+            }
+            if (charCode(c) == 226) { self.refuseBidiControl("a string literal") }
+            if (c == '\n') {
+                self.newline()
+            }
+            self.advance()
+        }
+
+        let raw = self.input.substring(bodyStart, self.pos - bodyStart)
+        if (sawCrlf) {
+            return raw.replaceAll("\r\n", "\n")
+        }
+        return raw
+    }
+
+    // Kotlin-style triple-quoted multiline strings: `"""..."""`.
+    // May span newlines; single and double quotes inside are preserved verbatim.
+    private fn tripleString(self) -> Token {
+        let line = self.line
+        let col = self.col
+        let start = self.pos
+
+        // Consume the opening """
+        self.advance()
+        self.advance()
+        self.advance()
+
+        let value = self.tripleStringChunk()
+
+        if (self.current() == '$') {
+            if (self.interpolation != Interpolation.Off) {
+                self.fatal(line, col,
+                    "an interpolated string cannot contain another interpolated string")
+            }
+            self.advance()
+            self.advance()
+            self.interpolation = Interpolation.InTripleString
+            self.interpBrace = 0
+            return self.token(TokenType.INTERP_BEGIN, value, line, col, start)
+        }
+
+        if (self.current() == '"' and self.peek(1) == '"' and self.peek(2) == '"') {
+            self.advance()
+            self.advance()
+            self.advance()
+        } else {
+            self.fatal(line, col, "unterminated triple-quoted string literal")
+        }
+
+        return self.token(TokenType.STRING_LITERAL, value, line, col, start)
+    }
+
+    // The `}` that closes an interpolation, and the literal run after it. Reached
+    // from lexerNextToken when the brace depth inside the interpolation is zero --
+    // so a struct literal or an `if` in there closes its own braces first.
+    private fn resumeInterpolation(self) -> Token {
+        let line = self.line
+        let col = self.col
+        let start = self.pos
+
+        self.advance()
+        let isTriple = self.interpolation == Interpolation.InTripleString
+        let mut value = ""
+        if (isTriple) {
+            value = self.tripleStringChunk()
+        } else {
+            value = self.stringChunk()
+        }
+
+        if (self.current() == '$') {
+            self.advance()
+            self.advance()
+            return self.token(TokenType.INTERP_PART, value, line, col, start)
+        }
+
+        if (isTriple) {
+            if (self.current() == '"' and self.peek(1) == '"' and self.peek(2) == '"') {
+                self.advance()
+                self.advance()
+                self.advance()
+            } else {
+                self.fatal(line, col, "unterminated triple-quoted string literal")
+            }
+        } else {
+            if (self.current() == '"') {
+                self.advance()
+            } else {
+                self.fatal(line, col, "unterminated string literal")
+            }
+        }
+        self.interpolation = Interpolation.Off
+        return self.token(TokenType.INTERP_END, value, line, col, start)
+    }
+
+    // The value is stored as the character's numeric code, not as its text, so that
+    // everything downstream treats a Char as the integer it lowers to.
+    private fn character(self) -> Token {
+        let line = self.line
+        let col = self.col
+        let start = self.pos
+
+        self.advance()
+        let mut value = self.current()
+
+        if (value == '\\') {
+            self.advance()
+            let esc = self.current()
+            if (esc == 'n') { value = '\n' }
+            if (esc == 't') { value = '\t' }
+            if (esc == 'r') { value = '\r' }
+            if (esc == '0') { value = '\0' }
+            if (esc == '\\') { value = '\\' }
+            if (esc == '\'') { value = '\'' }
+            if (esc == '"') { value = '"' }
+            if (esc == 'e') { value = 27 as Char }
+            // `'\x1b'`: exactly two hex digits.
+            if (esc == 'x') {
+                self.advance()
+                let hi = hexDigitValue(self.current())
+                self.advance()
+                let lo = hexDigitValue(self.current())
+                if (hi < 0 or lo < 0) {
+                    self.fatal(line, col, "`\\x` takes exactly two hex digits, as in `'\\x1b'`")
+                }
+                value = (hi * 16 + lo) as Char
+            }
+        }
+
+        self.advance()
+        if (self.current() == '\'') {
+            self.advance()
+        } else {
+            self.fatal(line, col,
+                "unterminated character literal (a Char holds exactly one character)")
+        }
+
+        return self.token(TokenType.CHAR_LITERAL, charCode(value).toString(), line, col, start)
+    }
 }
+
 
 // Whether `first` followed by `second` is a two-character operator. Shifts are
 // included: `>>` also closes two nested generic arguments, which the parser
@@ -864,70 +885,73 @@ private fn oneCharOperatorType(c: Char) -> TokenType {
     if (c == '!') { return TokenType.NEGATION }
     return TokenType.ARITHMETIC_OPERATOR
 }
+impl Lexer {
 
-private fn lexOperator(lex: Lexer) -> Token {
-    let line = lex.line
-    let col = lex.col
-    let start = lex.pos
+    private fn operator(self) -> Token {
+        let line = self.line
+        let col = self.col
+        let start = self.pos
 
-    let first = lexerCurrent(lex)
-    lexerAdvance(lex)
-    if (isTwoCharOperator(first, lexerCurrent(lex))) {
-        lexerAdvance(lex)
+        let first = self.current()
+        self.advance()
+        if (isTwoCharOperator(first, self.current())) {
+            self.advance()
+        }
+
+        let value = self.input.substring(start, self.pos - start)
+        let mut type = oneCharOperatorType(first)
+        if (self.pos - start == 2) {
+            type = twoCharOperatorType(value)
+        }
+
+        return self.token(type, value, line, col, start)
     }
 
-    let value = lex.input.substring(start, lex.pos - start)
-    let mut type = oneCharOperatorType(first)
-    if (lex.pos - start == 2) {
-        type = twoCharOperatorType(value)
+    private fn separator(self) -> Token {
+        let line = self.line
+        let col = self.col
+        let start = self.pos
+
+        let value = self.input.substring(start, 1)
+        self.advance()
+        return self.token(TokenType.SEPARATOR, value, line, col, start)
     }
 
-    return lexerToken(lex, type, value, line, col, start)
-}
+    // `..` is the inclusive range and `..<` the one that stops before its end. One
+    // token kind for both, told apart by the spelling: every place that accepts a
+    // range accepts either, so the parser asks the kind first and the value only
+    // to record which end was meant.
+    private fn range(self) -> Token {
+        let line = self.line
+        let col = self.col
+        let start = self.pos
 
-private fn lexSeparator(lex: Lexer) -> Token {
-    let line = lex.line
-    let col = lex.col
-    let start = lex.pos
-
-    let value = lex.input.substring(start, 1)
-    lexerAdvance(lex)
-    return lexerToken(lex, TokenType.SEPARATOR, value, line, col, start)
-}
-
-// `..` is the inclusive range and `..<` the one that stops before its end. One
-// token kind for both, told apart by the spelling: every place that accepts a
-// range accepts either, so the parser asks the kind first and the value only
-// to record which end was meant.
-private fn lexRange(lex: Lexer) -> Token {
-    let line = lex.line
-    let col = lex.col
-    let start = lex.pos
-
-    lexerAdvance(lex)
-    lexerAdvance(lex)
-    if (lexerCurrent(lex) == '<') {
-        lexerAdvance(lex)
-        return lexerToken(lex, TokenType.RANGE, "..<", line, col, start)
+        self.advance()
+        self.advance()
+        if (self.current() == '<') {
+            self.advance()
+            return self.token(TokenType.RANGE, "..<", line, col, start)
+        }
+        return self.token(TokenType.RANGE, "..", line, col, start)
     }
-    return lexerToken(lex, TokenType.RANGE, "..", line, col, start)
-}
 
-// This used to produce an UNKNOWN token and carry on, which meant a stray
-// character surfaced much later as "Unknown declaration" pointing at something
-// entirely innocent. Say what was actually wrong, where.
-private fn lexUnexpected(lex: Lexer, c: Char) -> Token {
-    let line = lex.line
-    let col = lex.col
-    let start = lex.pos
+    // This used to produce an UNKNOWN token and carry on, which meant a stray
+    // character surfaced much later as "Unknown declaration" pointing at something
+    // entirely innocent. Say what was actually wrong, where.
+    private fn unexpected(self, c: Char) -> Token {
+        let line = self.line
+        let col = self.col
+        let start = self.pos
 
-    if (charCode(c) >= 128) {
-        lexerFatal(lex, line, col, lexerNonAsciiMessage(lexerScalar(lex), charCode(c)))
+        if (charCode(c) >= 128) {
+            self.fatal(line, col, lexerNonAsciiMessage(self.currentScalar(), charCode(c)))
+        }
+        self.advance()
+        self.fatal(line, col, "unexpected character ".concat(diagQuote(c.toString())))
+        return self.token(TokenType.UNKNOWN, "?", line, col, start)
     }
-    lexerAdvance(lex)
-    lexerFatal(lex, line, col, "unexpected character ".concat(diagQuote(c.toString())))
-    return lexerToken(lex, TokenType.UNKNOWN, "?", line, col, start)
 }
+
 
 // What to say about a non-ASCII byte outside a literal or comment. Quoting it
 // would print one byte of a multi-byte character, or a byte that is not text at
@@ -962,75 +986,80 @@ public fn lexerScalarNotation(scalar: Int) -> String {
     }
     return "U+".concat(text)
 }
+impl Lexer {
 
-private fn lexerNextToken(lex: Lexer) -> Token {
-    lexerSkipWhitespace(lex)
+    private fn nextToken(self) -> Token {
+        self.skipWhitespace()
 
-    if (lex.pos >= lex.length) {
-        return lexerToken(lex, TokenType.EOF, "EOF", lex.line, lex.col, lex.pos)
-    }
-
-    let c = lexerCurrent(lex)
-
-    // The end of `${...}`: back into the string this expression was written in.
-    if (lex.interpOpen > 0 and lex.interpBrace == 0 and c == '}') {
-        return lexInterpolationResume(lex)
-    }
-
-    if (isIdentStart(c)) { return lexIdentifier(lex) }
-    if (charCode(c) >= 128 and lexerIsIdentifierStart(lexerScalar(lex))) {
-        return lexIdentifier(lex)
-    }
-    if (isDigit(c)) { return lexNumber(lex) }
-    if (c == '"') {
-        if (lexerPeek(lex, 1) == '"' and lexerPeek(lex, 2) == '"') {
-            return lexTripleString(lex)
+        if (self.pos >= self.length) {
+            return self.token(TokenType.EOF, "EOF", self.line, self.col, self.pos)
         }
-        return lexString(lex)
-    }
-    if (c == '\'') { return lexChar(lex) }
-    // Before the separator check, and after the operator check, because '.' is a
-    // separator but ".." is not.
-    if (isOperator(c)) { return lexOperator(lex) }
-    if (c == '.' and lexerPeek(lex, 1) == '.') { return lexRange(lex) }
-    if (isSeparator(c)) {
-        if (lex.interpOpen > 0) {
-            if (c == '{') { lex.interpBrace = lex.interpBrace + 1 }
-            if (c == '}') { lex.interpBrace = lex.interpBrace - 1 }
-        }
-        return lexSeparator(lex)
-    }
 
-    return lexUnexpected(lex, c)
+        let c = self.current()
+
+        // The end of `${...}`: back into the string this expression was written in.
+        if (self.interpolation != Interpolation.Off and self.interpBrace == 0 and c == '}') {
+            return self.resumeInterpolation()
+        }
+
+        if (isIdentStart(c)) { return self.identifier() }
+        if (charCode(c) >= 128 and lexerIsIdentifierStart(self.currentScalar())) {
+            return self.identifier()
+        }
+        if (isDigit(c)) { return self.number() }
+        if (c == '"') {
+            if (self.peek(1) == '"' and self.peek(2) == '"') {
+                return self.tripleString()
+            }
+            return self.string()
+        }
+        if (c == '\'') { return self.character() }
+        // Before the separator check, and after the operator check, because '.' is a
+        // separator but ".." is not.
+        if (isOperator(c)) { return self.operator() }
+        if (c == '.' and self.peek(1) == '.') { return self.range() }
+        if (isSeparator(c)) {
+            if (self.interpolation != Interpolation.Off) {
+                if (c == '{') { self.interpBrace = self.interpBrace + 1 }
+                if (c == '}') { self.interpBrace = self.interpBrace - 1 }
+            }
+            return self.separator()
+        }
+
+        return self.unexpected(c)
+    }
 }
+
 
 // Both are `void* f(void* p) { return p; }` in lang_runtime.c, so the result is
 // the argument; without the contracts every Token reads as an opaque extern.
 public extern fn ptr_to_token(ptr: Ptr) -> Token alias
 public extern fn token_to_ptr(tok: Token borrow) -> Ptr alias
+impl Lexer {
 
-// Token is a struct and therefore move-only, so walking the list with a second
-// Token binding (`let current = head`) would move `head` and make the final
-// `return head` a use-after-move. Thread the list through pointers instead: the
-// bindings stay local to one iteration and the chain itself is built the same way.
-public fn lexAllTokens(lex: Lexer) -> Token {
-    // The head stays a Token rather than a second pointer binding. Pointers are
-    // Strings here, and AIF Level 4 made those affine too, so
-    // `let mut currentPtr = head_ptr` moved the head and the return read a
-    // moved-from name. `token_to_ptr` takes a borrow, so naming it twice costs
-    // nothing.
-    let head = lexerNextToken(lex)
-    let mut currentPtr = token_to_ptr(head)
+    // Token is a struct and therefore move-only, so walking the list with a second
+    // Token binding (`let current = head`) would move `head` and make the final
+    // `return head` a use-after-move. Thread the list through pointers instead: the
+    // bindings stay local to one iteration and the chain itself is built the same way.
+    public fn allTokens(self) -> Token {
+        // The head stays a Token rather than a second pointer binding. Pointers are
+        // Strings here, and AIF Level 4 made those affine too, so
+        // `let mut currentPtr = head_ptr` moved the head and the return read a
+        // moved-from name. `token_to_ptr` takes a borrow, so naming it twice costs
+        // nothing.
+        let head = self.nextToken()
+        let mut currentPtr = token_to_ptr(head)
 
-    loop {
-        let current = ptr_to_token(currentPtr)
-        if (current.type == TokenType.EOF) { break }
+        loop {
+            let current = ptr_to_token(currentPtr)
+            if (current.type == TokenType.EOF) { break }
 
-        current.tokNext = token_to_ptr(lexerNextToken(lex))
-        // Read back through the field rather than keeping a second binding: the
-        // store already moved the pointer into the token.
-        currentPtr = current.tokNext
+            current.tokNext = token_to_ptr(self.nextToken())
+            // Read back through the field rather than keeping a second binding: the
+            // store already moved the pointer into the token.
+            currentPtr = current.tokNext
+        }
+
+        return head
     }
-
-    return head
 }

@@ -6,6 +6,8 @@
 
 
 import std.string
+import std.vec
+
 enum TokenType {
     STRING_LITERAL,
     CHAR_LITERAL,
@@ -71,79 +73,66 @@ struct Token {
 // a reader does not care that `<=` is RELATIONAL_OPERATOR rather than
 // ARITHMETIC_OPERATOR, and kinds with no distinct wording fall through to "TOKEN".
 public fn typeToString(t: TokenType) -> String {
-    if (t == TokenType.STRING_LITERAL) { return "STRING" }
-    if (t == TokenType.CHAR_LITERAL) { return "CHAR" }
-    if (t == TokenType.NUMBER_LITERAL) { return "NUMBER" }
-    if (t == TokenType.FLOAT_LITERAL) { return "FLOAT" }
-    if (t == TokenType.BOOL_LITERAL) { return "BOOL" }
-    if (t == TokenType.IDENTIFIER) { return "IDENTIFIER" }
-    if (t == TokenType.KEYWORD) { return "KEYWORD" }
-    if (t == TokenType.SEPARATOR) { return "SEPARATOR" }
-    if (t == TokenType.ARITHMETIC_OPERATOR) { return "OPERATOR" }
-    if (t == TokenType.RELATIONAL_OPERATOR) { return "REL_OP" }
-    if (t == TokenType.ASSIGNMENT_OPERATOR) { return "ASSIGN_OP" }
-    if (t == TokenType.ARROW) { return "ARROW" }
-    if (t == TokenType.EOF) { return "EOF" }
+    match (t) {
+        TokenType.STRING_LITERAL => { return "STRING" }
+        TokenType.CHAR_LITERAL => { return "CHAR" }
+        TokenType.NUMBER_LITERAL => { return "NUMBER" }
+        TokenType.FLOAT_LITERAL => { return "FLOAT" }
+        TokenType.BOOL_LITERAL => { return "BOOL" }
+        TokenType.IDENTIFIER => { return "IDENTIFIER" }
+        TokenType.KEYWORD => { return "KEYWORD" }
+        TokenType.SEPARATOR => { return "SEPARATOR" }
+        TokenType.ARITHMETIC_OPERATOR => { return "OPERATOR" }
+        TokenType.RELATIONAL_OPERATOR => { return "REL_OP" }
+        TokenType.ASSIGNMENT_OPERATOR => { return "ASSIGN_OP" }
+        TokenType.ARROW => { return "ARROW" }
+        TokenType.EOF => { return "EOF" }
+    }
     return "TOKEN"
 }
 
-// A linear scan rather than a lookup table: the set is small, this runs once per
-// identifier, and building a table would mean str_concat calls that allocate on
-// the hottest path in the scanner.
-internal fn isKeyword(word: String) -> Bool {
-    if (word.equals("import")) { return true }
+// Every reserved word, in one place. A module-level array of literals is read-only
+// data: nothing is built, allocated or copied when the scanner asks, and anything
+// that needs the vocabulary (the scanner, an editor integration's keyword list, a
+// test) reads `reservedWords` instead of keeping its own copy.
+let reservedWords = [
+    "import",
 
-    if (word.equals("match")) { return true }
-    if (word.equals("if")) { return true }
-    if (word.equals("else")) { return true }
-    if (word.equals("and")) { return true }
-    if (word.equals("or")) { return true }
+    "match", "if", "else", "and", "or",
 
-    if (word.equals("true")) { return true }
-    if (word.equals("false")) { return true }
+    "true", "false",
 
-    if (word.equals("break")) { return true }
-    if (word.equals("continue")) { return true }
-    if (word.equals("return")) { return true }
-    if (word.equals("throw")) { return true }
+    "break", "continue", "return", "throw",
 
-    if (word.equals("while")) { return true }
-    if (word.equals("loop")) { return true }
-    if (word.equals("for")) { return true }
-    if (word.equals("in")) { return true }
+    "while", "loop", "for", "in",
 
-    if (word.equals("let")) { return true }
-    if (word.equals("struct")) { return true }
-    if (word.equals("impl")) { return true }
-    if (word.equals("enum")) { return true }
-    if (word.equals("trait")) { return true }
-    if (word.equals("where")) { return true }
-    if (word.equals("fn")) { return true }
-    if (word.equals("extern")) { return true }
+    "let", "struct", "impl", "enum", "trait", "where", "fn", "extern",
 
-    if (word.equals("mut")) { return true }
-    if (word.equals("as")) { return true }
+    "mut", "as",
 
     // Parameter conventions: ownership and borrows.
-    if (word.equals("inout")) { return true }
-    if (word.equals("sink")) { return true }
+    "inout", "sink",
 
     // SPEC 5.2: pins an arena at this scope. Unlike the FFI contract names, which
     // are contextual, this one opens a statement and so has to be a real keyword.
-    if (word.equals("region")) { return true }
+    "region",
 
     // REQUIREMENTS 4. The absent reference. A real keyword rather than a
     // contextual name, unlike `unique` and `pin`: those are annotations, and
     // SPEC 5 requires that deleting one leave a working program. `none` is a
     // *value* -- deleting it leaves a hole -- so the obligation does not apply
     // and a keyword is the honest spelling.
-    if (word.equals("none")) { return true }
+    "none",
 
     // `let x: String = default`. A keyword for `none`'s reason: it is a value, so
     // a binding named `default` would change what the word means below it.
-    if (word.equals("default")) { return true }
+    "default"
+]
 
-    return false
+// A list searched with `contains` rather than a lookup table: the set is small and
+// this runs once per identifier.
+internal fn isKeyword(word: String) -> Bool {
+    return reservedWords.contains(word)
 }
 
 internal fn isBoolean(word: String) -> Bool {

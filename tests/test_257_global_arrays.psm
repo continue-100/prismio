@@ -1,0 +1,44 @@
+import std.io
+import std.string
+import std.vec
+
+// A module-level `let` holding an array of literals is read-only data, read by
+// address: nothing is built when a function reads it.
+let words = ["alpha", "beta", "gamma"]
+let primes = [2, 3, 5, 7, 11]
+let ratios = [0.5, 1.5]
+let letters = ['a', 'b']
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn known(word: String) -> Bool {
+    return words.contains(word)
+}
+
+fn sum() -> Int {
+    let mut total = 0
+    for p in primes { total += p }
+    return total
+}
+
+fn main() -> Int {
+    if (known("beta") == false) { return fail("a listed word is not found") }
+    if (known("delta")) { return fail("an unlisted word is found") }
+    if (sum() != 28) { return fail("iterating a global array") }
+    if (primes[3] != 7) { return fail("indexing a global Int array") }
+    if (words[2] != "gamma") { return fail("indexing a global String array") }
+    if (ratios[1] != 1.5) { return fail("a global Float array") }
+    if (letters[1] != 'b') { return fail("a global Char array") }
+
+    // A binding copies an array whose length is known, so this one is writable.
+    let mut copy = primes
+    copy[0] = 100
+    if (copy[0] + primes[0] != 102) { return fail("a copy is independent of the global") }
+
+    println("PASS: global arrays")
+    return 0
+}

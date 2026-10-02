@@ -10,6 +10,7 @@ import {scanner, token} from lexer
 import {io, string, option, process} from std
 import {text, diagnostics, target} from common
 import {nodes, dump} from ast
+import std.fs
 
 // Both malloc and hand the buffer over: compiler_default_exe_path sprintfs into
 // a fresh block, compiler_temp_ir_path goes through compiler_temp_path which
@@ -36,8 +37,6 @@ extern fn compiler_set_sysroot(path: String borrow)
 // A `static const char*` in C, so the caller borrows it. See PRISMIO_HOST_ABI in
 // runtime/prismio_runtime.h for what the token means and when it moves.
 public extern fn compiler_host_abi() -> String alias
-public extern fn executable_directory() -> String produce(free)
-public extern fn get_directory(path: String) -> String
 // A `static char buf[32]` the next call overwrites.
 public extern fn ir_llvm_version() -> String alias
 
@@ -174,13 +173,13 @@ private fn cliVersion() -> Int {
     // empty answer is printed as such rather than omitted: no standard
     // library found is the single most useful thing this can tell you.
     print("compiler ")
-    println(executable_directory())
+    println(executableDirectory())
     let stdRoot = standardModulePath(".", "string.psm")
     print("stdlib ")
     if (stdRoot.equals("")) {
         println("(none found)")
     } else {
-        println(get_directory(stdRoot))
+        println(directoryOf(stdRoot))
     }
     return 0
 }

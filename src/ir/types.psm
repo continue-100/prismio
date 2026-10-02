@@ -244,67 +244,69 @@ internal fn getExprType(expr: ASTNode) -> String {
         if (expr.i1 == TokenType.STRING_LITERAL as Int) { return "ptr" }
     }
 
-    if (expr.kind == NodeKind.IDENTIFIER_EXPR) {
-        return ir_get_var_type(expr.s1)
-    }
-
-    if (expr.kind == NodeKind.UNARY_EXPR) {
-        if (expr.s1.equals("!")) { return "i1" }
-        return getExprType(ptr_to_node(expr.child1))
-    }
-
-    if (expr.kind == NodeKind.CAST_EXPR) {
-        // sema records the target type on the node; this is only the fallback.
-        return mapTypeNode(ptr_to_node(expr.child2))
-    }
-
-    if (expr.kind == NodeKind.BINARY_EXPR) {
-        let op = expr.s1
-        if (op.equals("==") or op.equals("!=")) { return "i1" }
-        if (op.equals("<") or op.equals("<=")) { return "i1" }
-        if (op.equals(">") or op.equals(">=")) { return "i1" }
-        if (op.equals("and") or op.equals("or")) { return "i1" }
-        return getExprType(ptr_to_node(expr.child1))
-    }
-
-    if (expr.kind == NodeKind.CALL_EXPR) {
-        let callee = ptr_to_node(expr.child1)
-        let funcName = callee.s1
-        if (expr.s2.equals("") == false) {
-            return ir_get_fn_return_type(expr.s2)
+    match (expr.kind) {
+        NodeKind.IDENTIFIER_EXPR => {
+            return ir_get_var_type(expr.s1)
         }
-        return ir_get_fn_return_type(funcName)
-    }
 
-    if (expr.kind == NodeKind.INDEX_EXPR) {
-        let objType = getExprType(ptr_to_node(expr.child1))
-        if (objType.equals("ptrptr")) {
+        NodeKind.UNARY_EXPR => {
+            if (expr.s1.equals("!")) { return "i1" }
+            return getExprType(ptr_to_node(expr.child1))
+        }
+
+        NodeKind.CAST_EXPR => {
+            // sema records the target type on the node; this is only the fallback.
+            return mapTypeNode(ptr_to_node(expr.child2))
+        }
+
+        NodeKind.BINARY_EXPR => {
+            let op = expr.s1
+            if (op.equals("==") or op.equals("!=")) { return "i1" }
+            if (op.equals("<") or op.equals("<=")) { return "i1" }
+            if (op.equals(">") or op.equals(">=")) { return "i1" }
+            if (op.equals("and") or op.equals("or")) { return "i1" }
+            return getExprType(ptr_to_node(expr.child1))
+        }
+
+        NodeKind.CALL_EXPR => {
+            let callee = ptr_to_node(expr.child1)
+            let funcName = callee.s1
+            if (expr.s2.equals("") == false) {
+                return ir_get_fn_return_type(expr.s2)
+            }
+            return ir_get_fn_return_type(funcName)
+        }
+
+        NodeKind.INDEX_EXPR => {
+            let objType = getExprType(ptr_to_node(expr.child1))
+            if (objType.equals("ptrptr")) {
+                return "ptr"
+            }
+            return "i32"
+        }
+
+        NodeKind.MEMBER_ACCESS_EXPR => {
+            let objectNode = ptr_to_node(expr.child1)
+            if (objectNode.kind == NodeKind.IDENTIFIER_EXPR) {
+                let enumVal = ir_get_enum_variant(objectNode.s1, expr.s1)
+                if (enumVal >= 0) {
+                    return "i32"
+                }
+            }
+            let objectType = getExprType(objectNode)
+            if (isStructTypeKey(objectType)) {
+                return ir_get_struct_field_type(structTypeName(objectType), expr.s1)
+            }
+            return "i32"
+        }
+
+        NodeKind.ARRAY_LITERAL_EXPR => {
             return "ptr"
         }
-        return "i32"
-    }
 
-    if (expr.kind == NodeKind.MEMBER_ACCESS_EXPR) {
-        let objectNode = ptr_to_node(expr.child1)
-        if (objectNode.kind == NodeKind.IDENTIFIER_EXPR) {
-            let enumVal = ir_get_enum_variant(objectNode.s1, expr.s1)
-            if (enumVal >= 0) {
-                return "i32"
-            }
+        NodeKind.STRUCT_LITERAL_EXPR => {
+            return structTypeKey(expr.s1)
         }
-        let objectType = getExprType(objectNode)
-        if (isStructTypeKey(objectType)) {
-            return ir_get_struct_field_type(structTypeName(objectType), expr.s1)
-        }
-        return "i32"
-    }
-
-    if (expr.kind == NodeKind.ARRAY_LITERAL_EXPR) {
-        return "ptr"
-    }
-
-    if (expr.kind == NodeKind.STRUCT_LITERAL_EXPR) {
-        return structTypeKey(expr.s1)
     }
 
     return "i32"

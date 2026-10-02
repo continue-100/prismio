@@ -1,0 +1,6 @@
+// expect-error: cannot change `primes`, which is not declared `mut`
+let primes = [3, 1, 2]
+fn main() -> Int {
+    primes[0] = 9
+    return 0
+}

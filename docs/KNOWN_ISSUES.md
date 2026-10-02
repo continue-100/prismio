@@ -777,15 +777,19 @@ at all.
 
 ## Toolchain layout
 
-**The compiler binary is 125 MB, and about 37 MB of it is LLVM backends
-Prismio does not document.** `tools/setup_llvm.py` links `all-targets`: AMDGPU
-alone is ~21 MB by symbol name, then Hexagon, PowerPC, VE, NVPTX, SPIR-V, MIPS,
-SystemZ, XCore, LoongArch, Sparc, AVR, BPF, Lanai and MSP430. The documented
-`--target`s need AArch64, X86 and WebAssembly (RISC-V appears in
-`default_target_cpu`). Limiting the set is a product decision -- it removes
-`--target` triples -- and needs `ensure_all_targets` to initialise only what is
-linked. (Exporting only the native objects' symbols instead of `-rdynamic` took it
-from 135.8 MB on 2026-09-28.)
+**The compiler links three LLVM backends: AArch64, X86 and WebAssembly.** Changed
+2026-10-02. It linked LLVM's `all-targets` (25 backends; AMDGPU alone was ~21 MB)
+and was 129 MB; it is now 67 MB, and the benchmark suite's own binary is unchanged
+(`prismio bench`: 225,216 B). `--target` accepts only those three families; any other
+triple stops with `P1043 unknown target triple`. The set is written twice and
+`tools/check_source_lists.py` fails if the two disagree: `PRISMIO_LLVM_TARGET_LIST`
+in `runtime/prismio_llvm.h` (what the backend initialises) and `TARGET_COMPONENTS`
+in `tools/setup_llvm.py` (what it links). Adding a target is both lists, plus
+`default_target_cpu` in `runtime/llvm-api-backend.c` and the targets page of the
+docs. An existing `third_party/llvm` prepared before this change is redone by the
+next `tools/setup_llvm.py` run (the marker records the component list); the
+download is the cost. (Exporting only the native objects' symbols instead of
+`-rdynamic` had taken it from 135.8 MB on 2026-09-28.)
 
 **LLVM is pinned in the checkout and linked into the compiler; a package needs
 none.** Fixed 2026-09-18. Before, every compiler binary loaded Homebrew's

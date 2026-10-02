@@ -53,18 +53,22 @@ internal fn semaWarningAt(node: ASTNode, message: String) {
 // pointer declared to return something wider leaves the upper half undefined,
 // which is the one class of bug a task runtime must not have.
 private fn semaTaskResultAllowed(t: TypeInfo) -> Bool {
-    if (t.kind == TypeKind.VOID) { return true }
-    if (t.kind == TypeKind.INT) { return t.name.equals("Int") }
-    if (t.kind == TypeKind.STRUCT) { return true }
-    if (t.kind == TypeKind.STRING) { return true }
-    if (t.kind == TypeKind.LIST) { return true }
+    match (t.kind) {
+        TypeKind.VOID => { return true }
+        TypeKind.INT => { return t.name.equals("Int") }
+        TypeKind.STRUCT => { return true }
+        TypeKind.STRING => { return true }
+        TypeKind.LIST => { return true }
+    }
     return t.kind == TypeKind.PTR
 }
 
 private fn semaSpawnArgAllowed(t: TypeInfo) -> Bool {
-    if (t.kind == TypeKind.STRUCT) { return true }
-    if (t.kind == TypeKind.STRING) { return true }
-    if (t.kind == TypeKind.LIST) { return true }
+    match (t.kind) {
+        TypeKind.STRUCT => { return true }
+        TypeKind.STRING => { return true }
+        TypeKind.LIST => { return true }
+    }
     return t.kind == TypeKind.PTR
 }
 
@@ -2362,26 +2366,28 @@ internal fn semaExpr(module: ASTNode, expr: ASTNode) -> TypeInfo {
     if (nodeHasType(expr)) {
         return nodeGetType(expr)
     }
-    if (expr.kind == NodeKind.LITERAL_EXPR) { return semaLiteralExpr(module, expr) }
-    if (expr.kind == NodeKind.IDENTIFIER_EXPR) { return semaIdentifierExpr(module, expr) }
-    if (expr.kind == NodeKind.NONE_LITERAL_EXPR) { return semaNoneLiteralExpr(module, expr) }
-    if (expr.kind == NodeKind.DEFAULT_EXPR) { return semaDefaultWithoutContext(expr) }
-    if (expr.kind == NodeKind.MAP_LITERAL_EXPR) {
-        if (semaMapLiteral(module, expr, typeInvalid()) == false) { return typeInvalid() }
-        return semaExpr(module, expr)
+    match (expr.kind) {
+        NodeKind.LITERAL_EXPR => { return semaLiteralExpr(module, expr) }
+        NodeKind.IDENTIFIER_EXPR => { return semaIdentifierExpr(module, expr) }
+        NodeKind.NONE_LITERAL_EXPR => { return semaNoneLiteralExpr(module, expr) }
+        NodeKind.DEFAULT_EXPR => { return semaDefaultWithoutContext(expr) }
+        NodeKind.MAP_LITERAL_EXPR => {
+            if (semaMapLiteral(module, expr, typeInvalid()) == false) { return typeInvalid() }
+            return semaExpr(module, expr)
+        }
+        NodeKind.CAST_EXPR => { return semaCastExpr(module, expr) }
+        NodeKind.UNARY_EXPR => { return semaUnaryExpr(module, expr) }
+        NodeKind.BINARY_EXPR => { return semaBinaryExpr(module, expr) }
+        NodeKind.CLOSURE_EXPR => { return semaClosureExpr(module, expr) }
+        NodeKind.CALL_EXPR => { return semaCallExpr(module, expr) }
+        NodeKind.SPAWN_EXPR => { return semaSpawnExpr(module, expr) }
+        NodeKind.JOIN_EXPR => { return semaJoinExpr(module, expr) }
+        NodeKind.MEMBER_ACCESS_EXPR => { return semaMemberAccessExpr(module, expr) }
+        NodeKind.ARRAY_LITERAL_EXPR => { return semaArrayLiteralExpr(module, expr) }
+        NodeKind.INDEX_EXPR => { return semaIndexExpr(module, expr) }
+        NodeKind.SLICE_EXPR => { return semaSliceExpr(module, expr) }
+        NodeKind.STRUCT_LITERAL_EXPR => { return semaStructLiteralExpr(module, expr) }
     }
-    if (expr.kind == NodeKind.CAST_EXPR) { return semaCastExpr(module, expr) }
-    if (expr.kind == NodeKind.UNARY_EXPR) { return semaUnaryExpr(module, expr) }
-    if (expr.kind == NodeKind.BINARY_EXPR) { return semaBinaryExpr(module, expr) }
-    if (expr.kind == NodeKind.CLOSURE_EXPR) { return semaClosureExpr(module, expr) }
-    if (expr.kind == NodeKind.CALL_EXPR) { return semaCallExpr(module, expr) }
-    if (expr.kind == NodeKind.SPAWN_EXPR) { return semaSpawnExpr(module, expr) }
-    if (expr.kind == NodeKind.JOIN_EXPR) { return semaJoinExpr(module, expr) }
-    if (expr.kind == NodeKind.MEMBER_ACCESS_EXPR) { return semaMemberAccessExpr(module, expr) }
-    if (expr.kind == NodeKind.ARRAY_LITERAL_EXPR) { return semaArrayLiteralExpr(module, expr) }
-    if (expr.kind == NodeKind.INDEX_EXPR) { return semaIndexExpr(module, expr) }
-    if (expr.kind == NodeKind.SLICE_EXPR) { return semaSliceExpr(module, expr) }
-    if (expr.kind == NodeKind.STRUCT_LITERAL_EXPR) { return semaStructLiteralExpr(module, expr) }
 
     return semaUnsupportedExpr(expr)
 }
@@ -2831,33 +2837,35 @@ private fn semaIndexAssignment(module: ASTNode, stmt: ASTNode, target: ASTNode) 
         return true
     }
 
-    if (collectionT.kind == TypeKind.ARRAY) {
-        let elemT = ptr_to_type(collectionT.child)
-        if (typeIsValid(elemT) == false) { return true }
-        if (typeOwnsNothing(elemT)) {
-            semaCheckMutablePlace(target)
-            return false
+    match (collectionT.kind) {
+        TypeKind.ARRAY => {
+            let elemT = ptr_to_type(collectionT.child)
+            if (typeIsValid(elemT) == false) { return true }
+            if (typeOwnsNothing(elemT)) {
+                semaCheckMutablePlace(target)
+                return false
+            }
+            semaErrorAt(target, "an element of ".concat(typeDisplay(collectionT),
+                                                         " cannot be replaced"))
+            diag_note("an array stores only elements nobody owns this way; use a `Vec` and `v[i] = x`, or assign a field -- `a[i].f = x`")
+            return true
         }
-        semaErrorAt(target, "an element of ".concat(typeDisplay(collectionT),
-                                                     " cannot be replaced"))
-        diag_note("an array stores only elements nobody owns this way; use a `Vec` and `v[i] = x`, or assign a field -- `a[i].f = x`")
-        return true
-    }
-    if (collectionT.kind == TypeKind.STRING) {
-        semaErrorAt(target, "a String cannot be changed in place")
-        diag_note("build a new String with the character replaced")
-        return true
-    }
-    if (collectionT.kind == TypeKind.DATAVIEW) {
-        semaErrorAt(target, "a DataView element is assigned one field at a time")
-        diag_note("write `view[i].field = value`")
-        return true
-    }
-    if (collectionT.kind == TypeKind.STRUCT) {
-        semaErrorAt(target, "`x[i]` on ".concat(typeDisplay(collectionT),
-                                                 " reads through `at`, and has no assignment form"))
-        diag_note("give the type a method that stores, and call it")
-        return true
+        TypeKind.STRING => {
+            semaErrorAt(target, "a String cannot be changed in place")
+            diag_note("build a new String with the character replaced")
+            return true
+        }
+        TypeKind.DATAVIEW => {
+            semaErrorAt(target, "a DataView element is assigned one field at a time")
+            diag_note("write `view[i].field = value`")
+            return true
+        }
+        TypeKind.STRUCT => {
+            semaErrorAt(target, "`x[i]` on ".concat(typeDisplay(collectionT),
+                                                     " reads through `at`, and has no assignment form"))
+            diag_note("give the type a method that stores, and call it")
+            return true
+        }
     }
     // Not indexable at all; the ordinary path reports that.
     return false
@@ -3247,6 +3255,38 @@ internal fn semaPredeclareFunction(module: ASTNode, fnNode: ASTNode) {
     ir_set_fn_return_type(symbol, typeSemKey(retT))
 }
 
+// A module-level `let name = [..]` is a constant array in the program's read-only
+// data, read by address. What that needs of the declaration:
+//
+//   * `let`, not `let mut`: a global array that can be written is shared mutable
+//     storage, which is a separate decision (ownership of a global aggregate), and
+//     nothing needs it yet;
+//   * every element a number, a `Char` or a string literal, because there is no
+//     code before `main` to compute anything else. A `Bool` is left out: arrays
+//     store it as a byte and a literal initializer would have to agree with that.
+//
+// The array's type and length come from the literal, as for a local.
+private fn semaCheckGlobalArray(varNode: ASTNode, init: ASTNode) {
+    if (varNode.i1 == 1) {
+        semaErrorAt(varNode, "global ".concat(diagQuote(varNode.s1), " is a mutable array"))
+        diag_note("a global array is read-only data: write `let`, or build the array in a function")
+    }
+    let mut elemPtr = init.child1
+    while (nodeExists(elemPtr)) {
+        let elem = ptr_to_node(elemPtr)
+        let isLiteral = elem.kind == NodeKind.LITERAL_EXPR
+        if (isLiteral and elem.i1 == TokenType.BOOL_LITERAL as Int) {
+            semaErrorAt(elem, "global ".concat(diagQuote(varNode.s1), " cannot hold a `Bool` element yet"))
+            diag_note("use an `Int` flag, or build the array in a function")
+        } else if (isLiteral == false) {
+            semaErrorAt(elem, "an element of global ".concat(diagQuote(varNode.s1),
+                                                              " needs to be a number, a character or a string literal"))
+            diag_note("nothing runs before main, so a global array cannot hold a computed element")
+        }
+        elemPtr = elem.next
+    }
+}
+
 private fn semaPredeclareGlobal(module: ASTNode, varNode: ASTNode) {
     let mut varT = typeInvalid()
     if (nodeExists(varNode.child1)) {
@@ -3267,7 +3307,9 @@ private fn semaPredeclareGlobal(module: ASTNode, varNode: ASTNode) {
         // `-5` is fine: the parser folds a leading minus into the literal itself
         // (see parseUnary), so negative constants are still LITERAL_EXPR.
         let init = ptr_to_node(varNode.child2)
-        if (init.kind != NodeKind.LITERAL_EXPR) {
+        if (init.kind == NodeKind.ARRAY_LITERAL_EXPR) {
+            semaCheckGlobalArray(varNode, init)
+        } else if (init.kind != NodeKind.LITERAL_EXPR) {
             semaErrorAt(init, "global ".concat(diagQuote(varNode.s1),
                                                " needs a constant initializer"))
             diag_note("nothing runs before main, so a global cannot be initialized by an expression; move the computation into a function")
@@ -3932,23 +3974,28 @@ private fn semaArrayLengthsInDecls(module: ASTNode, head: Ptr) {
     let mut p = head
     while (nodeExists(p)) {
         let decl = ptr_to_node(p)
-        if (decl.kind == NodeKind.FUNCTION) {
-            semaRefuseArrayLengths(decl.child1)
-            semaRefuseArrayLengths(decl.genericInfo)
-            semaArrayLengthOnTop(decl.child3)
-            semaArrayLengthsInBody(decl.child2)
-        } else if (decl.kind == NodeKind.STRUCT_DECL) {
-            semaArrayLengthsInFields(module, decl)
-        } else if (decl.kind == NodeKind.TRAIT_DECL) {
-            // A signature is a function's shape, and a default body is copied
-            // into each `impl` (monoExpandDefaultMethods), where its `let`s are
-            // ordinary locals.
-            semaRefuseArrayLengths(decl.genericInfo)
-            semaRefuseArrayLengths(decl.child2)
-            semaRefuseArrayLengths(decl.child3)
-            semaArrayLengthsInDecls(module, decl.child1)
-        } else {
-            semaRefuseArrayLengthsBelow(decl)
+        match (decl.kind) {
+            NodeKind.FUNCTION => {
+                semaRefuseArrayLengths(decl.child1)
+                semaRefuseArrayLengths(decl.genericInfo)
+                semaArrayLengthOnTop(decl.child3)
+                semaArrayLengthsInBody(decl.child2)
+            }
+            NodeKind.STRUCT_DECL => {
+                semaArrayLengthsInFields(module, decl)
+            }
+            NodeKind.TRAIT_DECL => {
+                // A signature is a function's shape, and a default body is copied
+                // into each `impl` (monoExpandDefaultMethods), where its `let`s are
+                // ordinary locals.
+                semaRefuseArrayLengths(decl.genericInfo)
+                semaRefuseArrayLengths(decl.child2)
+                semaRefuseArrayLengths(decl.child3)
+                semaArrayLengthsInDecls(module, decl.child1)
+            }
+            _ => {
+                semaRefuseArrayLengthsBelow(decl)
+            }
         }
         p = decl.next
     }

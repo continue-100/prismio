@@ -47,7 +47,7 @@ public fn lexCheckIdentifierSecurity() {
     // The non-ASCII identifiers, once each, where each first appears.
     let fileCount = diag_file_count()
     for file in 0..<fileCount {
-        let head = lexAllTokens(createLexer(diag_file_content(file), file))
+        let head = Lexer.create(diag_file_content(file), file).allTokens()
         let mut currentPtr = token_to_ptr(head)
         loop {
             let current = ptr_to_token(currentPtr)
@@ -80,7 +80,7 @@ public fn lexCheckIdentifierSecurity() {
 
     // And against every ASCII identifier in the program.
     for file in 0..<fileCount {
-        let head = lexAllTokens(createLexer(diag_file_content(file), file))
+        let head = Lexer.create(diag_file_content(file), file).allTokens()
         let mut currentPtr = token_to_ptr(head)
         loop {
             let current = ptr_to_token(currentPtr)

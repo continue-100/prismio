@@ -332,8 +332,6 @@ internal extern fn aif_field_is_cyclic(type: String, field: String) -> Int
 // that was never added -- which reads a live object as unreachable.
 internal extern fn aif_field_is_counted(type: String, field: String) -> Int
 
-public extern fn exit(code: Int)
-
 // The integer the backend sizes an allocation and indexes an array GEP with:
 // pointer width, in LLVM spelling. A target property, read from the target
 // record -- see src/ir/target.psm.

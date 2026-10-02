@@ -17,6 +17,7 @@ import ums.model.diagnostic
 import ums.targets.target
 import project.ums_cli
 import project.host
+import std.fs
 
 // Whether a program is on PATH; see runtime/build_driver.c.
 public extern fn compiler_program_on_path(name: String borrow) -> Int
@@ -159,13 +160,13 @@ private fn runUmsScriptStep(workspace: UmsWorkspace, step: UmsCommandStep,
         return compiler_spawn_wait(interpreter, root)
     }
 
-    let toolDirectory = join_path(join_path(workspace.plan.artifactRoot,
+    let toolDirectory = joinPath(joinPath(workspace.plan.artifactRoot,
                                             workspace.project.build.profile), "tools")
-    if (make_directory(toolDirectory) != 0) {
+    if (makeDirectory(toolDirectory) == false) {
         diag_error_code("P1089", "could not create ".concat(toolDirectory))
         return 1
     }
-    let toolPath = join_path(toolDirectory, compiler_default_exe_path(pathLeaf(step.subject)))
+    let toolPath = joinPath(toolDirectory, compiler_default_exe_path(pathLeaf(step.subject)))
     // A tool links only the installed runtime: whatever native inputs the last
     // target built in this process declared are not its to inherit.
     compiler_link_reset()

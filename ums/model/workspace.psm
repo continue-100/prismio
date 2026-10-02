@@ -10,10 +10,8 @@ import ums.resolver.discovery
 import ums.builder.build_plan
 import ums.targets.target
 import std.string
+import std.fs
 
-extern fn read_file(path: String borrow) -> String produce(free)
-extern fn get_directory(path: String borrow) -> String produce(free)
-extern fn join_path(directory: String borrow, child: String borrow) -> String produce(free)
 
 struct UmsWorkspace {
     project: UmsProjectModel,
@@ -55,8 +53,8 @@ public fn umsLoadProject(startDirectory: String, profile: String) -> UmsWorkspac
     let mut diagnostics = umsDiagnostics()
     let manifestPath = umsDiscoverManifest(startDirectory, diagnostics)
     if (__builtin_string_len(manifestPath) == 0) { return umsEmptyWorkspace(diagnostics) }
-    let root = get_directory(manifestPath)
-    return umsLoadText(read_file(manifestPath), manifestPath, root, profile)
+    let root = directoryOf(manifestPath)
+    return umsLoadText(readFile(manifestPath), manifestPath, root, profile)
 }
 
 private fn umsBootstrapPrefixLength(source: String) -> Int {
@@ -135,11 +133,11 @@ private fn umsReadHostDeclaration(startDirectory: String) -> UmsHostDeclaration 
     let manifestPath = umsDiscoverManifest(startDirectory, diagnostics)
     if (__builtin_string_len(manifestPath) == 0) { return UmsHostDeclaration { root: "", text: "" } }
 
-    let source = read_file(manifestPath)
+    let source = readFile(manifestPath)
     let prefixLength = umsBootstrapPrefixLength(source)
     if (prefixLength == 0) { return UmsHostDeclaration { root: "", text: "" } }
 
-    let root = get_directory(manifestPath)
+    let root = directoryOf(manifestPath)
     let prefix = source.substring(0, prefixLength)
     let tokens = umsLex(prefix, manifestPath, diagnostics)
     let document = umsParse(tokens, manifestPath, diagnostics)
@@ -168,7 +166,7 @@ private fn umsReadHostDeclaration(startDirectory: String) -> UmsHostDeclaration 
 // directory unless written absolute.
 public fn umsHostExecutable(root: String, host: String) -> String {
     if (umsAbsolutePath(host)) { return umsExecutablePath(host) }
-    return umsExecutablePath(join_path(root, host))
+    return umsExecutablePath(joinPath(root, host))
 }
 
 public fn umsProjectHost(startDirectory: String) -> String {

@@ -19,6 +19,11 @@ import tempfile
 import time
 import webbrowser
 
+try:
+    import resource
+except ImportError:     # Windows: no rusage, so no CPU time
+    resource = None
+
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 MANIFEST = HERE / "benchmarks.json"
@@ -322,6 +327,64 @@ def run_command(command, *, env=None):
     return subprocess.run(command, cwd=REPO, env=env, capture_output=True, text=True)
 
 
+def run_timed(command, *, env=None):
+    """(result, wall_ns, cpu_ns) of one build.
+
+    CPU time is user plus system over the child and everything it spawned, and it
+    is reported beside the wall time because the arms do not use the machine the
+    same way: Prismio's backend runs on several threads, clang++ -flto and
+    `rustc -C codegen-units=1` on about one. A wall-clock ratio alone credits
+    the first with cores the others never asked for.
+    """
+    before = resource.getrusage(resource.RUSAGE_CHILDREN) if resource else None
+    started = time.perf_counter_ns()
+    result = run_command(command, env=env)
+    wall = time.perf_counter_ns() - started
+    if not resource:
+        return result, wall, 0
+    after = resource.getrusage(resource.RUSAGE_CHILDREN)
+    cpu = ((after.ru_utime - before.ru_utime) + (after.ru_stime - before.ru_stime)) * 1e9
+    return result, wall, int(cpu)
+
+
+FRESHNESS_SOURCES = ("src/**/*.psm", "std/*.psm", "runtime/*.c", "runtime/*.h")
+
+
+def stale_compiler_sources(compiler):
+    """Sources newer than `compiler`, when it is the project's own host.
+
+    `prismio bench` measures `.prismio/build/debug/prismio`, which is whatever was
+    last promoted there. Edit `src/` or `runtime/` and run the bench without
+    rebuilding, and every number describes the compiler from before the edit. The
+    check is the modification time of the binary against the sources it is built
+    from; it applies only to the project host, because a compiler named by hand is
+    the caller's own business.
+    """
+    path = Path(compiler).resolve()
+    host_dir = (REPO / ".prismio" / "build").resolve()
+    if host_dir not in path.parents or not path.exists():
+        return []
+    built = path.stat().st_mtime
+    newer = []
+    for pattern in FRESHNESS_SOURCES:
+        for source in REPO.glob(pattern):
+            if source.is_file() and source.stat().st_mtime > built + 1:
+                newer.append(source.relative_to(REPO).as_posix())
+    return sorted(newer)
+
+
+def compiler_identity(compiler):
+    path = Path(compiler).resolve()
+    info = {"path": str(path)}
+    try:
+        stat = path.stat()
+        info["bytes"] = stat.st_size
+        info["modified"] = datetime.fromtimestamp(stat.st_mtime, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    except OSError:
+        pass
+    return info
+
+
 def llvm_bin_from(args):
     if args.llvm_bin:
         return Path(args.llvm_bin).resolve()
@@ -381,7 +444,9 @@ def build_all(args, progress):
         "rust": ["rustc", "-C", "opt-level=3", "-C", "lto=fat", "-C", "codegen-units=1", "--edition=2021", str(HERE / "rust/suite.rs"), "-o", str(BUILD / "rust-suite")],
     }
     elapsed = {}
-    cached = []
+    cpu = {}
+    cached = {}
+    runs = max(1, args.compile_runs)
     for language in LANGUAGES:
         binary = BUILD / (language + "-suite")
         stamp = BUILD / (language + "-suite.stamp")
@@ -395,31 +460,44 @@ def build_all(args, progress):
         # stamp describing what it actually built. Skipping it would make the
         # *next* run rebuild too, against a stamp naming an older binary.
         key = build_key(language, commands[language], env) if language in CACHED_INPUTS else None
-        if key is not None and not args.rebuild:
+        # Reused only when asked for (`--reuse-reference-builds`). A build that was
+        # timed in an earlier run, possibly under other load or another toolchain
+        # state, is not a measurement of this one, and a report that mixes the two
+        # compares a fresh Prismio figure with a stale C++ one.
+        if key is not None and args.reuse_reference_builds and not args.rebuild and args.compile_runs <= 1:
             previous = read_stamp(stamp)
             if binary.exists() and previous.get("key") == key:
                 elapsed[language] = previous.get("compile_ns", 0)
-                cached.append(language)
+                cpu[language] = previous.get("compile_cpu_ns", 0)
+                cached[language] = previous.get("built_at", "an earlier run")
                 progress.advance("Cached {}".format(LANGUAGE_LABELS[language]))
                 status(progress, "Cached", LANGUAGE_LABELS[language] + " suite",
-                       "built earlier in {} · {}".format(format_ns(elapsed[language]), format_bytes(binary.stat().st_size)))
+                       "built earlier ({}) in {} · {}".format(cached[language], format_ns(elapsed[language]),
+                                                              format_bytes(binary.stat().st_size)))
                 continue
 
         progress.show("Building " + LANGUAGE_LABELS[language])
-        started = time.perf_counter_ns()
-        result = run_command(commands[language], env=env)
-        elapsed[language] = time.perf_counter_ns() - started
-        if result.returncode:
-            sys.exit("build failed for {}:\n{}\n{}\n{}".format(
-                language, command_text(commands[language]), result.stdout, result.stderr))
+        walls, cpus = [], []
+        for _ in range(runs):
+            result, wall, cpu_ns = run_timed(commands[language], env=env)
+            if result.returncode:
+                sys.exit("build failed for {}:\n{}\n{}\n{}".format(
+                    language, command_text(commands[language]), result.stdout, result.stderr))
+            walls.append(wall)
+            cpus.append(cpu_ns)
+        elapsed[language] = int(statistics.median(walls))
+        cpu[language] = int(statistics.median(cpus))
         # Written after the build, so an interrupted or failed one leaves the
         # stamp naming the last binary that actually exists.
         if key is not None:
-            stamp.write_text(json.dumps({"key": key, "compile_ns": elapsed[language]}))
+            stamp.write_text(json.dumps({
+                "key": key, "compile_ns": elapsed[language], "compile_cpu_ns": cpu[language],
+                "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}))
         progress.advance("Built {}".format(LANGUAGE_LABELS[language]))
         status(progress, "Compiled", LANGUAGE_LABELS[language] + " suite",
-               "{} · {}".format(format_ns(elapsed[language]), format_bytes(binary.stat().st_size)))
-    return commands, elapsed, cached
+               "{} wall · {} cpu · {}".format(format_ns(elapsed[language]), format_ns(cpu[language]),
+                                              format_bytes(binary.stat().st_size)))
+    return commands, elapsed, cpu, cached
 
 
 def parse_output(language, benchmark, output):
@@ -718,6 +796,13 @@ def main():
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--rebuild", action="store_true",
                         help="rebuild the C++ and Rust arms even when their sources and toolchains are unchanged")
+    parser.add_argument("--compile-runs", type=int, default=1, metavar="N",
+                        help="build every arm N times and report the median compile time (default 1)")
+    parser.add_argument("--reuse-reference-builds", action="store_true",
+                        help="reuse the C++ and Rust builds (and the compile times) of an earlier run when "
+                             "their sources and toolchains are unchanged; the report says so")
+    parser.add_argument("--allow-stale-compiler", action="store_true",
+                        help="measure the project compiler even when its sources are newer than it")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--output", type=Path, default=RESULTS / "results.json")
     parser.add_argument("--open", action="store_true", help="open the generated HTML report in the default browser")
@@ -746,11 +831,21 @@ def main():
     progress.line()
     progress.show("Preparing benchmark suite")
 
+    if not args.skip_build and args.compiler:
+        newer = stale_compiler_sources(args.compiler)
+        if newer and not args.allow_stale_compiler:
+            sys.exit("the compiler is older than its sources, so these numbers would describe the compiler "
+                     "from before your edits.\n  newest: {}{}\n  Rebuild it (`prismio build`) and run the "
+                     "bench again, or pass --allow-stale-compiler.".format(
+                         ", ".join(newer[:4]), " and {} more".format(len(newer) - 4) if len(newer) > 4 else ""))
+    if args.skip_build:
+        print("warning: --skip-build: the executables are from an earlier run and no compile time is measured", file=sys.stderr)
     build_commands = None
     compile_ns = None
-    cached_arms = []
+    compile_cpu_ns = None
+    cached_arms = {}
     if not args.skip_build:
-        build_commands, compile_ns, cached_arms = build_all(args, progress)
+        build_commands, compile_ns, compile_cpu_ns, cached_arms = build_all(args, progress)
     executables = {language: BUILD / (language + "-suite") for language in LANGUAGES}
     missing = [str(path) for path in executables.values() if not path.exists()]
     if missing:
@@ -778,11 +873,21 @@ def main():
         },
         "environment": collect_environment(args),
         "compile_ns": compile_ns,
+        # User plus system time of the same builds. Wall time alone credits an arm
+        # with the cores it used; see run_timed.
+        "compile_cpu_ns": compile_cpu_ns,
+        # How many builds the figures above are the median of (1 unless
+        # `--compile-runs` asked for more).
+        "compile_runs": max(1, args.compile_runs),
         "binary_bytes": binary_bytes,
-        # Which arms were served from the previous build. Their `compile_ns` is
-        # that build's, not this run's, and saying so is the difference between a
-        # stale number and a wrong one.
-        "cached_builds": cached_arms,
+        # Which arms were served from an earlier build, and when it was made. Their
+        # `compile_ns` is that build's, not this run's, and saying so is the
+        # difference between a stale number and a wrong one. The report shows it.
+        "cached_builds": sorted(cached_arms),
+        "cached_built_at": cached_arms,
+        # Which compiler was measured, and whether anything was left as it was.
+        "compiler": compiler_identity(args.compiler) if args.compiler else None,
+        "build_skipped": bool(args.skip_build),
         # The threshold below which an elimination workload counts as deleted,
         # so the HTML report judges it by the same number.
         "elimination_ns": ELIMINATED_NS,

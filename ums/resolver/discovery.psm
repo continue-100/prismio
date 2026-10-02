@@ -1,23 +1,20 @@
 import ums.model.diagnostic
 import std.string
+import std.fs
 
-extern fn current_directory() -> String produce(free)
-extern fn get_directory(path: String borrow) -> String produce(free)
-extern fn join_path(directory: String borrow, child: String borrow) -> String produce(free)
-extern fn file_exists(path: String borrow) -> Int
 
 public fn umsDiscoverManifest(startDirectory: String,
                        inout diagnostics: Vec<UmsDiagnostic>) -> String {
     let mut directory = startDirectory
     if (__builtin_string_len(directory) == 0 or directory.equals(".")) {
-        directory = current_directory()
+        directory = currentDirectory()
     }
 
     loop {
-        let candidate = join_path(directory, "build.ums")
-        if (file_exists(candidate) == 1) { return candidate }
+        let candidate = joinPath(directory, "build.ums")
+        if (fileExists(candidate)) { return candidate }
 
-        let parent = get_directory(directory)
+        let parent = directoryOf(directory)
         if (parent.equals(directory) or parent.equals(".")) {
             break
         }

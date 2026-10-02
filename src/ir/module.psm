@@ -756,18 +756,20 @@ private fn irBodyMovesNoBlock(nodePtr: Ptr) -> Bool {
 
     // A spawn runs its callee on another thread, where this loop's reasoning
     // does not reach at all.
-    if (n.kind == NodeKind.SPAWN_EXPR) { return false }
-    if (n.kind == NodeKind.JOIN_EXPR) { return false }
+    match (n.kind) {
+        NodeKind.SPAWN_EXPR => { return false }
+        NodeKind.JOIN_EXPR => { return false }
 
-    if (n.kind == NodeKind.CALL_EXPR) {
-        if (nodeExists(n.child1) == false) { return false }
-        let callee = ptr_to_node(n.child1).s1
-        if (irPrimitiveMovesBlock(callee)) { return false }
-        if (irPrimitiveIsSettled(callee) == false) {
-            // Not a primitive this pass knows: it has to be a function the pass
-            // has already judged. An `extern fn` never is, which is the
-            // conservative answer for a body written in another language.
-            if (ir_is_guard_safe_fn(callee) != 1) { return false }
+        NodeKind.CALL_EXPR => {
+            if (nodeExists(n.child1) == false) { return false }
+            let callee = ptr_to_node(n.child1).s1
+            if (irPrimitiveMovesBlock(callee)) { return false }
+            if (irPrimitiveIsSettled(callee) == false) {
+                // Not a primitive this pass knows: it has to be a function the pass
+                // has already judged. An `extern fn` never is, which is the
+                // conservative answer for a body written in another language.
+                if (ir_is_guard_safe_fn(callee) != 1) { return false }
+            }
         }
     }
 
@@ -1736,6 +1738,28 @@ private fn collectStringsFunction(func: ASTNode) {
     }
 }
 
+// A module-level `let name = [..]`: its elements, which sema has checked are all
+// literals, as one constant array in read-only data.
+private fn emitGlobalArray(decl: ASTNode) {
+    let init = ptr_to_node(decl.child2)
+    let arrayType = nodeGetType(init)
+    let elemType = storageType(typeIrKey(ptr_to_type(arrayType.child)))
+    ir_array_literal_begin()
+    let mut elemPtr = init.child1
+    while (nodeExists(elemPtr)) {
+        let elem = ptr_to_node(elemPtr)
+        if (elem.i1 == TokenType.STRING_LITERAL as Int) {
+            // The per-function string pass never reaches a global's initializer.
+            collectStringsExpr(elem)
+            ir_array_literal_str_elem(elem.s2, __builtin_string_len(elem.s1))
+        } else {
+            ir_array_literal_elem(elemType, generateExpression(elem))
+        }
+        elemPtr = elem.next
+    }
+    ir_global_array_var(decl.s1, elemType)
+}
+
 public fn generateModule(module: ASTNode) {
     irFrameReleaseTypes = ""
     irOptionalDropTypes = ";"
@@ -2364,6 +2388,7 @@ public fn generateModule(module: ASTNode) {
             let mut initVal = "0"
             let mut globalStrName = ""
             let mut globalStrLen = 0
+            let mut isArrayGlobal = false
             let mut varType = "i32"
             let hasAnnotation = nodeExists(stmt.child1)
             if (hasAnnotation) {
@@ -2378,7 +2403,9 @@ public fn generateModule(module: ASTNode) {
                 if (hasAnnotation == false) {
                     varType = getExprType(initNode)
                 }
-                if (initNode.kind == NodeKind.LITERAL_EXPR) {
+                if (initNode.kind == NodeKind.ARRAY_LITERAL_EXPR) {
+                    isArrayGlobal = true
+                } else if (initNode.kind == NodeKind.LITERAL_EXPR) {
                     if (initNode.i1 == TokenType.STRING_LITERAL as Int) {
                         // A global initializer sits outside every function, so the
                         // per-function string pre-pass never reaches it. Give the
@@ -2405,7 +2432,9 @@ public fn generateModule(module: ASTNode) {
             // A String global is a constant *pair*, which cannot be spelled in
             // the text initialiser every other type uses -- so it goes to
             // ir_global_str_var, which builds the constant instead.
-            if (storageType(varType).equals("struct:prismio.str")) {
+            if (isArrayGlobal) {
+                emitGlobalArray(stmt)
+            } else if (storageType(varType).equals("struct:prismio.str")) {
                 ir_global_str_var(stmt.s1, globalStrName, globalStrLen)
             } else {
                 ir_global_var(stmt.s1, storageType(varType), initVal, 0)

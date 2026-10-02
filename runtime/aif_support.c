@@ -3914,6 +3914,116 @@ static int is_ancestor_or_self(int anc, int s) {
     return 0;
 }
 
+// The sites whose scope lives in each function, ascending. An arena at `cand` can
+// serve a site only if `cand` is an ancestor of the site's scope, and a scope's
+// ancestors are all in its own function -- so asking every site about every scope
+// was a product of two table sizes for an answer that needs one function's sites.
+static int *scope_site_first, *scope_site_list;
+static int scope_site_built_sites = -1, scope_site_built_fns = -1;
+
+static void scope_sites_build(void) {
+    if (scope_site_first && scope_site_built_sites == site_count
+        && scope_site_built_fns == fn_count) return;
+    free(scope_site_first); free(scope_site_list);
+    scope_site_first = (int*)xcalloc((size_t)fn_count + 1, sizeof(int), "AIF scope sites");
+    for (int k = 0; k < site_count; k++) {
+        int sc = sites[k].scope;
+        if (sc < 0 || sc >= scope_count) continue;
+        int f = scopes[sc].owner;
+        if (f >= 0 && f < fn_count) scope_site_first[f + 1]++;
+    }
+    for (int f = 0; f < fn_count; f++) scope_site_first[f + 1] += scope_site_first[f];
+    scope_site_list = (int*)xmalloc((size_t)(scope_site_first[fn_count] ? scope_site_first[fn_count] : 1)
+                                    * sizeof(int), "AIF scope sites");
+    int* fill = (int*)xcalloc((size_t)fn_count + 1, sizeof(int), "AIF scope sites");
+    for (int k = 0; k < site_count; k++) {
+        int sc = sites[k].scope;
+        if (sc < 0 || sc >= scope_count) continue;
+        int f = scopes[sc].owner;
+        if (f >= 0 && f < fn_count) scope_site_list[scope_site_first[f] + fill[f]++] = k;
+    }
+    free(fill);
+    scope_site_built_sites = site_count;
+    scope_site_built_fns = fn_count;
+}
+
+// A scope's descendants are the scopes numbered from it to scope_end[s], because
+// the walk creates a scope's whole subtree before its next sibling. That is
+// checked, not assumed (a size count per scope), and a numbering that fails it
+// falls back to the function's sites. The sites grouped by scope id then make a
+// scope's subtree one contiguous slice.
+static int *scope_end, *sub_site_first, *sub_site_list, *all_site_ident;
+static int sub_ranges_ok = -1;
+
+static void subtree_sites_build(void) {
+    if (sub_ranges_ok >= 0) return;
+    sub_ranges_ok = 0;
+    if (scope_count <= 0) return;
+    scope_end = (int*)xmalloc((size_t)scope_count * sizeof(int), "AIF scope ranges");
+    int* size = (int*)xmalloc((size_t)scope_count * sizeof(int), "AIF scope ranges");
+    for (int s = 0; s < scope_count; s++) { scope_end[s] = s; size[s] = 1; }
+    int ok = 1;
+    for (int s = scope_count - 1; s >= 0; s--) {
+        int par = scopes[s].parent;
+        if (par < 0) continue;
+        if (par >= s) { ok = 0; break; }
+        if (scope_end[s] > scope_end[par]) scope_end[par] = scope_end[s];
+        size[par] += size[s];
+    }
+    for (int s = 0; ok && s < scope_count; s++) {
+        if (size[s] != scope_end[s] - s + 1) ok = 0;
+    }
+    free(size);
+    if (!ok) return;
+    sub_site_first = (int*)xcalloc((size_t)scope_count + 1, sizeof(int), "AIF scope ranges");
+    for (int k = 0; k < site_count; k++) {
+        int sc = sites[k].scope;
+        if (sc >= 0 && sc < scope_count) sub_site_first[sc + 1]++;
+    }
+    for (int s = 0; s < scope_count; s++) sub_site_first[s + 1] += sub_site_first[s];
+    sub_site_list = (int*)xmalloc((size_t)(sub_site_first[scope_count] ? sub_site_first[scope_count] : 1)
+                                  * sizeof(int), "AIF scope ranges");
+    int* fill = (int*)xcalloc((size_t)scope_count + 1, sizeof(int), "AIF scope ranges");
+    for (int k = 0; k < site_count; k++) {
+        int sc = sites[k].scope;
+        if (sc >= 0 && sc < scope_count) sub_site_list[sub_site_first[sc] + fill[sc]++] = k;
+    }
+    free(fill);
+    sub_ranges_ok = 1;
+}
+
+// The sites an arena at `cand` could serve: those in its subtree. Any order.
+static const int* subtree_sites(int cand, int* n) {
+    subtree_sites_build();
+    if (sub_ranges_ok == 1) {
+        *n = sub_site_first[scope_end[cand] + 1] - sub_site_first[cand];
+        return sub_site_list + sub_site_first[cand];
+    }
+    int owner = scopes[cand].owner;
+    scope_sites_build();
+    if (owner >= 0 && owner < fn_count) {
+        *n = scope_site_first[owner + 1] - scope_site_first[owner];
+        return scope_site_list + scope_site_first[owner];
+    }
+    if (!all_site_ident) {
+        all_site_ident = (int*)xmalloc((size_t)(site_count ? site_count : 1) * sizeof(int), "AIF scope sites");
+        for (int k = 0; k < site_count; k++) all_site_ident[k] = k;
+    }
+    *n = site_count;
+    return all_site_ident;
+}
+
+static void scope_sites_free(void) {
+    free(scope_site_first); scope_site_first = NULL;
+    free(scope_site_list);  scope_site_list = NULL;
+    scope_site_built_sites = scope_site_built_fns = -1;
+    free(scope_end);        scope_end = NULL;
+    free(sub_site_first);   sub_site_first = NULL;
+    free(sub_site_list);    sub_site_list = NULL;
+    free(all_site_ident);   all_site_ident = NULL;
+    sub_ranges_ok = -1;
+}
+
 // Would an arena at `cand` serve this site, given the arenas chosen so far?
 static int arena_would_serve(int site_id, int cand) {
     Site* s = &sites[site_id];
@@ -4002,7 +4112,10 @@ void aif_place_arenas(void) {
         long served = 0;
         long held = 0;
         long live = 0;
-        for (int k = 0; k < site_count; k++) {
+        int nsub = 0;
+        const int* sub = subtree_sites(s, &nsub);
+        for (int ki = 0; ki < nsub; ki++) {
+            int k = sub[ki];
             if (!arena_would_serve(k, s)) continue;
             long w = weight_of(sites[k].scope, s);
             served += w;
@@ -4108,7 +4221,10 @@ long aif_arena_high_water(void) {
     for (int s = 0; s < scope_count; s++) {
         if (!scopes[s].arena) continue;
         long b = 0;
-        for (int k = 0; k < site_count; k++) {
+        int nsub = 0;
+        const int* sub = subtree_sites(s, &nsub);
+        for (int ki = 0; ki < nsub; ki++) {
+            int k = sub[ki];
             if (!arena_would_serve(k, s)) continue;
             b += (long)sites[k].bytes * weight_of(sites[k].scope, s);
         }
@@ -4180,14 +4296,51 @@ int aif_arena_unsized_sites(void) {
 //
 // M3.2d needs the scope and not just the fact, to ask it for a statement range,
 // so the lookup is the shared thing and the predicate below is a reading of it.
-static int auto_arena_scope_at_node(const void* node) {
-    if (node == NULL) return -1;
-    for (int s = 0; s < scope_count; s++) {
-        if (scopes[s].node != node) continue;
-        if (scopes[s].region_name >= 0) return -1;
-        return scopes[s].arena ? s : -1;
+// Codegen asks this once per block, so the scope a node opens comes from a table
+// keyed by the node rather than a scan of every scope. The first scope that names
+// a node is the one the scan returned, and the table keeps that one.
+static int* scope_node_table;
+static int scope_node_mask, scope_node_built = -1;
+
+static void scope_node_table_free(void) {
+    free(scope_node_table);
+    scope_node_table = NULL;
+    scope_node_mask = 0;
+    scope_node_built = -1;
+}
+
+static int scope_of_node(const void* node) {
+    if (scope_node_built != scope_count) {
+        scope_node_table_free();
+        int cap = 16;
+        while (cap < scope_count * 2) cap <<= 1;
+        scope_node_table = (int*)xmalloc((size_t)cap * sizeof(int), "AIF scope nodes");
+        for (int i = 0; i < cap; i++) scope_node_table[i] = -1;
+        scope_node_mask = cap - 1;
+        for (int s = 0; s < scope_count; s++) {
+            if (scopes[s].node == NULL) continue;
+            unsigned h = node_hash(scopes[s].node) & (unsigned)scope_node_mask;
+            while (scope_node_table[h] >= 0 && scopes[scope_node_table[h]].node != scopes[s].node) {
+                h = (h + 1) & (unsigned)scope_node_mask;
+            }
+            if (scope_node_table[h] < 0) scope_node_table[h] = s;     // first one wins
+        }
+        scope_node_built = scope_count;
+    }
+    unsigned h = node_hash(node) & (unsigned)scope_node_mask;
+    while (scope_node_table[h] >= 0) {
+        if (scopes[scope_node_table[h]].node == node) return scope_node_table[h];
+        h = (h + 1) & (unsigned)scope_node_mask;
     }
     return -1;
+}
+
+static int auto_arena_scope_at_node(const void* node) {
+    if (node == NULL) return -1;
+    int s = scope_of_node(node);
+    if (s < 0) return -1;
+    if (scopes[s].region_name >= 0) return -1;
+    return scopes[s].arena ? s : -1;
 }
 
 // 1 when this BLOCK node opens an arena the cost model chose.
@@ -4710,15 +4863,18 @@ static void bracket_prepare(void) {
         int f = owner_uses[i].fn;
         if (f < 0 || f >= fn_count) continue;
         resolve(owner_uses[i].vs, &bracket_scratch);
-        for (int s = 0; s < site_count; s++) {
-            if (!bits_test(&bracket_scratch, s)) continue;
-            // An orphan site belongs to no function, so no closure can contain
-            // it. fn_count is the id reserved for exactly that, and it is one
-            // past the end -- so a closure bitset never holds it and the subset
-            // test below rejects, which is the sound direction.
-            int owner_fn = sites[s].fn;
-            bits_set(&fn_owner_fns[f], (owner_fn < 0 || owner_fn >= fn_count) ? fn_count : owner_fn,
-                     "AIF store owners");
+        for (int wi = 0; wi < bracket_scratch.nwords; wi++) {
+            for (Word x = bracket_scratch.w[wi]; x; x &= x - 1) {
+                int s = wi * WORD_BITS + ctz64(x);
+                if (s >= site_count) break;
+                // An orphan site belongs to no function, so no closure can contain
+                // it. fn_count is the id reserved for exactly that, and it is one
+                // past the end -- so a closure bitset never holds it and the subset
+                // test below rejects, which is the sound direction.
+                int owner_fn = sites[s].fn;
+                bits_set(&fn_owner_fns[f], (owner_fn < 0 || owner_fn >= fn_count) ? fn_count : owner_fn,
+                         "AIF store owners");
+            }
         }
     }
 }
@@ -4771,6 +4927,62 @@ static int bits_subset(const Bits* a, const Bits* b) {
     return 1;
 }
 
+// The call graph by caller, and how many calls each function has. Static once the
+// graph is collected; rebuilt if it was not, and torn down with it.
+static int *caller_edge_first, *caller_edge_list, *callee_in_total;
+static int *callee_edge_first, *callee_edge_list;     // the calls into each function, by edge index
+static int caller_edge_built_edges = -1, caller_edge_built_fns = -1;
+
+static void caller_edges_build(void) {
+    if (caller_edge_first && caller_edge_built_edges == call_edge_count
+        && caller_edge_built_fns == fn_count) return;
+    free(caller_edge_first); free(caller_edge_list); free(callee_in_total);
+    free(callee_edge_first); free(callee_edge_list);
+    caller_edge_first = (int*)xcalloc((size_t)fn_count + 1, sizeof(int), "AIF caller edges");
+    callee_in_total = (int*)xcalloc((size_t)fn_count + 1, sizeof(int), "AIF caller edges");
+    for (int i = 0; i < call_edge_count; i++) {
+        const CallEdge* e = &call_edges[i];
+        if (e->callee < 0 || e->callee >= fn_count) continue;
+        callee_in_total[e->callee]++;
+        if (e->caller >= 0 && e->caller < fn_count) caller_edge_first[e->caller + 1]++;
+    }
+    for (int f = 0; f < fn_count; f++) caller_edge_first[f + 1] += caller_edge_first[f];
+    caller_edge_list = (int*)xmalloc((size_t)(caller_edge_first[fn_count] ? caller_edge_first[fn_count] : 1)
+                                     * sizeof(int), "AIF caller edges");
+    int* fill = (int*)xcalloc((size_t)fn_count + 1, sizeof(int), "AIF caller edges");
+    for (int i = 0; i < call_edge_count; i++) {
+        const CallEdge* e = &call_edges[i];
+        if (e->callee < 0 || e->callee >= fn_count) continue;
+        if (e->caller >= 0 && e->caller < fn_count) {
+            caller_edge_list[caller_edge_first[e->caller] + fill[e->caller]++] = i;
+        }
+    }
+    free(fill);
+
+    callee_edge_first = (int*)xcalloc((size_t)fn_count + 1, sizeof(int), "AIF callee edges");
+    for (int c = 0; c < fn_count; c++) callee_edge_first[c + 1] = callee_edge_first[c] + callee_in_total[c];
+    callee_edge_list = (int*)xmalloc((size_t)(callee_edge_first[fn_count] ? callee_edge_first[fn_count] : 1)
+                                     * sizeof(int), "AIF callee edges");
+    int* cfill = (int*)xcalloc((size_t)fn_count + 1, sizeof(int), "AIF callee edges");
+    for (int i = 0; i < call_edge_count; i++) {
+        const CallEdge* e = &call_edges[i];
+        if (e->callee < 0 || e->callee >= fn_count) continue;
+        callee_edge_list[callee_edge_first[e->callee] + cfill[e->callee]++] = i;
+    }
+    free(cfill);
+    caller_edge_built_edges = call_edge_count;
+    caller_edge_built_fns = fn_count;
+}
+
+static void caller_edges_free(void) {
+    free(caller_edge_first); caller_edge_first = NULL;
+    free(caller_edge_list);  caller_edge_list = NULL;
+    free(callee_in_total);   callee_in_total = NULL;
+    free(callee_edge_first); callee_edge_first = NULL;
+    free(callee_edge_list);  callee_edge_list = NULL;
+    caller_edge_built_edges = caller_edge_built_fns = -1;
+}
+
 static void bracket_blockers_forget(void) {
     if (!fn_blockers) return;
     for (int g = 0; g < bracket_fn_cap; g++) fn_blockers[g] = -1;
@@ -4792,13 +5004,16 @@ static int bracket_blockers_compute(int f) {
     bracket_reachable(f, &bracket_closure);
 
     int mask = 0;
-    for (int g = 0; g < fn_count; g++) {
-        if (!bits_test(&bracket_closure, g)) continue;
-        if (fn_has_global[g])   mask |= AIF_BR_B_GLOBAL;
-        if (fn_has_drop[g])     mask |= AIF_BR_B_DROP;
-        if (fn_calls_opaque[g]) mask |= AIF_BR_B_OPAQUE;
-        if (fns[g].sealed)      mask |= AIF_BR_B_OPAQUE;
-        if (!bits_subset(&fn_owner_fns[g], &bracket_closure)) mask |= AIF_BR_B_PARAM_STORE;
+    for (int wi = 0; wi < bracket_closure.nwords; wi++) {
+        for (Word x = bracket_closure.w[wi]; x; x &= x - 1) {
+            int g = wi * WORD_BITS + ctz64(x);
+            if (g >= fn_count) break;
+            if (fn_has_global[g])   mask |= AIF_BR_B_GLOBAL;
+            if (fn_has_drop[g])     mask |= AIF_BR_B_DROP;
+            if (fn_calls_opaque[g]) mask |= AIF_BR_B_OPAQUE;
+            if (fns[g].sealed)      mask |= AIF_BR_B_OPAQUE;
+            if (!bits_subset(&fn_owner_fns[g], &bracket_closure)) mask |= AIF_BR_B_PARAM_STORE;
+        }
     }
 
     // Regime (a), in two clauses that used to be one bit.
@@ -4816,16 +5031,26 @@ static int bracket_blockers_compute(int f) {
     // reject in bracket_edge_ok_at**, which is the whole of the change: g6's
     // `plan_orders` builds a per-tick order list, is called once per squad from
     // the same loop body, and was refused for having two callers that agree.
-    int f_calls = 0;
-    for (int i = 0; i < call_edge_count; i++) {
-        CallEdge* e = &call_edges[i];
-        if (e->callee == f) { f_calls++; continue; }
-        if (!bits_test(&bracket_closure, e->callee)) continue;
-        if (bits_test(&bracket_closure, e->caller)) continue;
-        // Reached from outside the extent, and that only matters for a body the
-        // bracket would change. See fn_allocs_reach in bracket_prepare.
-        if (!fn_allocs_reach[e->callee]) continue;
-        mask |= AIF_BR_B_SHARED_BODY;
+    // The calls into each function come from the callee-indexed list instead of a
+    // pass over every edge in the program: `f`'s own count, then, for each other
+    // function the closure holds, whether any of its callers lies outside it.
+    caller_edges_build();
+    int f_calls = callee_in_total[f];
+    for (int wi = 0; wi < bracket_closure.nwords; wi++) {
+        for (Word x = bracket_closure.w[wi]; x; x &= x - 1) {
+            int h = wi * WORD_BITS + ctz64(x);
+            if (h >= fn_count) break;
+            if (h == f) continue;
+            // Reached from outside the extent, and that only matters for a body the
+            // bracket would change. See fn_allocs_reach in bracket_prepare.
+            if (!fn_allocs_reach[h]) continue;
+            for (int j = callee_edge_first[h]; j < callee_edge_first[h + 1]; j++) {
+                if (!bits_test(&bracket_closure, call_edges[callee_edge_list[j]].caller)) {
+                    mask |= AIF_BR_B_SHARED_BODY;
+                    break;
+                }
+            }
+        }
     }
     if (f_calls != 1) mask |= AIF_BR_B_MULTI_CALL;
 
@@ -5007,6 +5232,97 @@ static void site_owners_build(void) {
     }
 }
 
+// Reverse views for the bracket obligations. bracket_site_bounded is asked about
+// every site of every candidate extent, and each of its three questions used to be
+// answered by scanning a whole table: every key's points-to set, then every site.
+// That was the compile time of this compiler (58% of a self-build, measured with
+// `sample`). Each answer is now the row of a table built once, listing the same
+// entries in the same ascending order -- so the first rejection, and the
+// PRISMIO_AIF_BRACKET_TRACE line that names it, are the ones the scan found.
+//
+//   site_key_*    site s -> the keys k with s in pt[k]
+//   site_owned_*  site s -> the sites o with s in site_owner_sites[o]
+//   fn_site_*     function f -> its sites
+//
+// Built from the solved graph, with site_owner_sites, and torn down with it.
+static int *site_key_first, *site_key_list;
+static int *site_owned_first, *site_owned_list;
+static int *fn_site_first, *fn_site_list;
+static int* extent_site_buf;
+static int bracket_index_ready;
+
+static int int_compare(const void* x, const void* y) {
+    int a = *(const int*)x, b = *(const int*)y;
+    return (a > b) - (a < b);
+}
+
+// Row r's set bits c < ncols become entry r of column c's list, ascending in r.
+static void csr_transpose(const Bits* rows, int nrows, int ncols, int** first_out, int** list_out,
+                          const char* what) {
+    int* first = (int*)xcalloc((size_t)ncols + 1, sizeof(int), what);
+    for (int r = 0; r < nrows; r++) {
+        for (int wi = 0; wi < rows[r].nwords; wi++) {
+            for (Word x = rows[r].w[wi]; x; x &= x - 1) {
+                int c = wi * WORD_BITS + ctz64(x);
+                if (c < ncols) first[c + 1]++;
+            }
+        }
+    }
+    for (int c = 0; c < ncols; c++) first[c + 1] += first[c];
+    int* list = (int*)xmalloc((size_t)(first[ncols] ? first[ncols] : 1) * sizeof(int), what);
+    int* fill = (int*)xcalloc((size_t)ncols + 1, sizeof(int), what);
+    for (int r = 0; r < nrows; r++) {
+        for (int wi = 0; wi < rows[r].nwords; wi++) {
+            for (Word x = rows[r].w[wi]; x; x &= x - 1) {
+                int c = wi * WORD_BITS + ctz64(x);
+                if (c < ncols) list[first[c] + fill[c]++] = r;
+            }
+        }
+    }
+    free(fill);
+    *first_out = first;
+    *list_out = list;
+}
+
+static void bracket_index_build(void) {
+    if (bracket_index_ready) return;
+    key_index_build();
+    site_owners_build();
+    if (site_count == 0) return;
+    bracket_index_ready = 1;
+
+    csr_transpose(pt, pt_len, site_count, &site_key_first, &site_key_list, "AIF site keys");
+    csr_transpose(site_owner_sites, site_count, site_count, &site_owned_first, &site_owned_list,
+                  "AIF owned sites");
+
+    fn_site_first = (int*)xcalloc((size_t)fn_count + 1, sizeof(int), "AIF function sites");
+    for (int s = 0; s < site_count; s++) {
+        int f = sites[s].fn;
+        if (f >= 0 && f < fn_count) fn_site_first[f + 1]++;
+    }
+    for (int f = 0; f < fn_count; f++) fn_site_first[f + 1] += fn_site_first[f];
+    fn_site_list = (int*)xmalloc((size_t)(fn_site_first[fn_count] ? fn_site_first[fn_count] : 1)
+                                 * sizeof(int), "AIF function sites");
+    int* fill = (int*)xcalloc((size_t)fn_count + 1, sizeof(int), "AIF function sites");
+    for (int s = 0; s < site_count; s++) {
+        int f = sites[s].fn;
+        if (f >= 0 && f < fn_count) fn_site_list[fn_site_first[f] + fill[f]++] = s;
+    }
+    free(fill);
+    extent_site_buf = (int*)xmalloc((size_t)site_count * sizeof(int), "AIF extent sites");
+}
+
+static void bracket_index_free(void) {
+    free(site_key_first);   site_key_first = NULL;
+    free(site_key_list);    site_key_list = NULL;
+    free(site_owned_first); site_owned_first = NULL;
+    free(site_owned_list);  site_owned_list = NULL;
+    free(fn_site_first);    fn_site_first = NULL;
+    free(fn_site_list);     fn_site_list = NULL;
+    free(extent_site_buf);  extent_site_buf = NULL;
+    bracket_index_ready = 0;
+}
+
 // The innermost `region` enclosing this scope, or -1. Distinct from
 // enclosing_region, which also answers for an arena the cost model chose: only a
 // pinned one may be bracketed into, and the reason is the circularity above.
@@ -5036,9 +5352,74 @@ static int enclosing_pinned_region(int scope) {
 // region is *not* -- that is what the "at or below r" test on its bindings is
 // for -- and admitting it would make every call it makes anywhere read as
 // confined.
-static void region_confined(int r, int caller_fn, const Bits* extent, Bits* out) {
+
+static void region_confined_scan(int r, int caller_fn, Bits* out);
+static int* confined_good;
+static int confined_good_cap;
+static IntVec confined_work;
+
+// The set below is the least fixpoint of "a function joins when every one of its
+// call sites is inside the set, or is the bracketing caller's call at or below r",
+// and the loop that used to compute it re-walked every call edge once per
+// function added. Here a function joins the moment its last outside call site
+// does, found by following only the edges of the functions already in.
+static void region_confined_fast(int r, int caller_fn, const Bits* extent, Bits* out) {
     bits_clear(out);
     bits_or(out, extent, "AIF region confinement");
+    if (caller_fn < 0 || caller_fn >= fn_count) {
+        region_confined_scan(r, caller_fn, out);
+        return;
+    }
+    caller_edges_build();
+    if (confined_good_cap < fn_count + 1) {
+        confined_good_cap = fn_count + 1;
+        confined_good = (int*)xrealloc(confined_good, (size_t)confined_good_cap * sizeof(int),
+                                       "AIF region confinement");
+    }
+    int* good = confined_good;
+    memset(good, 0, (size_t)(fn_count + 1) * sizeof(int));
+    confined_work.len = 0;
+
+    for (int wi = 0; wi < out->nwords; wi++) {
+        for (Word x = out->w[wi]; x; x &= x - 1) {
+            int f = wi * WORD_BITS + ctz64(x);
+            if (f >= fn_count) break;
+            for (int j = caller_edge_first[f]; j < caller_edge_first[f + 1]; j++) {
+                good[call_edges[caller_edge_list[j]].callee]++;
+            }
+        }
+    }
+    if (!bits_test(out, caller_fn)) {
+        for (int j = caller_edge_first[caller_fn]; j < caller_edge_first[caller_fn + 1]; j++) {
+            const CallEdge* e = &call_edges[caller_edge_list[j]];
+            if (scope_lca(e->scope, r) == r) good[e->callee]++;
+        }
+    }
+    for (int g = 0; g < fn_count; g++) {
+        if (callee_in_total[g] > 0 && good[g] == callee_in_total[g] && g != caller_fn
+            && !bits_test(out, g)) {
+            vec_push(&confined_work, g, "AIF region confinement");
+        }
+    }
+    while (confined_work.len) {
+        int g = confined_work.v[--confined_work.len];
+        if (bits_test(out, g)) continue;
+        bits_set(out, g, "AIF region confinement");
+        for (int j = caller_edge_first[g]; j < caller_edge_first[g + 1]; j++) {
+            int c = call_edges[caller_edge_list[j]].callee;
+            good[c]++;
+            if (good[c] == callee_in_total[c] && c != caller_fn && !bits_test(out, c)) {
+                vec_push(&confined_work, c, "AIF region confinement");
+            }
+        }
+    }
+}
+
+
+// The original: a pass over every call edge per function added. Kept as the
+// fallback for a caller the index does not cover, and as the reference the
+// AIF_XCHECK build compares against. `out` arrives holding the extent.
+static void region_confined_scan(int r, int caller_fn, Bits* out) {
 
     // Tri-state, and `signed char` rather than `char` on purpose: plain `char` is
     // unsigned on some ARM targets, and -1 would read back as 255. The logic
@@ -5070,6 +5451,21 @@ static void region_confined(int r, int caller_fn, const Bits* extent, Bits* out)
         if (!changed) break;
     }
     free(ok);
+}
+
+static void region_confined(int r, int caller_fn, const Bits* extent, Bits* out) {
+    region_confined_fast(r, caller_fn, extent, out);
+#ifdef AIF_XCHECK
+    Bits ref = {0};
+    bits_or(&ref, extent, "xcheck");
+    region_confined_scan(r, caller_fn, &ref);
+    int n = out->nwords > ref.nwords ? out->nwords : ref.nwords;
+    for (int i = 0; i < n; i++) {
+        Word x = i < out->nwords ? out->w[i] : 0, y = i < ref.nwords ? ref.w[i] : 0;
+        if (x != y) { fprintf(stderr, "AIF_XCHECK region_confined mismatch r=%d fn=%d word %d\n", r, caller_fn, i); abort(); }
+    }
+    bits_free(&ref);
+#endif
 }
 
 // Obligation 3, for one site of a bracketed extent.
@@ -5114,8 +5510,8 @@ static int bracket_reject_fn(int s, const char* why, int fn) {
 
 static int bracket_site_bounded(int s, const Bits* confined, const Bits* extent,
                                 int r, int caller_fn) {
-    for (int k = 0; k < pt_len; k++) {
-        if (!bits_test(&pt[k], s)) continue;
+    for (int ki = site_key_first[s]; ki < site_key_first[s + 1]; ki++) {
+        int k = site_key_list[ki];
         KeyNode* kn = key_by_id[k];
         if (kn == NULL) return bracket_reject(s, "unknown key", k);
         if (kn->kind == AIF_KEY_PARAM) continue;        // decided at the callee's own VAR key
@@ -5137,11 +5533,14 @@ static int bracket_site_bounded(int s, const Bits* confined, const Bits* extent,
     // region -- confinement bounds the activation, not the value -- whereas
     // every extent site is one this same loop is deciding, so requiring the
     // owner to be one of those makes the answer inductive rather than assumed.
-    for (int o = 0; o < site_count; o++) {
-        if (!bits_test(&site_owner_sites[s], o)) continue;
-        int of = sites[o].fn;
-        if (of < 0 || of >= fn_count || !bits_test(extent, of)) {
-            return bracket_reject(s, "owner site outside the extent", o);
+    for (int wi = 0; wi < site_owner_sites[s].nwords; wi++) {
+        for (Word x = site_owner_sites[s].w[wi]; x; x &= x - 1) {
+            int o = wi * WORD_BITS + ctz64(x);
+            if (o >= site_count) break;
+            int of = sites[o].fn;
+            if (of < 0 || of >= fn_count || !bits_test(extent, of)) {
+                return bracket_reject(s, "owner site outside the extent", o);
+            }
         }
     }
     // **The inverse, and it is a separate obligation rather than the same one
@@ -5163,8 +5562,8 @@ static int bracket_site_bounded(int s, const Bits* confined, const Bits* extent,
     // Rejecting the *container* rather than the element is deliberate: the
     // element is not the site whose teardown was deleted, and an extent is
     // served whole or not at all.
-    for (int o = 0; o < site_count; o++) {
-        if (!bits_test(&site_owner_sites[o], s)) continue;
+    for (int oi = site_owned_first[s]; oi < site_owned_first[s + 1]; oi++) {
+        int o = site_owned_list[oi];
         int of = sites[o].fn;
         if (of < 0 || of >= fn_count || !bits_test(extent, of)) {
             return bracket_reject(s, "owns a site outside the extent", o);
@@ -5290,10 +5689,24 @@ static int bracket_edge_ok_at(int r, int caller_fn, const CallEdge* e,
 
     if (ask_opaque && !bracket_opaque_ok(r, caller_fn, confined)) return 0;
 
-    for (int s = 0; s < site_count; s++) {
-        int f = sites[s].fn;
-        if (f < 0 || f >= fn_count || !bits_test(extent, f)) continue;
-        if (!bracket_site_bounded(s, confined, extent, r, caller_fn)) return 0;
+    // The extent's sites in site order, which is the order the scan over every
+    // site visited them in.
+    bracket_index_build();
+    int n = 0, sorted = 1;
+    for (int wi = 0; wi < extent->nwords; wi++) {
+        for (Word x = extent->w[wi]; x; x &= x - 1) {
+            int f = wi * WORD_BITS + ctz64(x);
+            if (f >= fn_count) break;
+            for (int i = fn_site_first[f]; i < fn_site_first[f + 1]; i++) {
+                int s = fn_site_list[i];
+                if (n > 0 && extent_site_buf[n - 1] > s) sorted = 0;
+                extent_site_buf[n++] = s;
+            }
+        }
+    }
+    if (!sorted) qsort(extent_site_buf, (size_t)n, sizeof(int), int_compare);
+    for (int i = 0; i < n; i++) {
+        if (!bracket_site_bounded(extent_site_buf[i], confined, extent, r, caller_fn)) return 0;
     }
     return 1;
 }
@@ -5328,8 +5741,14 @@ static int bracket_regime_ok(int r, int caller_fn, int callee) {
     int lo = 0, hi = 0;
     int narrowed = cand_stmt_range(r, &lo, &hi);
 
+    // The calls into `callee`, from the callee-indexed list; any order gives the
+    // same answer, since it is "no violation, and at least one call".
+    caller_edges_build();
     int seen = 0;
-    for (int i = 0; i < call_edge_count; i++) {
+    int nedges = (callee >= 0 && callee < fn_count) ? callee_edge_first[callee + 1] - callee_edge_first[callee]
+                                                    : call_edge_count;
+    for (int ei = 0; ei < nedges; ei++) {
+        int i = (callee >= 0 && callee < fn_count) ? callee_edge_list[callee_edge_first[callee] + ei] : ei;
         CallEdge* e = &call_edges[i];
         if (e->callee != callee) continue;
         seen++;
@@ -5570,14 +5989,16 @@ static long bracket_candidate_serves(int cand, long* held, long* live) {
     key_index_build();
     site_owners_build();
 
+    // The function's own calls, from the caller-indexed list; the totals below are
+    // sums, so the order they are taken in does not matter.
+    bracket_index_build();
+    caller_edges_build();
     long served = 0;
-    for (int i = 0; i < call_edge_count; i++) {
-        CallEdge* e = &call_edges[i];
-        if (e->callee < 0 || e->callee >= fn_count) continue;
+    for (int ei = caller_edge_first[caller_fn]; ei < caller_edge_first[caller_fn + 1]; ei++) {
+        CallEdge* e = &call_edges[caller_edge_list[ei]];
         // The call has to sit in this scope and belong to the function that owns
         // it -- the same two facts enclosing_region would establish, asked
         // directly because `cand` has no arena flag set yet for it to find.
-        if (e->caller != caller_fn) continue;
         if (scope_lca(e->scope, cand) != cand) continue;
         // Innermost-first, as the lexical loop above: an arena already placed
         // between the call and `cand` brackets it first, and counting its traffic
@@ -5597,18 +6018,23 @@ static long bracket_candidate_serves(int cand, long* held, long* live) {
                              &bracket_cand_extent, &bracket_cand_confined)) continue;
 
         long callw = weight_of(e->scope, cand);
-        for (int k = 0; k < site_count; k++) {
-            int f = sites[k].fn;
-            if (f < 0 || f >= fn_count || !bits_test(&bracket_cand_extent, f)) continue;
-            int tier = aif_tier_of(k);
-            if (tier != AIF_T1 && tier != AIF_T2) continue;
-            // The gate's clauses, so no arena is placed for traffic it refuses.
-            if (sites[k].no_stack || sites[k].foreign) continue;
-            if (site_is_loop_struct(k, e->scope)) continue;
-            long w = weight_in_own_fn(sites[k].scope) * callw;
-            served += w;
-            if (held) *held += (long)sites[k].bytes * w;
-            if (live) *live += (long)sites[k].bytes;
+        for (int wi = 0; wi < bracket_cand_extent.nwords; wi++) {
+            for (Word x = bracket_cand_extent.w[wi]; x; x &= x - 1) {
+                int f = wi * WORD_BITS + ctz64(x);
+                if (f >= fn_count) break;
+                for (int si = fn_site_first[f]; si < fn_site_first[f + 1]; si++) {
+                    int k = fn_site_list[si];
+                    int tier = aif_tier_of(k);
+                    if (tier != AIF_T1 && tier != AIF_T2) continue;
+                    // The gate's clauses, so no arena is placed for traffic it refuses.
+                    if (sites[k].no_stack || sites[k].foreign) continue;
+                    if (site_is_loop_struct(k, e->scope)) continue;
+                    long w = weight_in_own_fn(sites[k].scope) * callw;
+                    served += w;
+                    if (held) *held += (long)sites[k].bytes * w;
+                    if (live) *live += (long)sites[k].bytes;
+                }
+            }
         }
     }
     return served;
@@ -5629,12 +6055,20 @@ static long bracket_candidate_serves(int cand, long* held, long* live) {
 // which keys count as holding the value, which of them may be skipped, and which
 // force "whole block" -- and a second copy of that would be a second answer to
 // the question codegen and the obligation check have to agree on.
+static unsigned* range_key_mark;
+static int range_key_cap;
+static unsigned range_key_stamp;
+
 static int stmt_range_over(int scope, const signed char* served, const int* at,
-                           int* first, int* last) {
+                           const IntVec* served_list, int* first, int* last) {
     int lo = -1, hi = -1;
     int any = 0;
 
-    for (int k = 0; k < site_count; k++) {
+    // `served_list`, when the caller kept one, is the served sites and nothing else;
+    // the answer does not depend on the order they are visited in.
+    int nscan = served_list ? served_list->len : site_count;
+    for (int i = 0; i < nscan; i++) {
+        int k = served_list ? served_list->v[i] : i;
         if (!served[k]) continue;
         any = 1;
         if (at[k] < 0) return 0;                // unpositioned: cannot narrow
@@ -5649,12 +6083,34 @@ static int stmt_range_over(int scope, const signed char* served, const int* at,
     // that block's numbering, and there is no way from here to say which
     // statement of `scope` contains it.
     key_index_build();
-    for (int k = 0; k < key_count; k++) {
+    // With the served sites in hand the keys that hold one are the union of their
+    // site -> keys rows, which is what the scan below finds by testing every key.
+    // Each key is judged once, and every verdict below is a decline or a maximum,
+    // so the order the keys are taken in does not change the answer.
+    if (served_list) {
+        bracket_index_build();
+        if (range_key_cap < key_count) {
+            range_key_mark = (unsigned*)xrealloc(range_key_mark, (size_t)key_count * sizeof(unsigned),
+                                           "AIF key marks");
+            memset(range_key_mark + range_key_cap, 0, (size_t)(key_count - range_key_cap) * sizeof(unsigned));
+            range_key_cap = key_count;
+        }
+        range_key_stamp++;
+    }
+    int nkeys = served_list ? served_list->len : key_count;
+    for (int ki = 0; ki < nkeys; ki++) {
+      int nrow = served_list ? site_key_first[served_list->v[ki] + 1] - site_key_first[served_list->v[ki]] : 1;
+      for (int kj = 0; kj < nrow; kj++) {
+        int k = served_list ? site_key_list[site_key_first[served_list->v[ki]] + kj] : ki;
+        if (served_list) {
+            if (k >= range_key_cap || range_key_mark[k] == range_key_stamp) continue;
+            range_key_mark[k] = range_key_stamp;
+        }
         KeyNode* kn = key_by_id[k];
         if (kn == NULL || kn->kind != AIF_KEY_VAR) continue;
         // Over the sites the key points to rather than every site: the set is
         // sparse, and the full scan made this keys x sites per candidate scope.
-        int holds = 0;
+        int holds = served_list ? 1 : 0;
         for (int wi = 0; wi < pt[k].nwords && !holds; wi++) {
             for (Word x = pt[k].w[wi]; x; x &= x - 1) {
                 int s = wi * WORD_BITS + ctz64(x);
@@ -5675,6 +6131,7 @@ static int stmt_range_over(int scope, const signed char* served, const int* at,
         int lu = aif_key_last_stmt(k);
         if (lu < 0) return 0;                   // no use on record: do not narrow
         if (lu > hi) hi = lu;
+      }
     }
 
     if (hi < lo) return 0;
@@ -5737,7 +6194,7 @@ static int arena_stmt_range(int scope, int* first, int* last) {
         }
     }
 
-    return stmt_range_over(scope, placed_served, placed_at, first, last);
+    return stmt_range_over(scope, placed_served, placed_at, NULL, first, last);
 }
 
 // M3.2c-ii. The range of an arena that does not exist yet, and may never.
@@ -5758,6 +6215,9 @@ static int arena_stmt_range(int scope, int* first, int* last) {
 // once the decision is made. A superset can only widen the range or force "whole
 // block", never narrow it -- so an opaque call outside *this* range is outside
 // the range codegen ends up emitting.
+static IntVec cand_dirty;       // the sites cand_served / cand_at currently hold
+static int cand_clear_cap;      // range_scratch_cap when they were last fully cleared
+
 static int cand_range_compute(int scope, int* first, int* last) {
     if (scope < 0 || scope >= scope_count) return 0;
     if (scopes[scope].node == NULL) return 0;   // no block for codegen to bracket
@@ -5772,13 +6232,28 @@ static int cand_range_compute(int scope, int* first, int* last) {
     key_index_build();
     site_owners_build();
     range_scratch_ensure();
+    bracket_index_build();
+    caller_edges_build();
+    scope_sites_build();
 
-    for (int k = 0; k < site_count; k++) { cand_served[k] = 0; cand_at[k] = -1; }
+    // Only the entries the last call set are set: it kept them in cand_dirty, so
+    // clearing is proportional to what was served rather than to every site.
+    if (cand_clear_cap != range_scratch_cap) {
+        for (int k = 0; k < site_count; k++) { cand_served[k] = 0; cand_at[k] = -1; }
+        cand_clear_cap = range_scratch_cap;
+    } else {
+        for (int i = 0; i < cand_dirty.len; i++) {
+            cand_served[cand_dirty.v[i]] = 0;
+            cand_at[cand_dirty.v[i]] = -1;
+        }
+    }
+    cand_dirty.len = 0;
 
     // What an arena here would serve lexically: arena_would_serve, minus its one
     // clause that reads scopes[].arena -- "a nearer arena claimed it" -- which
     // can only ever take a site away.
-    for (int k = 0; k < site_count; k++) {
+    for (int ki = scope_site_first[owner]; ki < scope_site_first[owner + 1]; ki++) {
+        int k = scope_site_list[ki];
         Site* s = &sites[k];
         if (s->fn != owner) continue;           // a lexical arena and its site share a function
         if (aif_tier_of(k) != AIF_T1) continue;
@@ -5788,6 +6263,7 @@ static int cand_range_compute(int scope, int* first, int* last) {
         if (!is_ancestor_or_self(scope, s->scope)) continue;
         if (scope_lca(s->E, scope) != scope) continue;
         cand_served[k] = 1;
+        vec_push(&cand_dirty, k, "AIF candidate extent");
         if (s->scope == scope) cand_at[k] = s->stmt;
         // Otherwise it stays -1 and stmt_range_over declines, which is what c-i
         // does with the same site: a position in a nested block is not a
@@ -5798,10 +6274,8 @@ static int cand_range_compute(int scope, int* first, int* last) {
     // one bracket_place can draw from -- every call in this scope belonging to
     // the function that owns it, which is exactly what enclosing_region would
     // have found -- filtered by the obligations that mention no statement.
-    for (int i = 0; i < call_edge_count; i++) {
-        CallEdge* e = &call_edges[i];
-        if (e->callee < 0 || e->callee >= fn_count) continue;
-        if (e->caller != owner) continue;
+    for (int ei = caller_edge_first[owner]; ei < caller_edge_first[owner + 1]; ei++) {
+        CallEdge* e = &call_edges[caller_edge_list[ei]];
         if (scope_lca(e->scope, scope) != scope) continue;
         if (!bracket_edge_ok_at(scope, owner, e,
                                 &bracket_range_extent, &bracket_range_confined, 0)) continue;
@@ -5812,14 +6286,19 @@ static int cand_range_compute(int scope, int* first, int* last) {
         // range over calls the arena never sees -- and on `g2.psm` that is the
         // difference between an extent of [1,2] and one that swallows a clock.
         int serves = 0;
-        for (int k = 0; k < site_count; k++) {
-            int f = sites[k].fn;
-            if (f < 0 || f >= fn_count || !bits_test(&bracket_range_extent, f)) continue;
-            int tier = aif_tier_of(k);
-            if (tier != AIF_T1 && tier != AIF_T2) continue;     // the bracketed gate
-            if (sites[k].no_stack) continue;
-            serves = 1;
-            break;
+        for (int wi = 0; wi < bracket_range_extent.nwords && !serves; wi++) {
+            for (Word x = bracket_range_extent.w[wi]; x && !serves; x &= x - 1) {
+                int f = wi * WORD_BITS + ctz64(x);
+                if (f >= fn_count) break;
+                for (int i = fn_site_first[f]; i < fn_site_first[f + 1]; i++) {
+                    int k = fn_site_list[i];
+                    int tier = aif_tier_of(k);
+                    if (tier != AIF_T1 && tier != AIF_T2) continue;     // the bracketed gate
+                    if (sites[k].no_stack) continue;
+                    serves = 1;
+                    break;
+                }
+            }
         }
         if (!serves) continue;
 
@@ -5829,18 +6308,24 @@ static int cand_range_compute(int scope, int* first, int* last) {
         // declines on the same bracket for the same reason.
         if (e->scope != scope || e->stmt < 0) return 0;
 
-        for (int k = 0; k < site_count; k++) {
-            int f = sites[k].fn;
-            if (f < 0 || f >= fn_count || !bits_test(&bracket_range_extent, f)) continue;
-            int tier = aif_tier_of(k);
-            if (tier != AIF_T1 && tier != AIF_T2) continue;
-            if (sites[k].no_stack) continue;
-            cand_served[k] = 1;
-            if (cand_at[k] < 0 || e->stmt < cand_at[k]) cand_at[k] = e->stmt;
+        for (int wi = 0; wi < bracket_range_extent.nwords; wi++) {
+            for (Word x = bracket_range_extent.w[wi]; x; x &= x - 1) {
+                int f = wi * WORD_BITS + ctz64(x);
+                if (f >= fn_count) break;
+                for (int i = fn_site_first[f]; i < fn_site_first[f + 1]; i++) {
+                    int k = fn_site_list[i];
+                    int tier = aif_tier_of(k);
+                    if (tier != AIF_T1 && tier != AIF_T2) continue;
+                    if (sites[k].no_stack) continue;
+                    if (!cand_served[k]) vec_push(&cand_dirty, k, "AIF candidate extent");
+                    cand_served[k] = 1;
+                    if (cand_at[k] < 0 || e->stmt < cand_at[k]) cand_at[k] = e->stmt;
+                }
+            }
         }
     }
 
-    return stmt_range_over(scope, cand_served, cand_at, first, last);
+    return stmt_range_over(scope, cand_served, cand_at, &cand_dirty, first, last);
 }
 
 // Memoised per scope, and safe to memoise because nothing it reads changes after
@@ -7445,6 +7930,40 @@ static int fn_returns_partial(int f) {
 static void flow_build(void);
 static int param_may_return(int k);
 
+// The PARAM keys of each function, ascending. fn_may_return_param and the three
+// questions beside it used to find a function's parameters by testing every key in
+// the program, once per call site codegen asked about -- 8% of a self-build.
+static IntVec* param_keys_by_fn;
+static int param_keys_built_keys = -1, param_keys_built_fns = -1;
+
+static void param_keys_free(void) {
+    if (param_keys_by_fn) {
+        for (int f = 0; f < param_keys_built_fns; f++) free(param_keys_by_fn[f].v);
+    }
+    free(param_keys_by_fn);
+    param_keys_by_fn = NULL;
+    param_keys_built_keys = param_keys_built_fns = -1;
+}
+
+static const IntVec* param_keys_of(int f) {
+    static const IntVec none;
+    key_index_build();
+    if (!param_keys_by_fn || param_keys_built_keys != key_count || param_keys_built_fns != fn_count) {
+        param_keys_free();
+        param_keys_by_fn = (IntVec*)xcalloc((size_t)fn_count + 1, sizeof(IntVec), "AIF parameter keys");
+        for (int k = 0; k < key_count; k++) {
+            KeyNode* kn = key_by_id[k];
+            if (kn == NULL || kn->kind != AIF_KEY_PARAM) continue;
+            if (kn->a < 0 || kn->a >= fn_count) continue;
+            vec_push(&param_keys_by_fn[kn->a], k, "AIF parameter keys");
+        }
+        param_keys_built_keys = key_count;
+        param_keys_built_fns = fn_count;
+    }
+    if (f < 0 || f >= fn_count) return &none;
+    return &param_keys_by_fn[f];
+}
+
 static int fn_may_return_param(int f) {
     if (f < 0) return 0;
     int rk = key_find(AIF_KEY_RET, f, 0);
@@ -7452,9 +7971,9 @@ static int fn_may_return_param(int f) {
     if (!bits_any(&pt[rk])) return 0;
 
     key_index_build();
-    for (int k = 0; k < key_count && k < pt_len; k++) {
-        KeyNode* kn = key_by_id[k];
-        if (kn == NULL || kn->kind != AIF_KEY_PARAM || kn->a != f) continue;
+    const IntVec* pks = param_keys_of(f);
+    for (int pi = 0; pi < pks->len && pks->v[pi] < pt_len; pi++) {
+        int k = pks->v[pi];
         // A shared site is not a path; see param_returns.
         if (!param_may_return(k)) continue;
         int n = pt[rk].nwords < pt[k].nwords ? pt[rk].nwords : pt[k].nwords;
@@ -7497,9 +8016,9 @@ int aif_fn_may_return_param(const char* symbol) {
 static int site_may_be_param_of(int f, int s) {
     if (f < 0 || s < 0) return 0;
     key_index_build();
-    for (int k = 0; k < key_count && k < pt_len; k++) {
-        KeyNode* kn = key_by_id[k];
-        if (kn == NULL || kn->kind != AIF_KEY_PARAM || kn->a != f) continue;
+    const IntVec* pks = param_keys_of(f);
+    for (int pi = 0; pi < pks->len && pks->v[pi] < pt_len; pi++) {
+        int k = pks->v[pi];
         // A move, not a borrow: see aif_note_param_consuming. The caller cannot
         // free what it no longer owns, so handing this one back is safe.
         if (bits_test(&param_consuming, k)) continue;
@@ -7601,9 +8120,9 @@ static int fn_return_holds_view_of_param(int f) {
     }
     if (!bits_any(&held)) return 0;
 
-    for (int k = 0; k < key_count && k < pt_len; k++) {
-        KeyNode* kn = key_by_id[k];
-        if (kn == NULL || kn->kind != AIF_KEY_PARAM || kn->a != f) continue;
+    const IntVec* pks = param_keys_of(f);
+    for (int pi = 0; pi < pks->len && pks->v[pi] < pt_len; pi++) {
+        int k = pks->v[pi];
         int n = held.nwords < pt[k].nwords ? held.nwords : pt[k].nwords;
         for (int w = 0; w < n; w++) {
             Word both = held.w[w] & pt[k].w[w];
@@ -7633,9 +8152,9 @@ static int fn_may_return_view_of_param(int f) {
     if (!bits_any(&key_views[rk])) return 0;
 
     key_index_build();
-    for (int k = 0; k < key_count && k < pt_len; k++) {
-        KeyNode* kn = key_by_id[k];
-        if (kn == NULL || kn->kind != AIF_KEY_PARAM || kn->a != f) continue;
+    const IntVec* pks = param_keys_of(f);
+    for (int pi = 0; pi < pks->len && pks->v[pi] < pt_len; pi++) {
+        int k = pks->v[pi];
         int n = key_views[rk].nwords < pt[k].nwords ? key_views[rk].nwords : pt[k].nwords;
         for (int w = 0; w < n; w++) {
             if (key_views[rk].w[w] & pt[k].w[w]) return 1;
@@ -8238,6 +8757,12 @@ void aif_reset(void) {
     placed_at = NULL;
     cand_at = NULL;
     range_scratch_cap = 0;
+    free(cand_dirty.v);
+    cand_dirty.v = NULL; cand_dirty.len = 0; cand_dirty.cap = 0;
+    cand_clear_cap = 0;
+    free(range_key_mark);
+    range_key_mark = NULL;
+    range_key_cap = 0;
     free(cand_range_lo);
     free(cand_range_hi);
     free(cand_range_state);
@@ -8323,6 +8848,10 @@ void aif_reset(void) {
     fn_allocs_reach = NULL;
     bracket_fn_cap = 0;
     bracket_ready = 0;
+    caller_edges_free();
+    free(confined_good);
+    confined_good = NULL;
+    confined_good_cap = 0;
     free(call_edges);
     call_edges = NULL;
     call_edge_count = 0;
@@ -8357,6 +8886,10 @@ void aif_reset(void) {
     free(owner_vec_own.v);
     owner_vec_val.v = NULL; owner_vec_val.len = 0; owner_vec_val.cap = 0;
     owner_vec_own.v = NULL; owner_vec_own.len = 0; owner_vec_own.cap = 0;
+    bracket_index_free();
+    scope_sites_free();
+    scope_node_table_free();
+    param_keys_free();
     free(key_by_id);
     key_by_id = NULL;
     key_by_id_len = 0;

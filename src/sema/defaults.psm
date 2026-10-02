@@ -61,25 +61,27 @@ internal fn semaDefaultZeroesArray(init: ASTNode, t: TypeInfo) -> Bool {
 // is reported once there, naming the path it came through.
 private fn semaDefaultInto(module: ASTNode, target: ASTNode, t: TypeInfo, depth: Int) -> String {
     let k = t.kind
-    if (k == TypeKind.INT) { return semaDefaultLiteral(target, TokenType.NUMBER_LITERAL, "0") }
-    if (k == TypeKind.FLOAT) { return semaDefaultLiteral(target, TokenType.FLOAT_LITERAL, "0.0") }
-    if (k == TypeKind.BOOL) { return semaDefaultLiteral(target, TokenType.BOOL_LITERAL, "false") }
+    match (k) {
+        TypeKind.INT => { return semaDefaultLiteral(target, TokenType.NUMBER_LITERAL, "0") }
+        TypeKind.FLOAT => { return semaDefaultLiteral(target, TokenType.FLOAT_LITERAL, "0.0") }
+        TypeKind.BOOL => { return semaDefaultLiteral(target, TokenType.BOOL_LITERAL, "false") }
     // A char literal carries its code, so this is `'\0'`.
-    if (k == TypeKind.CHAR) { return semaDefaultLiteral(target, TokenType.CHAR_LITERAL, "0") }
-    if (k == TypeKind.STRING) { return semaDefaultLiteral(target, TokenType.STRING_LITERAL, "") }
-    if (k == TypeKind.OPTIONAL) {
-        semaDefaultReset(target, NodeKind.NONE_LITERAL_EXPR)
-        return ""
-    }
+        TypeKind.CHAR => { return semaDefaultLiteral(target, TokenType.CHAR_LITERAL, "0") }
+        TypeKind.STRING => { return semaDefaultLiteral(target, TokenType.STRING_LITERAL, "") }
+        TypeKind.OPTIONAL => {
+            semaDefaultReset(target, NodeKind.NONE_LITERAL_EXPR)
+            return ""
+        }
     // `[]`, which semaListLiteral lowers against the expected element type.
-    if (k == TypeKind.LIST) {
-        semaDefaultReset(target, NodeKind.ARRAY_LITERAL_EXPR)
-        return ""
-    }
-    if (k == TypeKind.ARRAY) { return semaDefaultArray(module, target, t, depth) }
-    if (k == TypeKind.STRUCT) { return semaDefaultStruct(module, target, t, depth) }
-    if (k == TypeKind.ENUM) {
-        return diagQuote(typeDisplay(t)).concat(" is an enum, which has no default value")
+        TypeKind.LIST => {
+            semaDefaultReset(target, NodeKind.ARRAY_LITERAL_EXPR)
+            return ""
+        }
+        TypeKind.ARRAY => { return semaDefaultArray(module, target, t, depth) }
+        TypeKind.STRUCT => { return semaDefaultStruct(module, target, t, depth) }
+        TypeKind.ENUM => {
+            return diagQuote(typeDisplay(t)).concat(" is an enum, which has no default value")
+        }
     }
     return diagQuote(typeDisplay(t)).concat(" has no default value")
 }

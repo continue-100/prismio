@@ -1,0 +1,6 @@
+// expect-error: an element of global `xs` needs to be a number, a character or a string literal
+// expect-error: global `flags` cannot hold a `Bool` element yet
+fn one() -> Int { return 1 }
+let xs = [1, one()]
+let flags = [true]
+fn main() -> Int { return 0 }

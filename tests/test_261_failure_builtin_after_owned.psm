@@ -1,0 +1,59 @@
+// A function that owns a String and ends in `panic`, `unreachable` or `exit` used to
+// compile to invalid IR: the scope's drops were emitted behind the `unreachable`
+// ("Terminator found in the middle of a basic block"). The paths below are never
+// taken at run time; the test is that the module builds and the live path runs.
+
+import std.io
+import std.string
+
+fn make() -> String {
+    return "x".repeat(3)
+}
+
+fn endsInPanic(a: Int) {
+    let owned = make()
+    if (a == 0) {
+        return
+    }
+    println(owned)
+    panic("never")
+}
+
+fn endsInUnreachable(a: Int) {
+    let owned = make()
+    if (a == 0) {
+        return
+    }
+    println(owned)
+    unreachable()
+}
+
+fn endsInExit(a: Int) {
+    let owned = make()
+    if (a == 0) {
+        return
+    }
+    println(owned)
+    exit(3)
+}
+
+fn failsInBranch(a: Int) -> Int {
+    let owned = make()
+    if (a == 1) {
+        println(owned)
+        panic("never")
+    }
+    return owned.length
+}
+
+fn main() -> Int {
+    endsInPanic(0)
+    endsInUnreachable(0)
+    endsInExit(0)
+    if (failsInBranch(0) != 3) {
+        println("FAIL: the live path of a function with a failing branch")
+        return 1
+    }
+    println("PASS: failure builtins after owned locals")
+    return 0
+}

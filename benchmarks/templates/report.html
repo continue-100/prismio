@@ -509,6 +509,25 @@
       `;
     }
 
+    // What the compile-time figures are: wall time, the CPU time beside it (Prismio's
+    // backend uses several threads, clang++ and rustc about one), how many builds
+    // they are the median of, and which reference arms were not rebuilt for this run.
+    function compileNote() {
+      const cpu = report.compile_cpu_ns;
+      const parts = [];
+      const d = v => (v ? duration(v) : "—");
+      if (cpu) parts.push(`CPU time: Prismio ${d(cpu.prismio)} · C++ ${d(cpu.cpp)} · Rust ${d(cpu.rust)}.`);
+      const runs = report.compile_runs || 1;
+      parts.push(runs > 1 ? `Median of ${runs} builds.` : "One build per arm.");
+      const at = report.cached_built_at || {};
+      const names = {cpp: "C++", rust: "Rust", prismio: "Prismio"};
+      const old = Object.keys(at).map(k => `${names[k] || k} (built ${at[k]})`);
+      if (old.length) parts.push(`Not rebuilt for this run: ${old.join(", ")}.`);
+      if (report.build_skipped) parts.push("Builds skipped (--skip-build): the binaries are from an earlier run.");
+      if (report.compiler && report.compiler.modified) parts.push(`Compiler: ${report.compiler.path} (${report.compiler.modified}).`);
+      return parts.join(" ");
+    }
+
     // Render Toolchain Metrics (Matching ToolchainMetrics.tsx)
     function renderToolchain() {
       const grid = document.querySelector("#toolchain-grid");
@@ -544,6 +563,7 @@
             ${compileSpeedup > 0 ? `<span class="kpi-delta" style="background:var(--good-bg); color:var(--good)">${compileSpeedup.toFixed(1)}% faster than Clang++</span>` : ''}
           </div>
           <p class="kpi-desc">Full compilation through the self-hosted frontend, AIF escape inference, and LLVM backend.</p>
+          <p class="kpi-desc" style="margin-top:4px;">${compileNote()}</p>
           <div class="toolchain-bars">
             <div class="toolchain-bar-row">
               <div class="toolchain-bar-label">

@@ -128,8 +128,9 @@ internal fn debugTypeName(annotation: Ptr, initializer: Ptr) -> String {
         let initNode = ptr_to_node(initializer)
         if (nodeHasType(initNode)) {
             let t = nodeGetType(initNode)
-            if (t.kind == TypeKind.STRING) { return "String" }
-            if (t.kind == TypeKind.STRUCT) { return t.name }
+            match (t.kind) {
+                TypeKind.STRING => { return "String" }
+                TypeKind.STRUCT => { return t.name }
             // An enum lowers to i32, so without this `let kind = node.kind` --
             // which is how this codebase binds an enum nearly everywhere, with
             // no annotation -- would be described as a plain Int and print as a
@@ -141,7 +142,8 @@ internal fn debugTypeName(annotation: Ptr, initializer: Ptr) -> String {
             // `let c = Colour.RED` is an Int as far as the whole compiler is
             // concerned, and saying otherwise here would have the debug layer
             // assert a type the compiler does not hold.
-            if (t.kind == TypeKind.ENUM) { return t.name }
+                TypeKind.ENUM => { return t.name }
+            }
         }
     }
 

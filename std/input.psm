@@ -26,8 +26,10 @@
 // A line is a String from a C pointer, so text after a NUL byte in a line is not
 // part of it.
 
+import std.io
 import std.iter
 import std.option
+import std.string
 
 // Every line and the rest-of-input String are allocated by the runtime for the
 // caller, "" at the end of input rather than a literal.
@@ -49,6 +51,51 @@ impl Stdin {
     public fn readLine(self) -> Option<String> {
         if (io_stdin_has_line() == 0) { return Option<String>.None }
         return Option<String>.Some(io_stdin_take_line())
+    }
+
+    // Whether there is no line left to read. A `readLine` now would be `None`.
+    public prop isAtEnd(self) -> Bool {
+        return io_stdin_has_line() == 0
+    }
+
+    // The next line, or `fallback` at the end of input: the `match` that most
+    // programs write around `readLine`, once.
+    public fn readLineOr(self, fallback: String) -> String {
+        if (io_stdin_has_line() == 0) { return fallback.clone() }
+        return io_stdin_take_line()
+    }
+
+    // `text` written to standard output, then the next line. The prompt is not
+    // followed by a newline, and standard output is flushed when the line is read.
+    public fn prompt(self, text: String) -> Option<String> {
+        print(text)
+        return self.readLine()
+    }
+
+    // The next line as a number: `None` at the end of input, and also when the line
+    // is not one (surrounding spaces are ignored). The line is consumed either way.
+    public fn readInt(self) -> Int? {
+        if (io_stdin_has_line() == 0) { return none }
+        return io_stdin_take_line().trim().parseInt()
+    }
+
+    public fn readFloat(self) -> Float? {
+        if (io_stdin_has_line() == 0) { return none }
+        return io_stdin_take_line().trim().parseFloat()
+    }
+
+    // Every line not yet read.
+    public fn readLines(self) -> Vec<String> {
+        let mut out: Vec<String> = []
+        while (io_stdin_has_line() == 1) {
+            out.push(io_stdin_take_line())
+        }
+        return out
+    }
+
+    // The rest of the input split at spaces, tabs and line ends.
+    public fn readWords(self) -> Vec<String> {
+        return io_stdin_read_all().splitWhitespace()
     }
 
     // Everything not yet read, to the end of input, terminators included.

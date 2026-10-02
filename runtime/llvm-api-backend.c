@@ -798,12 +798,15 @@ static int  g_target_explicit;
 static int  g_target_selected;
 
 #ifdef PRISMIO_TARGETS
-static void ensure_all_targets(void) {
+static void ensure_targets(void) {
     static int done = 0;
     if (done) return;
-    LLVMInitializeAllTargetInfos();
-    LLVMInitializeAllTargets();
-    LLVMInitializeAllTargetMCs();
+#define PRISMIO_INIT_TARGET(T) \
+    LLVMInitialize##T##TargetInfo(); \
+    LLVMInitialize##T##Target(); \
+    LLVMInitialize##T##TargetMC();
+    PRISMIO_LLVM_TARGET_LIST(PRISMIO_INIT_TARGET)
+#undef PRISMIO_INIT_TARGET
     done = 1;
 }
 #endif
@@ -813,7 +816,7 @@ static void ensure_all_targets(void) {
 int ir_target_select(const char *triple) {
     int want_host = !triple || !*triple;
 #ifdef PRISMIO_TARGETS
-    ensure_all_targets();
+    ensure_targets();
 
     char *host = want_host ? LLVMGetDefaultTargetTriple() : NULL;
     const char *use = want_host ? host : triple;
@@ -2450,7 +2453,7 @@ void ir_array_literal_begin(void) {
     g_array_literal_count = 0;
 }
 
-void ir_array_literal_elem(const char *elem_type, const char *value) {
+static void array_literal_push(LLVMValueRef element) {
     if (g_array_literal_count == g_array_literal_capacity) {
         int capacity = g_array_literal_capacity ? g_array_literal_capacity * 2 : 256;
         LLVMValueRef *grown = realloc(g_array_literal, (size_t)capacity * sizeof(LLVMValueRef));
@@ -2458,12 +2461,42 @@ void ir_array_literal_elem(const char *elem_type, const char *value) {
         g_array_literal = grown;
         g_array_literal_capacity = capacity;
     }
+    g_array_literal[g_array_literal_count++] = element;
+}
+
+void ir_array_literal_elem(const char *elem_type, const char *value) {
     LLVMValueRef element = resolve_value(value, elem_type);
     // Codegen sends only numeric literals here, and a constant initializer can
     // hold nothing else. Anything that is not one is a codegen bug to report,
     // not a value to store at run time behind the caller's back.
     if (!LLVMIsConstant(element)) backend_fail("array literal element is not a constant", value);
-    g_array_literal[g_array_literal_count++] = element;
+    array_literal_push(element);
+}
+
+// A string literal as one element: the constant (pointer, length) pair that
+// ir_global_str_var gives a `String` global, borrowed because it is static.
+void ir_array_literal_str_elem(const char *str_global, int length) {
+    LLVMTypeRef ty = named_struct("prismio.str");
+    LLVMValueRef sg = LLVMGetNamedGlobal(g_module, str_global);
+    if (!sg) backend_fail("unknown string global", str_global);
+    LLVMValueRef fields[2];
+    fields[0] = sg;
+    fields[1] = LLVMConstInt(LLVMInt64TypeInContext(g_ctx), (unsigned long long)length | PRISMIO_STR_BORROWED_TAG, 0);
+    array_literal_push(LLVMConstNamedStruct(ty, fields, 2));
+}
+
+// The elements collected since ir_array_literal_begin as a module-level `let`:
+// one constant array named `name`, which an identifier then reads by address.
+// Private to this module for the reason ir_global_set_internal gives.
+void ir_global_array_var(const char *name, const char *elem_type) {
+    LLVMTypeRef ety = type_from_key(elem_type);
+    int count = g_array_literal_count;
+    LLVMTypeRef arr = LLVMArrayType2(ety, (uint64_t)count);
+    LLVMValueRef g = LLVMGetNamedGlobal(g_module, name);
+    if (!g) g = LLVMAddGlobal(g_module, arr, name);
+    LLVMSetInitializer(g, LLVMConstArray2(ety, g_array_literal, (uint64_t)count));
+    LLVMSetGlobalConstant(g, 1);
+    LLVMSetLinkage(g, LLVMInternalLinkage);
 }
 
 int ir_array_literal_end(const char *elem_type) {
@@ -6510,6 +6543,21 @@ static int run_optimization(void) {
     return 0;
 }
 
+// PRISMIO_DUMP_BAD_IR=<file>: where to write the module when it fails verification.
+// The verifier names a block and not the function it is in, and the module is gone
+// the moment the compiler exits.
+static void dump_bad_module(void) {
+    const char *path = getenv("PRISMIO_DUMP_BAD_IR");
+    if (!path || !*path) return;
+    char *werr = NULL;
+    if (LLVMPrintModuleToFile(g_module, path, &werr)) {
+        fprintf(stderr, "warning: could not write %s: %s\n", path, werr ? werr : "?");
+        if (werr) LLVMDisposeMessage(werr);
+    } else {
+        fprintf(stderr, "the module that failed verification is in %s\n", path);
+    }
+}
+
 int ir_write_file(const char *filename) {
     char *err = NULL;
 
@@ -6519,6 +6567,7 @@ int ir_write_file(const char *filename) {
         fprintf(stderr, "error: generated module failed verification\n");
         if (err) fprintf(stderr, "%s\n", err);
         if (err) LLVMDisposeMessage(err);
+        dump_bad_module();
         return 1;
     }
     if (err) { LLVMDisposeMessage(err); err = NULL; }
@@ -7391,7 +7440,7 @@ int ir_link_library_modules(const char *dest_ir,
 // `--jit` off the emission path: codegen does not know the JIT exists.
 int ir_jit_run_file(const char *ir_path, const char *program_name) {
     // The JIT emits code for this process, so the *native* target and its
-    // assembly printer are what it needs. ensure_all_targets() registers target
+    // assembly printer are what it needs. ensure_targets() registers target
     // infos and MCs for cross-compilation and deliberately no printers, so
     // calling it is not enough here.
     LLVMInitializeNativeTarget();
@@ -7631,9 +7680,12 @@ static void ensure_codegen_initialized(void) {
     static int done = 0;
     if (done) return;
 #ifdef PRISMIO_TARGETS
-    ensure_all_targets();
-    LLVMInitializeAllAsmPrinters();
-    LLVMInitializeAllAsmParsers();
+    ensure_targets();
+#define PRISMIO_INIT_ASM(T) \
+    LLVMInitialize##T##AsmPrinter(); \
+    LLVMInitialize##T##AsmParser();
+    PRISMIO_LLVM_TARGET_LIST(PRISMIO_INIT_ASM)
+#undef PRISMIO_INIT_ASM
 #else
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();

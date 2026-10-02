@@ -235,13 +235,15 @@ public fn typeIntIsUnsigned(t: TypeInfo) -> Bool {
 // reclaim, and `drop(arr)` would hand a stack pointer to the deallocator.
 // Making them affine would buy the aliasing rule and cost that hazard.
 public fn typeIsMoveOnly(t: TypeInfo) -> Bool {
-    if (t.kind == TypeKind.STRUCT) { return true }
-    if (t.kind == TypeKind.STRING) { return true }
+    match (t.kind) {
+        TypeKind.STRUCT => { return true }
+        TypeKind.STRING => { return true }
     // REQUIREMENTS 4. `T?` owns whatever `T` owns; being absent is a state of
     // the slot, not a different kind of ownership.
-    if (t.kind == TypeKind.OPTIONAL) {
-        if (nodeExists(t.child)) { return typeIsMoveOnly(ptr_to_type(t.child)) }
-        return false
+        TypeKind.OPTIONAL => {
+            if (nodeExists(t.child)) { return typeIsMoveOnly(ptr_to_type(t.child)) }
+            return false
+        }
     }
     return t.kind == TypeKind.LIST or t.kind == TypeKind.DATAVIEW
 }
@@ -347,9 +349,11 @@ public fn typeOptionalInner(t: TypeInfo) -> TypeInfo {
 // -- 0 is a perfectly good Int -- so its `T?` is a second word beside it: a
 // present flag and the value, `{ i1, T }` by value (typeIsValueOptional).
 public fn typeCanBeOptional(t: TypeInfo) -> Bool {
-    if (t.kind == TypeKind.STRUCT) { return true }
-    if (t.kind == TypeKind.STRING) { return true }
-    if (t.kind == TypeKind.LIST) { return true }
+    match (t.kind) {
+        TypeKind.STRUCT => { return true }
+        TypeKind.STRING => { return true }
+        TypeKind.LIST => { return true }
+    }
     if (typeIsScalarOptionalInner(t)) { return true }
     return t.kind == TypeKind.PTR
 }
@@ -453,7 +457,43 @@ public fn typeIsValid(t: TypeInfo) -> Bool {
 // How a type is written, for a person reading a diagnostic. The vector type is
 // `Vec`, which is what a program spells.
 public fn typeDisplay(t: TypeInfo) -> String {
-    return typeSpelling(t, "Vec")
+    return typeInstancesAsWritten(typeSpelling(t, "Vec"))
+}
+
+// A generic instance is named `Option$Struct_Point` or `Map$String$Int` inside the
+// compiler: the template, then each type argument after a `$`, with a `Struct_` or
+// `Enum_` prefix on a user's type. Prose writes it the way the program did --
+// `Option<Point>`, `Map<String, Int>`. Anything without a `$` is left alone, and so
+// is a key, which is why this is applied to the display spelling only.
+private fn typeInstancesAsWritten(spelled: String) -> String {
+    if (spelled.contains("$") == false) { return spelled }
+    let mut out = ""
+    let mut word = ""
+    let n = __builtin_string_len(spelled)
+    for i in 0..<n {
+        let c = spelled.charAt(i)
+        if (isIdentPart(c) or c == '$') {
+            word = word.concat(c.toString())
+        } else {
+            out = out.concat(typeInstanceWord(word), c.toString())
+            word = ""
+        }
+    }
+    return out.concat(typeInstanceWord(word))
+}
+
+private fn typeInstanceWord(word: String) -> String {
+    if (word.contains("$") == false) { return word }
+    let parts = word.split('$')
+    let mut out = parts[0].concat("<")
+    for i in 1..<parts.length {
+        if (i > 1) { out = out.concat(", ") }
+        let arg = parts[i]
+        if (arg.startsWith("Struct_")) { out = out.concat(arg.substring(7, __builtin_string_len(arg) - 7)) }
+        else if (arg.startsWith("Enum_")) { out = out.concat(arg.substring(5, __builtin_string_len(arg) - 5)) }
+        else { out = out.concat(arg) }
+    }
+    return out.concat(">")
 }
 
 // The same spelling under the compiler's own name for the vector type, `List`.
@@ -489,51 +529,53 @@ private fn typeKeyNameEndsAt(key: String, at: Int) -> Bool {
 }
 
 private fn typeSpelling(t: TypeInfo, vecName: String) -> String {
-    if (t.kind == TypeKind.STRUCT) {
-        // A trait object is a synthesised struct named `dyn$Show`, and `$` cannot
-        // occur in a source identifier -- so printing the internal name shows the
-        // reader a type they did not write and cannot spell.
-        if (t.name.startsWith("dyn$")) {
-            return "dyn ".concat(t.name.substring(4, __builtin_string_len(t.name) - 4))
+    match (t.kind) {
+        TypeKind.STRUCT => {
+            // A trait object is a synthesised struct named `dyn$Show`, and `$` cannot
+            // occur in a source identifier -- so printing the internal name shows the
+            // reader a type they did not write and cannot spell.
+            if (t.name.startsWith("dyn$")) {
+                return "dyn ".concat(t.name.substring(4, __builtin_string_len(t.name) - 4))
+            }
+            return t.name
         }
-        return t.name
-    }
-    if (t.kind == TypeKind.ENUM) { return t.name }
-    if (t.kind == TypeKind.ARRAY) {
-        if (nodeExists(t.child)) {
-            return "[".concat(typeSpelling(ptr_to_type(t.child), vecName), "]")
+        TypeKind.ENUM => { return t.name }
+        TypeKind.ARRAY => {
+            if (nodeExists(t.child)) {
+                return "[".concat(typeSpelling(ptr_to_type(t.child), vecName), "]")
+            }
+            return "[Invalid]"
         }
-        return "[Invalid]"
-    }
-    if (t.kind == TypeKind.LIST) {
-        if (nodeExists(t.child)) {
-            return vecName.concat("<", typeSpelling(ptr_to_type(t.child), vecName), ">")
+        TypeKind.LIST => {
+            if (nodeExists(t.child)) {
+                return vecName.concat("<", typeSpelling(ptr_to_type(t.child), vecName), ">")
+            }
+            return vecName.clone()
         }
-        return vecName.clone()
-    }
-    if (t.kind == TypeKind.SLICE) {
-        if (nodeExists(t.child)) {
-            return "Slice<".concat(typeSpelling(ptr_to_type(t.child), vecName), ">")
+        TypeKind.SLICE => {
+            if (nodeExists(t.child)) {
+                return "Slice<".concat(typeSpelling(ptr_to_type(t.child), vecName), ">")
+            }
+            return "Slice"
         }
-        return "Slice"
-    }
-    if (t.kind == TypeKind.DATAVIEW) {
-        if (nodeExists(t.child)) {
-            return "DataView<".concat(typeSpelling(ptr_to_type(t.child), vecName), ">")
+        TypeKind.DATAVIEW => {
+            if (nodeExists(t.child)) {
+                return "DataView<".concat(typeSpelling(ptr_to_type(t.child), vecName), ">")
+            }
+            return "DataView"
         }
-        return "DataView"
-    }
-    if (t.kind == TypeKind.DATAELEMENT) {
-        if (nodeExists(t.child)) {
-            return "DataElement<".concat(typeSpelling(ptr_to_type(t.child), vecName), ">")
+        TypeKind.DATAELEMENT => {
+            if (nodeExists(t.child)) {
+                return "DataElement<".concat(typeSpelling(ptr_to_type(t.child), vecName), ">")
+            }
+            return "DataElement"
         }
-        return "DataElement"
-    }
-    if (t.kind == TypeKind.OPTIONAL) {
-        if (nodeExists(t.child)) {
-            return typeSpelling(ptr_to_type(t.child), vecName).concat("?")
+        TypeKind.OPTIONAL => {
+            if (nodeExists(t.child)) {
+                return typeSpelling(ptr_to_type(t.child), vecName).concat("?")
+            }
+            return "none"
         }
-        return "none"
     }
     return t.name
 }
@@ -543,36 +585,38 @@ public fn typeEquals(a: TypeInfo, b: TypeInfo) -> Bool {
     if (a.kind == TypeKind.STRUCT or a.kind == TypeKind.ENUM) {
         return a.name.equals(b.name)
     }
-    if (a.kind == TypeKind.INT) {
-        return a.name.equals(b.name)
-    }
-    if (a.kind == TypeKind.ARRAY) {
-        if (nodeIsNull(a.child) or nodeIsNull(b.child)) {
-            // Element types agree only when *both* are absent. Compared as
-            // strings this was a strcmp of two machine pointers.
-            return nodeIsNull(a.child) and nodeIsNull(b.child)
+    match (a.kind) {
+        TypeKind.INT => {
+            return a.name.equals(b.name)
         }
-        return typeEquals(ptr_to_type(a.child), ptr_to_type(b.child))
-    }
-    if (a.kind == TypeKind.LIST) {
-        // A list with an unknown element type (from list_new()) matches any list.
-        if (nodeIsNull(a.child) or nodeIsNull(b.child)) { return true }
-        let ac = ptr_to_type(a.child)
-        let bc = ptr_to_type(b.child)
-        if (typeIsValid(ac) == false or typeIsValid(bc) == false) { return true }
-        return typeEquals(ac, bc)
-    }
-    if (a.kind == TypeKind.SLICE) {
-        if (nodeIsNull(a.child) or nodeIsNull(b.child)) { return false }
-        return typeEquals(ptr_to_type(a.child), ptr_to_type(b.child))
-    }
-    if (a.kind == TypeKind.DATAVIEW) {
-        if (nodeIsNull(a.child) or nodeIsNull(b.child)) { return false }
-        return typeEquals(ptr_to_type(a.child), ptr_to_type(b.child))
-    }
-    if (a.kind == TypeKind.DATAELEMENT) {
-        if (nodeIsNull(a.child) or nodeIsNull(b.child)) { return false }
-        return typeEquals(ptr_to_type(a.child), ptr_to_type(b.child))
+        TypeKind.ARRAY => {
+            if (nodeIsNull(a.child) or nodeIsNull(b.child)) {
+                // Element types agree only when *both* are absent. Compared as
+                // strings this was a strcmp of two machine pointers.
+                return nodeIsNull(a.child) and nodeIsNull(b.child)
+            }
+            return typeEquals(ptr_to_type(a.child), ptr_to_type(b.child))
+        }
+        TypeKind.LIST => {
+            // A list with an unknown element type (from list_new()) matches any list.
+            if (nodeIsNull(a.child) or nodeIsNull(b.child)) { return true }
+            let ac = ptr_to_type(a.child)
+            let bc = ptr_to_type(b.child)
+            if (typeIsValid(ac) == false or typeIsValid(bc) == false) { return true }
+            return typeEquals(ac, bc)
+        }
+        TypeKind.SLICE => {
+            if (nodeIsNull(a.child) or nodeIsNull(b.child)) { return false }
+            return typeEquals(ptr_to_type(a.child), ptr_to_type(b.child))
+        }
+        TypeKind.DATAVIEW => {
+            if (nodeIsNull(a.child) or nodeIsNull(b.child)) { return false }
+            return typeEquals(ptr_to_type(a.child), ptr_to_type(b.child))
+        }
+        TypeKind.DATAELEMENT => {
+            if (nodeIsNull(a.child) or nodeIsNull(b.child)) { return false }
+            return typeEquals(ptr_to_type(a.child), ptr_to_type(b.child))
+        }
     }
     // Two task handles are the same type only when they yield the same thing.
     // Without this they would fall through to PTR's unconditional `true` and
@@ -611,23 +655,25 @@ public fn typeIsNumeric(t: TypeInfo) -> Bool {
 }
 
 public fn typeIrKey(t: TypeInfo) -> String {
-    if (t.kind == TypeKind.VOID) { return "void" }
-    if (t.kind == TypeKind.INT) { return t.llvm }
-    if (t.kind == TypeKind.FLOAT) { return "double" }
-    if (t.kind == TypeKind.BOOL) { return "i1" }
-    if (t.kind == TypeKind.CHAR) { return "i8" }
+    match (t.kind) {
+        TypeKind.VOID => { return "void" }
+        TypeKind.INT => { return t.llvm }
+        TypeKind.FLOAT => { return "double" }
+        TypeKind.BOOL => { return "i1" }
+        TypeKind.CHAR => { return "i8" }
     // The fat String. Kept in step with `mapType` in src/ir/types.psm, which is
     // the same mapping reached from a type *name* rather than a TypeInfo -- two
     // functions answering one question, and a String that is a struct in one and
     // a pointer in the other is a call that disagrees with its own declaration.
-    if (t.kind == TypeKind.STRING) { return "struct:prismio.str" }
-    if (t.kind == TypeKind.PTR) { return "ptr" }
-    if (t.kind == TypeKind.ENUM) { return "i32" }
-    if (t.kind == TypeKind.STRUCT) { return "struct:".concat(t.name) }
-    if (t.kind == TypeKind.LIST) { return "ptr" }
-    if (t.kind == TypeKind.SLICE) { return "struct:prismio.slice" }
-    if (t.kind == TypeKind.DATAVIEW) { return "ptr" }
-    if (t.kind == TypeKind.DATAELEMENT) { return "struct:prismio.data_element" }
+        TypeKind.STRING => { return "struct:prismio.str" }
+        TypeKind.PTR => { return "ptr" }
+        TypeKind.ENUM => { return "i32" }
+        TypeKind.STRUCT => { return "struct:".concat(t.name) }
+        TypeKind.LIST => { return "ptr" }
+        TypeKind.SLICE => { return "struct:prismio.slice" }
+        TypeKind.DATAVIEW => { return "ptr" }
+        TypeKind.DATAELEMENT => { return "struct:prismio.data_element" }
+    }
     // A scalar's `T?` is `{ i1 present, T value }`, by value.
     if (typeIsValueOptional(t)) { return "opt:".concat(typeIrKey(ptr_to_type(t.child))) }
     // REQUIREMENTS 4. A reference's `T?` is one pointer, absent or not.
@@ -647,67 +693,69 @@ public fn typeIrKey(t: TypeInfo) -> String {
 }
 
 public fn typeSemKey(t: TypeInfo) -> String {
-    if (t.kind == TypeKind.VOID) { return "Void" }
-    if (t.kind == TypeKind.INT) { return t.name }
-    if (t.kind == TypeKind.FLOAT) { return "Float" }
-    if (t.kind == TypeKind.BOOL) { return "Bool" }
-    if (t.kind == TypeKind.CHAR) { return "Char" }
-    if (t.kind == TypeKind.STRING) { return "String" }
+    match (t.kind) {
+        TypeKind.VOID => { return "Void" }
+        TypeKind.INT => { return t.name }
+        TypeKind.FLOAT => { return "Float" }
+        TypeKind.BOOL => { return "Bool" }
+        TypeKind.CHAR => { return "Char" }
+        TypeKind.STRING => { return "String" }
     // A task's result type has to survive a binding, which is what a sem key is
     // for. Writing "Ptr" here would lose it and `let t = spawn f(x)` would come
     // back as a bare handle -- the same round-trip hole REQUIREMENTS 4's
     // optionals fell into, which is why this case was written with its decoder.
-    if (t.kind == TypeKind.PTR) {
-        if (typeIsTask(t) and nodeExists(t.child)) {
-            return "task:".concat(typeSemKey(ptr_to_type(t.child)))
+        TypeKind.PTR => {
+            if (typeIsTask(t) and nodeExists(t.child)) {
+                return "task:".concat(typeSemKey(ptr_to_type(t.child)))
+            }
+            // Same hole, same fix: a channel endpoint that came back as a bare `Ptr`
+            // would make `chan_send(c, v)` report "expects a Channel, found Ptr" one
+            // statement after the binding that gave it its type.
+            if (typeIsChannel(t) and nodeExists(t.child)) {
+                return "chan:".concat(typeSemKey(ptr_to_type(t.child)))
+            }
+            return "Ptr"
         }
-        // Same hole, same fix: a channel endpoint that came back as a bare `Ptr`
-        // would make `chan_send(c, v)` report "expects a Channel, found Ptr" one
-        // statement after the binding that gave it its type.
-        if (typeIsChannel(t) and nodeExists(t.child)) {
-            return "chan:".concat(typeSemKey(ptr_to_type(t.child)))
+        TypeKind.STRUCT => { return "struct:".concat(t.name) }
+        TypeKind.ENUM => { return "enum:".concat(t.name) }
+        TypeKind.ARRAY => {
+            let mut head = "array:"
+            if (t.length > 0) { head = "array#".concat(t.length.toString(), ":") }
+            if (nodeExists(t.child)) {
+                return head.concat(typeSemKey(ptr_to_type(t.child)))
+            }
+            return head.concat("Invalid")
         }
-        return "Ptr"
-    }
-    if (t.kind == TypeKind.STRUCT) { return "struct:".concat(t.name) }
-    if (t.kind == TypeKind.ENUM) { return "enum:".concat(t.name) }
-    if (t.kind == TypeKind.ARRAY) {
-        let mut head = "array:"
-        if (t.length > 0) { head = "array#".concat(t.length.toString(), ":") }
-        if (nodeExists(t.child)) {
-            return head.concat(typeSemKey(ptr_to_type(t.child)))
+        TypeKind.LIST => {
+            if (nodeExists(t.child)) {
+                return "list:".concat(typeSemKey(ptr_to_type(t.child)))
+            }
+            return "list:Invalid"
         }
-        return head.concat("Invalid")
-    }
-    if (t.kind == TypeKind.LIST) {
-        if (nodeExists(t.child)) {
-            return "list:".concat(typeSemKey(ptr_to_type(t.child)))
+        TypeKind.SLICE => {
+            if (nodeExists(t.child)) {
+                return "slice:".concat(typeSemKey(ptr_to_type(t.child)))
+            }
+            return "slice:Invalid"
         }
-        return "list:Invalid"
-    }
-    if (t.kind == TypeKind.SLICE) {
-        if (nodeExists(t.child)) {
-            return "slice:".concat(typeSemKey(ptr_to_type(t.child)))
+        TypeKind.DATAVIEW => {
+            if (nodeExists(t.child)) {
+                return "view:".concat(typeSemKey(ptr_to_type(t.child)))
+            }
+            return "view:Invalid"
         }
-        return "slice:Invalid"
-    }
-    if (t.kind == TypeKind.DATAVIEW) {
-        if (nodeExists(t.child)) {
-            return "view:".concat(typeSemKey(ptr_to_type(t.child)))
+        TypeKind.DATAELEMENT => {
+            if (nodeExists(t.child)) {
+                return "dataelem:".concat(typeSemKey(ptr_to_type(t.child)))
+            }
+            return "dataelem:Invalid"
         }
-        return "view:Invalid"
-    }
-    if (t.kind == TypeKind.DATAELEMENT) {
-        if (nodeExists(t.child)) {
-            return "dataelem:".concat(typeSemKey(ptr_to_type(t.child)))
+        TypeKind.OPTIONAL => {
+            if (nodeExists(t.child)) {
+                return "opt:".concat(typeSemKey(ptr_to_type(t.child)))
+            }
+            return "opt:Invalid"
         }
-        return "dataelem:Invalid"
-    }
-    if (t.kind == TypeKind.OPTIONAL) {
-        if (nodeExists(t.child)) {
-            return "opt:".concat(typeSemKey(ptr_to_type(t.child)))
-        }
-        return "opt:Invalid"
     }
     return "Invalid"
 }
@@ -940,17 +988,19 @@ public extern fn ir_extern_decl_record(file: Int, name: String, visibility: Int)
 // one of them thought named and the other did not would give the two different
 // answers to the same question.
 public fn isNamedTopLevel(stmt: ASTNode) -> Bool {
-    if (stmt.kind == NodeKind.EXTERN_FUNCTION) { return true }
-    if (stmt.kind == NodeKind.EXTERN_VARIABLE) { return true }
-    if (stmt.kind == NodeKind.VARIABLE_DECL) { return true }
-    if (stmt.kind == NodeKind.FUNCTION) { return true }
-    if (stmt.kind == NodeKind.STRUCT_DECL) { return true }
-    if (stmt.kind == NodeKind.ENUM_DECL) { return true }
+    match (stmt.kind) {
+        NodeKind.EXTERN_FUNCTION => { return true }
+        NodeKind.EXTERN_VARIABLE => { return true }
+        NodeKind.VARIABLE_DECL => { return true }
+        NodeKind.FUNCTION => { return true }
+        NodeKind.STRUCT_DECL => { return true }
+        NodeKind.ENUM_DECL => { return true }
     // LAYOUT 3.1 merges several workloads *by summation*, so a workload that
     // arrives twice through two import paths would weight itself twice over. It
     // is named and it is not overloadable, so the existing rule is exactly right
     // for it.
-    if (stmt.kind == NodeKind.WORKLOAD_DECL) { return true }
+        NodeKind.WORKLOAD_DECL => { return true }
+    }
     return false
 }
 

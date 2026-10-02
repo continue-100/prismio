@@ -1,0 +1,103 @@
+// The reads built on `readLine`: `readLineOr`, `prompt`, `readInt`, `readFloat`,
+// `readLines`, `readWords` and `isAtEnd`. Run as in test_188: the binary starts
+// itself with a mode and a pipe for stdin and reports what the child printed.
+
+import std.input
+import std.io
+import std.option
+import std.process
+import std.string
+import std.vec
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn childOr() {
+    println(stdin.readLineOr("fallback"))
+    println(stdin.readLineOr("fallback"))
+    println(stdin.readLineOr("fallback"))
+}
+
+fn childNumbers() {
+    let a = stdin.readInt()
+    let b = stdin.readInt()
+    let c = stdin.readFloat()
+    let d = stdin.readInt()
+    println(a.unwrapOr(-1))
+    println(b.unwrapOr(-1))
+    println(c.unwrapOr(-1.0))
+    println(d.unwrapOr(-1))
+    println(stdin.isAtEnd)
+}
+
+fn childLines() {
+    let lines = stdin.readLines()
+    println(lines.length)
+    println(stdin.isAtEnd)
+    for line in lines { println("[".concat(line, "]")) }
+}
+
+fn childWords() {
+    let first = stdin.readLine().unwrapOr("")
+    let words = stdin.readWords()
+    println(first)
+    println(words.length)
+    println(words[words.length - 1])
+}
+
+fn childPrompt() {
+    let answer = stdin.prompt("name? ")
+    println("")
+    println(answer.unwrapOr("(none)"))
+    println(stdin.prompt("again? ").isNone)
+}
+
+fn run(mode: String, input: String) -> String {
+    let child = Process()
+    child.program = process.args[0]
+    child.arguments = [mode]
+    child.stdin = StreamMode.Pipe
+    child.stdout = StreamMode.Pipe
+    let running = child.spawn()
+    running.stdin.write(input)
+    running.stdin.close()
+    let seen = running.stdout.readAll()
+    running.wait()
+    return seen
+}
+
+fn check(mode: String, input: String, want: String) -> Int {
+    let seen = run(mode, input)
+    if (seen.equals(want)) { return 0 }
+    return fail(mode.concat(": got ", seen))
+}
+
+fn main() -> Int {
+    if (process.args.count > 1) {
+        let mode = process.args[1]
+        if (mode.equals("or")) { childOr() }
+        if (mode.equals("numbers")) { childNumbers() }
+        if (mode.equals("lines")) { childLines() }
+        if (mode.equals("words")) { childWords() }
+        if (mode.equals("prompt")) { childPrompt() }
+        return 0
+    }
+
+    let mut bad = 0
+    // The line, then the fallback once the input has run out.
+    bad = bad + check("or", "one\n", "one\nfallback\nfallback\n")
+    // A line with spaces round it is a number; a line that is not one is `None`
+    // and is still consumed; at the end of input `readInt` is `None` too.
+    bad = bad + check("numbers", " 42 \nhello\n2.5\n", "42\n-1\n2.5\n-1\ntrue\n")
+    bad = bad + check("lines", "a\nb\r\nc", "3\ntrue\n[a]\n[b]\n[c]\n")
+    bad = bad + check("lines", "", "0\ntrue\n")
+    bad = bad + check("words", "head\nx  y\tz\nw\n", "head\n4\nw\n")
+    bad = bad + check("prompt", "Ada\n", "name? \nAda\nagain? true\n")
+
+    if (bad != 0) { return 1 }
+    println("PASS: stdin helpers")
+    return 0
+}

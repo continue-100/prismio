@@ -154,8 +154,9 @@ and toolchains each run, and a probe that finds nothing leaves its key out.
 | `parity`, `noise_model` | The flat fraction (`0.04`) and the rest of the rule a verdict is decided by: a floor in nanoseconds for very short runs and the spread measure. See below. |
 | `elimination_ns` | Below this an elimination workload counts as deleted. |
 | `build_commands` | The exact build command per arm. **Repo-relative**: a path inside the checkout is relative to it and one outside (`clang++`) is its file name, so the file carries no path from the machine that wrote it. |
-| `compile_ns`, `binary_bytes` | Build time and executable size per arm. |
-| `cached_builds` | Arms served from the earlier build; their `compile_ns` is that build's. |
+| `compile_ns`, `compile_cpu_ns`, `compile_runs`, `binary_bytes` | Build time (wall, then user + system CPU) and executable size per arm. The time is the median of `compile_runs` builds made in this run (default 1; `--compile-runs N`). CPU time is there because the arms do not use the machine alike: Prismio's backend is multi-threaded, `clang++ -flto` and `rustc -C codegen-units=1` are not, so wall time alone credits one arm with cores the others never asked for. |
+| `cached_builds`, `cached_built_at` | Arms whose build was reused from an earlier run (only with `--reuse-reference-builds`); their times are that build's, dated here. Empty by default. |
+| `compiler`, `build_skipped` | The compiler measured (path, size, modified time), and whether `--skip-build` left every executable as an earlier run built it. |
 | `environment` | `processor`, `cores`, `memory_bytes`, `os`, `target`, `power`; `toolchains` (`prismio` with its `version` and the `profile` it was built in, `clang`, `rustc`, `llvm`); `source` (`commit`, `dirty`); `harness`. |
 | `benchmarks` | One entry per workload with each arm's median, raw samples, and peak RSS, and a `verdict` against C++ and against Rust: `outcome` (`win`, `parity`, `loss`), the median `ratio`, the `best_ratio`, the `tolerance` it was judged against and the `noise` measured. |
 | `artifacts` | Repo-relative paths of the report and the raw data. |
@@ -171,21 +172,24 @@ For unusual toolchains, invoke `benchmarks/run.py` directly and pass
 `--compiler` or `PRISMIO`. `--llvm-bin` remains available when the system Clang
 and the LLVM version used by the compiler differ.
 
-**The C++ and Rust arms are cached; the Prismio arm never is.** Those two are
-fixed reference points, so rebuilding them on every run is pure waiting -- about
-3.5 s of `clang++ -O3` and 0.9 s of `rustc` -- and a one-workload run drops from
-7.0 s to 2.1 s without them. Each is keyed on the *contents* of every file under
-`cpp/` or `rust/`, the exact build command, and the toolchain's own `--version`,
-stamped beside the binary in `benchmarks/build/`. Headers and the Rust modules
-`suite.rs` only declares are in the key even though they are not on the command
-line, which is the case an mtime-against-the-command cache gets wrong. A
-toolchain upgrade invalidates, so a Homebrew LLVM bump is never measured against
-a binary the previous one built. `results.json` names the arms it served from
-cache in `cached_builds`, because their `compile_ns` is the earlier build's.
+**Every arm is rebuilt, and timed, on every run.** A compile time reused from an
+earlier run was measured under another load and another toolchain state, and a
+report that sets it beside a fresh Prismio figure compares two different days.
+That is a cost of about 2 s of `clang++ -O3 -flto` and 2.6 s of `rustc` per run.
+`--reuse-reference-builds` brings back the earlier behaviour for a quick check of
+run time only: each of those two arms is then keyed on the *contents* of every
+file under `cpp/` or `rust/`, the exact build command and the toolchain's own
+`--version`, stamped beside the binary in `benchmarks/build/`, and the report
+names what it reused (`cached_builds`, dated in `cached_built_at`). `--rebuild`
+forces a rebuild even then, and `--compile-runs N` times N builds of each arm.
 
-The Prismio arm is excluded on purpose: its *compiler* is the working tree, and
-"the sources did not change but the compiler did" is exactly what this matrix
-exists to measure. Pass `--rebuild` to force the other two.
+**The compiler must be newer than its sources.** `prismio bench` measures
+`.prismio/build/debug/prismio`, which is whatever was last promoted there. If
+`src/`, `std/` or `runtime/` has been edited since, the bench refuses to run
+(`--allow-stale-compiler` overrides) rather than describe the compiler from before
+the edit. The check applies to the project's own compiler only, and the report
+records which compiler it measured. `--skip-build` is the other way to get an old
+number, and it says so on stderr and in the report.
 
 The runner builds one release dispatcher per language, invokes only one named
 workload per process, validates identical `result: <value>` output across all

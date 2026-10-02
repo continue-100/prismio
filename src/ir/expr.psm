@@ -3067,6 +3067,11 @@ private fn generateIdentifier(expr: ASTNode) -> String {
     // the local's slot. Asking a flat "is this name a global?" registry
     // instead meant writes went to the local and reads came from the global.
     if (ir_var_is_global(expr.s1) == 1) {
+        // A global array is the storage itself, read by its address: there is no
+        // pointer stored anywhere to load (see emitGlobalArray).
+        if (nodeHasType(expr) and nodeGetType(expr).kind == TypeKind.ARRAY) {
+            return ir_get_temp_name(ir_string_ptr(expr.s1))
+        }
         return ir_get_temp_name(ir_load_global(loadType, expr.s1))
     }
     return ir_get_temp_name(ir_load(loadType, ir_get_var_slot(expr.s1)))
@@ -3306,76 +3311,78 @@ private fn generateIndex(expr: ASTNode) -> String {
     let baseNode = ptr_to_node(expr.child1)
     let baseType = nodeGetType(baseNode)
 
-    if (baseType.kind == TypeKind.LIST) {
-        let arrayVal = generateExpression(baseNode)
-        let indexVal = generateExpression(ptr_to_node(expr.child2))
-        if (listHoldsStrings(baseNode)) { return generateStringListElement(arrayVal, indexVal) }
-        ir_call_begin()
-        ir_call_arg("ptr", arrayVal)
-        ir_call_arg("i32", indexVal)
-        let listInline = inlineElemSizeOfList(baseNode)
-        let retType = storageType(getExprType(expr))
-        // A scalar element goes by value, through the entry point that
-        // resolves the representation itself. See list_get_inline_scalar:
-        // `list_get_inline` returns an address for an inline list and the
-        // slot's contents for a boxed one, and only a scalar can tell those
-        // apart -- so the branch belongs where `elem_size` is, not here.
-        if (listInline > 0 and scalarInlineBytes(retType) > 0) {
-            ir_call_arg("i32", listInline.toString())
-            let bits = ir_get_temp_name(ir_call_end("i64", "list_get_inline_scalar"))
-            return scalarFromInlineBits(retType, bits)
+    match (baseType.kind) {
+        TypeKind.LIST => {
+            let arrayVal = generateExpression(baseNode)
+            let indexVal = generateExpression(ptr_to_node(expr.child2))
+            if (listHoldsStrings(baseNode)) { return generateStringListElement(arrayVal, indexVal) }
+            ir_call_begin()
+            ir_call_arg("ptr", arrayVal)
+            ir_call_arg("i32", indexVal)
+            let listInline = inlineElemSizeOfList(baseNode)
+            let retType = storageType(getExprType(expr))
+            // A scalar element goes by value, through the entry point that
+            // resolves the representation itself. See list_get_inline_scalar:
+            // `list_get_inline` returns an address for an inline list and the
+            // slot's contents for a boxed one, and only a scalar can tell those
+            // apart -- so the branch belongs where `elem_size` is, not here.
+            if (listInline > 0 and scalarInlineBytes(retType) > 0) {
+                ir_call_arg("i32", listInline.toString())
+                let bits = ir_get_temp_name(ir_call_end("i64", "list_get_inline_scalar"))
+                return scalarFromInlineBits(retType, bits)
+            }
+            let mut getName = "list_get"
+            if (listInline > 0) { getName = "list_get_inline" }
+            let raw = ir_get_temp_name(ir_call_end("ptr", getName))
+            if (isFatStringKey(retType)) { return fatFromPtr(raw) }
+            if (retType.equals("ptr") == false) { return slotToScalar(retType, raw) }
+            return raw
         }
-        let mut getName = "list_get"
-        if (listInline > 0) { getName = "list_get_inline" }
-        let raw = ir_get_temp_name(ir_call_end("ptr", getName))
-        if (isFatStringKey(retType)) { return fatFromPtr(raw) }
-        if (retType.equals("ptr") == false) { return slotToScalar(retType, raw) }
-        return raw
-    }
 
-    if (baseType.kind == TypeKind.SLICE) {
-        expr.s1 = generateExpression(baseNode)
-        let indexVal = generateExpression(ptr_to_node(expr.child2))
-        let handle = ir_get_temp_name(ir_extract_value("struct:prismio.slice", expr.s1, 0))
-        let offset = ir_get_temp_name(ir_extract_value("struct:prismio.slice", expr.s1, 1))
-        let length = ir_get_temp_name(ir_extract_value("struct:prismio.slice", expr.s1, 2))
-        if (sliceHoldsStrings(baseNode)) {
-            return generateStringSliceElement(handle, offset, length, indexVal)
+        TypeKind.SLICE => {
+            expr.s1 = generateExpression(baseNode)
+            let indexVal = generateExpression(ptr_to_node(expr.child2))
+            let handle = ir_get_temp_name(ir_extract_value("struct:prismio.slice", expr.s1, 0))
+            let offset = ir_get_temp_name(ir_extract_value("struct:prismio.slice", expr.s1, 1))
+            let length = ir_get_temp_name(ir_extract_value("struct:prismio.slice", expr.s1, 2))
+            if (sliceHoldsStrings(baseNode)) {
+                return generateStringSliceElement(handle, offset, length, indexVal)
+            }
+            ir_call_begin()
+            ir_call_arg("ptr", handle)
+            ir_call_arg("i32", offset)
+            ir_call_arg("i32", length)
+            ir_call_arg("i32", indexVal)
+            let sliceInline = inlineElemSizeOfSlice(baseNode)
+            let retType = storageType(getExprType(expr))
+            // The same by-value resolution as `l[i]` above, one indirection out.
+            if (sliceInline > 0 and scalarInlineBytes(retType) > 0) {
+                ir_call_arg("i32", sliceInline.toString())
+                let bits = ir_get_temp_name(
+                    ir_call_end("i64", "list_slice_get_inline_scalar"))
+                return scalarFromInlineBits(retType, bits)
+            }
+            let mut getName = "list_slice_get"
+            if (sliceInline > 0) { getName = "list_slice_get_inline" }
+            let raw = ir_get_temp_name(ir_call_end("ptr", getName))
+            if (isFatStringKey(retType)) { return fatFromPtr(raw) }
+            if (retType.equals("ptr") == false) { return slotToScalar(retType, raw) }
+            return raw
         }
-        ir_call_begin()
-        ir_call_arg("ptr", handle)
-        ir_call_arg("i32", offset)
-        ir_call_arg("i32", length)
-        ir_call_arg("i32", indexVal)
-        let sliceInline = inlineElemSizeOfSlice(baseNode)
-        let retType = storageType(getExprType(expr))
-        // The same by-value resolution as `l[i]` above, one indirection out.
-        if (sliceInline > 0 and scalarInlineBytes(retType) > 0) {
-            ir_call_arg("i32", sliceInline.toString())
-            let bits = ir_get_temp_name(
-                ir_call_end("i64", "list_slice_get_inline_scalar"))
-            return scalarFromInlineBits(retType, bits)
-        }
-        let mut getName = "list_slice_get"
-        if (sliceInline > 0) { getName = "list_slice_get_inline" }
-        let raw = ir_get_temp_name(ir_call_end("ptr", getName))
-        if (isFatStringKey(retType)) { return fatFromPtr(raw) }
-        if (retType.equals("ptr") == false) { return slotToScalar(retType, raw) }
-        return raw
-    }
 
-    if (baseType.kind == TypeKind.DATAVIEW) {
-        let view = generateExpression(baseNode)
-        let index = generateExpression(ptr_to_node(expr.child2))
-        ir_call_begin()
-        ir_call_arg("ptr", view)
-        ir_call_arg("i32", index)
-        ir_call_end("void", "data_view_check_index")
-        let empty = ir_get_temp_name(ir_undef("struct:prismio.data_element"))
-        let withView = ir_get_temp_name(ir_insert_value("struct:prismio.data_element",
-                                                        empty, view, "ptr", 0))
-        return ir_get_temp_name(ir_insert_value("struct:prismio.data_element",
-                                                withView, index, "i32", 1))
+        TypeKind.DATAVIEW => {
+            let view = generateExpression(baseNode)
+            let index = generateExpression(ptr_to_node(expr.child2))
+            ir_call_begin()
+            ir_call_arg("ptr", view)
+            ir_call_arg("i32", index)
+            ir_call_end("void", "data_view_check_index")
+            let empty = ir_get_temp_name(ir_undef("struct:prismio.data_element"))
+            let withView = ir_get_temp_name(ir_insert_value("struct:prismio.data_element",
+                                                            empty, view, "ptr", 0))
+            return ir_get_temp_name(ir_insert_value("struct:prismio.data_element",
+                                                    withView, index, "i32", 1))
+        }
     }
 
     let arrayVal = generateExpression(baseNode)
@@ -4448,6 +4455,11 @@ private fn generateCall(expr: ASTNode) -> String {
             ir_call_end("void", "prismio_unreachable")
         }
         ir_unreachable()
+        // The block is finished, as after a `return`: the scope's drops are not
+        // emitted after it. Without this a function that owned a String and ended
+        // in `panic(..)` put a `load` and a `br` behind the `unreachable`, which
+        // LLVM refuses ("Terminator found in the middle of a basic block").
+        ir_set_returned()
         return ""
     }
 
@@ -4484,6 +4496,7 @@ private fn generateCall(expr: ASTNode) -> String {
         ir_call_arg("i32", status)
         ir_call_end("void", "exit")
         ir_unreachable()
+        ir_set_returned()
         return ""
     }
 
@@ -5422,23 +5435,25 @@ private fn generateCall(expr: ASTNode) -> String {
 // and the only thing below it was this function's `0`. Each extracted arm ends
 // on that same `0` where it can be reached.
 internal fn generateExpression(expr: ASTNode) -> String {
-    if (expr.kind == NodeKind.LITERAL_EXPR) { return generateLiteral(expr) }
+    match (expr.kind) {
+        NodeKind.LITERAL_EXPR => { return generateLiteral(expr) }
 
-    if (expr.kind == NodeKind.DYN_MAKE) { return generateDynMake(expr) }
-    if (expr.kind == NodeKind.DYN_CALL) { return generateDynCall(expr) }
-    if (expr.kind == NodeKind.STRUCT_LITERAL_EXPR) { return generateStructLiteral(expr) }
-    if (expr.kind == NodeKind.IDENTIFIER_EXPR) { return generateIdentifier(expr) }
-    if (expr.kind == NodeKind.MEMBER_ACCESS_EXPR) { return generateMemberAccess(expr) }
-    if (expr.kind == NodeKind.ARRAY_LITERAL_EXPR) { return generateArrayLiteral(expr) }
-    if (expr.kind == NodeKind.SLICE_EXPR) { return generateSlice(expr) }
-    if (expr.kind == NodeKind.INDEX_EXPR) { return generateIndex(expr) }
-    if (expr.kind == NodeKind.CAST_EXPR) { return generateCast(expr) }
-    if (expr.kind == NodeKind.UNARY_EXPR) { return generateUnary(expr) }
-    if (expr.kind == NodeKind.NONE_LITERAL_EXPR) { return generateNoneLiteral(expr) }
-    if (expr.kind == NodeKind.SPAWN_EXPR) { return generateSpawn(expr) }
-    if (expr.kind == NodeKind.JOIN_EXPR) { return generateJoin(expr) }
-    if (expr.kind == NodeKind.BINARY_EXPR) { return generateBinary(expr) }
-    if (expr.kind == NodeKind.CALL_EXPR) { return generateCall(expr) }
+        NodeKind.DYN_MAKE => { return generateDynMake(expr) }
+        NodeKind.DYN_CALL => { return generateDynCall(expr) }
+        NodeKind.STRUCT_LITERAL_EXPR => { return generateStructLiteral(expr) }
+        NodeKind.IDENTIFIER_EXPR => { return generateIdentifier(expr) }
+        NodeKind.MEMBER_ACCESS_EXPR => { return generateMemberAccess(expr) }
+        NodeKind.ARRAY_LITERAL_EXPR => { return generateArrayLiteral(expr) }
+        NodeKind.SLICE_EXPR => { return generateSlice(expr) }
+        NodeKind.INDEX_EXPR => { return generateIndex(expr) }
+        NodeKind.CAST_EXPR => { return generateCast(expr) }
+        NodeKind.UNARY_EXPR => { return generateUnary(expr) }
+        NodeKind.NONE_LITERAL_EXPR => { return generateNoneLiteral(expr) }
+        NodeKind.SPAWN_EXPR => { return generateSpawn(expr) }
+        NodeKind.JOIN_EXPR => { return generateJoin(expr) }
+        NodeKind.BINARY_EXPR => { return generateBinary(expr) }
+        NodeKind.CALL_EXPR => { return generateCall(expr) }
+    }
 
     return "0"
 }

@@ -15,8 +15,6 @@ import ir.bridge
 import common.diagnostics
 import std.string
 
-public extern fn exit(code: Int)
-
 // --- structured control-flow analysis ---------------------------------------
 //
 // Prismio's control flow is fully structured -- no goto, and a labelled break
@@ -99,8 +97,8 @@ private fn semaIfBreaksOut(stmt: ASTNode, inner: String) -> Bool {
 //
 // `panic`, `unreachable`, `assert` and `exit` are builtins **only where the
 // program has not claimed the name.** A builtin that took a name away would
-// silently change what an existing call means -- and the compiler's own sources
-// declare `extern fn exit` six times. Where the builtin applies, sema rewrites
+// silently change what an existing call means -- and the compiler's own sources used
+// to declare `extern fn exit` six times. Where the builtin applies, sema rewrites
 // the callee to its reserved `__builtin_` spelling, which no program can declare,
 // so everything after sema -- divergence, codegen, the loop guard, AIF -- keys on
 // that name alone.
@@ -149,39 +147,41 @@ internal fn semaStmtDiverges(stmt: ASTNode) -> Bool {
             }
         }
     }
-    if (stmt.kind == NodeKind.BREAK_STATEMENT) { return true }
-    if (stmt.kind == NodeKind.CONTINUE_STATEMENT) { return true }
+    match (stmt.kind) {
+        NodeKind.BREAK_STATEMENT => { return true }
+        NodeKind.CONTINUE_STATEMENT => { return true }
 
-    if (stmt.kind == NodeKind.IF_STATEMENT) {
-        // Only when there is an else and *both* sides diverge.
-        if (nodeIsNull(stmt.child3)) { return false }
-        let elseNode = ptr_to_node(stmt.child3)
-        let mut elseDiverges = false
-        if (elseNode.kind == NodeKind.IF_STATEMENT) {
-            elseDiverges = semaStmtDiverges(elseNode)
-        } else {
-            elseDiverges = semaBlockDiverges(elseNode)
+        NodeKind.IF_STATEMENT => {
+            // Only when there is an else and *both* sides diverge.
+            if (nodeIsNull(stmt.child3)) { return false }
+            let elseNode = ptr_to_node(stmt.child3)
+            let mut elseDiverges = false
+            if (elseNode.kind == NodeKind.IF_STATEMENT) {
+                elseDiverges = semaStmtDiverges(elseNode)
+            } else {
+                elseDiverges = semaBlockDiverges(elseNode)
+            }
+            return semaBlockDiverges(ptr_to_node(stmt.child2)) and elseDiverges
         }
-        return semaBlockDiverges(ptr_to_node(stmt.child2)) and elseDiverges
-    }
 
     // A `match` sema proved exhaustive (`i3`, set by semaCheckExhaustive or for
     // a `_` arm) diverges when every arm does, as an `if` with an `else` does.
-    if (stmt.kind == NodeKind.MATCH_STATEMENT) {
-        if (stmt.i3 != 1 or nodeIsNull(stmt.child2)) { return false }
-        let mut armPtr = stmt.child2
-        while (nodeExists(armPtr)) {
-            let arm = ptr_to_node(armPtr)
-            if (semaBlockDiverges(ptr_to_node(arm.child2)) == false) { return false }
-            armPtr = arm.next
+        NodeKind.MATCH_STATEMENT => {
+            if (stmt.i3 != 1 or nodeIsNull(stmt.child2)) { return false }
+            let mut armPtr = stmt.child2
+            while (nodeExists(armPtr)) {
+                let arm = ptr_to_node(armPtr)
+                if (semaBlockDiverges(ptr_to_node(arm.child2)) == false) { return false }
+                armPtr = arm.next
+            }
+            return true
         }
-        return true
-    }
 
     // A `loop` with no break never finishes. A `while` or `for` may run zero
     // times, so neither ever counts as diverging.
-    if (stmt.kind == NodeKind.LOOP_STATEMENT) {
-        return semaBlockBreaksOut(ptr_to_node(stmt.child1), "") == false
+        NodeKind.LOOP_STATEMENT => {
+            return semaBlockBreaksOut(ptr_to_node(stmt.child1), "") == false
+        }
     }
 
     return false

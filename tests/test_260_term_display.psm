@@ -1,0 +1,51 @@
+// std.term styles work on anything with a `Display`, not only on a String: the
+// value is shown, then styled, and the result is what styling that text gives.
+
+import std.display
+import std.io
+import std.option
+import std.string
+import std.term
+
+struct Version {
+    major: Int,
+    minor: Int
+}
+
+impl Display for Version {
+    fn show(self) -> String {
+        return "${self.major}.${self.minor}"
+    }
+}
+
+fn fail(message: String) -> Int {
+    print("FAIL: ")
+    println(message)
+    return 1
+}
+
+fn main() -> Int {
+    if (42.red().equals("42".red()) == false) { return fail("an Int is shown, then coloured") }
+    if (42.red().equals("\u{1b}[31m42\u{1b}[39m") == false) { return fail("the sequence is the String one") }
+
+    let v = Version { major: 1, minor: 4 }
+    if (v.bold().equals("1.4".bold()) == false) { return fail("a type with a Display is styled") }
+
+    // Styles chain on a non-String as they do on a String.
+    if (v.bold().green().equals("1.4".bold().green()) == false) { return fail("styles chain") }
+    if (3.5.rgb(255, 128, 0).equals("3.5".rgb(255, 128, 0)) == false) { return fail("a style with arguments") }
+
+    let absent: Option<String> = Option<String>.None
+    if (absent.dim().equals("none".dim()) == false) { return fail("an Option is shown as itself") }
+
+    // `forTerminal` strips the sequences when stdout is not a terminal, as here.
+    if (true.red().forTerminal().equals("true") == false and colorEnabled() == false) {
+        return fail("forTerminal on a Bool")
+    }
+
+    // A String still takes the String method.
+    if ("x".red().equals("\u{1b}[31mx\u{1b}[39m") == false) { return fail("a String is styled in place") }
+
+    println("PASS: term display")
+    return 0
+}

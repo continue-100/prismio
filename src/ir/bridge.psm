@@ -376,6 +376,10 @@ public extern fn ir_array_copy_into(elemType: String, count: Int, dst: String, s
 public extern fn ir_array_literal_begin()
 public extern fn ir_array_literal_elem(elemType: String, value: String)
 public extern fn ir_array_literal_end(elemType: String) -> Int
+// A string literal as one element, then the collected elements as a module-level
+// constant array (a global `let name = [...]`).
+public extern fn ir_array_literal_str_elem(strGlobal: String, length: Int)
+public extern fn ir_global_array_var(name: String, elemType: String)
 public extern fn ir_array_load(key: String, src: String) -> Int
 public extern fn ir_array_from_value(key: String, value: String) -> Int
 public extern fn ir_array_copy_key(key: String, dst: String, src: String)

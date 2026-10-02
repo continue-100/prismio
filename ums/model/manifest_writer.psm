@@ -22,10 +22,12 @@ private fn umsManifestUnchanged(source: String) -> UmsManifestEdit {
 }
 
 private fn umsManifestScopeName(scope: UmsDependencyScope) -> String {
-    if (scope == UmsDependencyScope.IMPLEMENTATION) { return "implementation".clone() }
-    if (scope == UmsDependencyScope.API) { return "api".clone() }
-    if (scope == UmsDependencyScope.TEST_IMPLEMENTATION) {
-        return "testImplementation".clone()
+    match (scope) {
+        UmsDependencyScope.IMPLEMENTATION => { return "implementation".clone() }
+        UmsDependencyScope.API => { return "api".clone() }
+        UmsDependencyScope.TEST_IMPLEMENTATION => {
+            return "testImplementation".clone()
+        }
     }
     return "".clone()
 }

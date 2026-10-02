@@ -819,38 +819,40 @@ private fn monoMangledName(module: ASTNode, base: String, argsPtr: Ptr) -> Strin
 // where substitution consumes an annotation, and this is the bridge.
 internal fn monoAnnotationFromType(t: TypeInfo) -> ASTNode {
     let tn = createNode(NodeKind.TYPE_ANNOTATION)
-    if (t.kind == TypeKind.OPTIONAL) {
-        let inner = typeOptionalInner(t)
-        if (typeIsValid(inner)) {
-            let base = monoAnnotationFromType(inner)
-            base.i3 = 1
-            return base
+    match (t.kind) {
+        TypeKind.OPTIONAL => {
+            let inner = typeOptionalInner(t)
+            if (typeIsValid(inner)) {
+                let base = monoAnnotationFromType(inner)
+                base.i3 = 1
+                return base
+            }
+            tn.s1 = "Ptr"
+            return tn
         }
-        tn.s1 = "Ptr"
-        return tn
-    }
-    if (t.kind == TypeKind.ARRAY) {
-        tn.i1 = 1
-        tn.child1 = node_to_ptr(monoAnnotationFromType(ptr_to_type(t.child)))
-        return tn
-    }
-    if (t.kind == TypeKind.LIST) {
-        tn.i2 = 1
-        tn.s1 = "List"
-        tn.child1 = node_to_ptr(monoAnnotationFromType(ptr_to_type(t.child)))
-        return tn
-    }
-    if (t.kind == TypeKind.SLICE) {
-        tn.i2 = 1
-        tn.s1 = "Slice"
-        tn.child1 = node_to_ptr(monoAnnotationFromType(ptr_to_type(t.child)))
-        return tn
-    }
-    if (t.kind == TypeKind.DATAVIEW) {
-        tn.i2 = 1
-        tn.s1 = "DataView"
-        if (nodeExists(t.child)) { tn.child1 = node_to_ptr(monoAnnotationFromType(ptr_to_type(t.child))) }
-        return tn
+        TypeKind.ARRAY => {
+            tn.i1 = 1
+            tn.child1 = node_to_ptr(monoAnnotationFromType(ptr_to_type(t.child)))
+            return tn
+        }
+        TypeKind.LIST => {
+            tn.i2 = 1
+            tn.s1 = "List"
+            tn.child1 = node_to_ptr(monoAnnotationFromType(ptr_to_type(t.child)))
+            return tn
+        }
+        TypeKind.SLICE => {
+            tn.i2 = 1
+            tn.s1 = "Slice"
+            tn.child1 = node_to_ptr(monoAnnotationFromType(ptr_to_type(t.child)))
+            return tn
+        }
+        TypeKind.DATAVIEW => {
+            tn.i2 = 1
+            tn.s1 = "DataView"
+            if (nodeExists(t.child)) { tn.child1 = node_to_ptr(monoAnnotationFromType(ptr_to_type(t.child))) }
+            return tn
+        }
     }
     tn.s1 = t.name
     return tn
