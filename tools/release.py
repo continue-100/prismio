@@ -388,7 +388,9 @@ def main() -> int:
             ticker.note("checksum")
             digest = hashlib.sha256(archive.read_bytes()).hexdigest()
             checksum = out / (archive.name + ".sha256")
-            checksum.write_text(f"{digest}  {archive.name}\n", encoding="ascii")
+            # Bytes, not write_text: on Windows text mode writes CRLF, and `sha256sum -c` then looks
+            # for a file whose name ends in a carriage return.
+            checksum.write_bytes(f"{digest}  {archive.name}\n".encode("ascii"))
             return (f"{archive.name} \u00b7 {megabytes(archive)}",
                     [("row", "sha256", digest[:24] + "\u2026")], (archive, checksum, digest))
         archive, checksum, digest = stages.run("Archive and checksum", "archive", archive_it)
