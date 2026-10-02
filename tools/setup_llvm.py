@@ -551,15 +551,16 @@ def prune(root: Path) -> None:
 # Verification
 # ---------------------------------------------------------------------------
 
+# llvm-config component name -> the spelling in LLVMInitialize<Name>Target.
+TARGET_INIT_NAMES = {"aarch64": "AArch64", "x86": "X86", "webassembly": "WebAssembly"}
+
 PROBE = """
 #include <llvm-c/Core.h>
 #include <llvm-c/Target.h>
 #include <llvm-c/LLJIT.h>
 #include <stdio.h>
 int main(void) {
-    LLVMInitializeAllTargetInfos();
-    LLVMInitializeAllTargets();
-    LLVMInitializeAllTargetMCs();
+@@INIT_TARGETS@@
     LLVMOrcLLJITRef jit = NULL;
     LLVMErrorRef err = LLVMOrcCreateLLJIT(&jit, NULL);
     if (err) return 2;
@@ -582,7 +583,11 @@ def verify(info: dict) -> bool:
     clang = str(Path(info["bin"]) / exe("clang"))
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "probe.c"
-        src.write_text(PROBE)
+        inits = "\n".join(
+            f"    LLVMInitialize{TARGET_INIT_NAMES[t]}TargetInfo();\n"
+            f"    LLVMInitialize{TARGET_INIT_NAMES[t]}Target();\n"
+            f"    LLVMInitialize{TARGET_INIT_NAMES[t]}TargetMC();" for t in TARGET_COMPONENTS)
+        src.write_text(PROBE.replace("@@INIT_TARGETS@@", inits))
         out = Path(tmp) / exe("probe")
         min_os = [f"-mmacosx-version-min={info['macos_min']}"] if info.get("macos_min") else []
         r = run([clang, *min_os, "-O1", str(src), "-o", str(out), f"-I{info['include']}",
