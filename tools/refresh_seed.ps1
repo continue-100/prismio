@@ -31,7 +31,9 @@ $raw = Join-Path $work 'seed-raw.ll'
 # program_support.c; see refresh_seed.sh.
 $env:PRISMIO_SEED_IR = '1'
 
-& $Compiler build (Join-Path $Repo 'src\main.psm') -o $raw | Out-Null
+$Compiler = (Resolve-Path $Compiler).Path
+Set-Location $Repo   # relative source path: the IR records it, and the seed must not carry this checkout's location
+& $Compiler build 'src\main.psm' -o $raw | Out-Null
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $raw)) {
     Write-Host 'FAILED: compiler could not build src\main.psm' -ForegroundColor Red; exit 1
 }
@@ -40,7 +42,7 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path $raw)) {
 # and freezing that state into the seed would hand every new host a compiler that
 # disagrees with the one everyone else is running.
 $again = Join-Path $work 'seed-raw-2.ll'
-& $Compiler build (Join-Path $Repo 'src\main.psm') -o $again | Out-Null
+& $Compiler build 'src\main.psm' -o $again | Out-Null
 if ((Get-FileHash $raw).Hash -ne (Get-FileHash $again).Hash) {
     Write-Host 'FAILED: compiler is not deterministic' -ForegroundColor Red; exit 1
 }

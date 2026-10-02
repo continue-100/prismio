@@ -1,72 +1,72 @@
 # Graph Report - prismio  (2026-10-02)
 
 ## Corpus Check
-- 937 files · ~1,296,513 words
+- 924 files · ~1,289,579 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 47 file(s) not represented in the graph (top: .asm 21, (none) 18, .css 3)
+- Unclassified: 38 file(s) not represented in the graph (top: .asm 21, (none) 10, .ums 3)
 
 ## Summary
-- 11986 nodes · 32120 edges · 647 communities (507 shown, 140 thin omitted)
-- Extraction: 85% EXTRACTED · 15% INFERRED · 0% AMBIGUOUS · INFERRED: 4830 edges (avg confidence: 0.88)
+- 12022 nodes · 32235 edges · 636 communities (498 shown, 138 thin omitted)
+- Extraction: 85% EXTRACTED · 15% INFERRED · 0% AMBIGUOUS · INFERRED: 4833 edges (avg confidence: 0.88)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1dc470f0`
+- Built from commit: `d61afa44`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- strFromU64Radix
+- string.psm
 - bridge.psm
 - std/io.psm
 - checker.psm
 - aif_support.c
-- string.psm
+- impl String
 - compile.psm
-- impl Parser
+- gate_ui.py
 - llvm-api-backend.c
 - model.psm
-- generateAssignment
-- ASTNode
+- main
+- impl Parser
 - Display
 - setup.py
 - program_support.c
 - context.psm
-- unicode_case.psm
-- LLVMTypeRef
-- test_45_aif_affine_collections.psm
+- Language surface
+- array_base
+- __builtin_string_len
 - lang_runtime.c
 - std/vec.psm
 - resolve_value
-- src/main.psm
+- ums_cli.psm
 - test_98_multiple_trait_bounds.psm
 - unicode.psm
 - build_driver.c
-- .equals
+- ranges.psm
 - ptr_to_node
 - process.psm
-- test_runner.py
+- run_command
 - generate_unicode_tables.py
 - mapSet
 - run.py
 - ir/stmt.psm
-- Option
+- cleanup_files
 - fs.psm
 - NodeKind
 - str_with_capacity
 - Eq
 - map.psm
 - Key
-- nodeGetType
-- The 2026-09-30 `--verify` sweep
-- impl RelLoop
-- list_new_with_capacity
+- symbols.psm
+- rt_base_alloc
+- dbm.psm
+- test_runner.py
 - aifWalk
 - bracket_place
-- Token
+- src/main.psm
 - arena_state
 - nominal_find
-- generateModule
+- debug.psm
 - key.psm
 - diagnostics.c
 - option.psm
@@ -85,39 +85,39 @@
 - setup_llvm.py
 - command_quote_arg
 - unicode_conformance.psm
-- ir/expr.psm
+- nodeIsNull
 - block_done
 - subprocess
 - backend_fail
 - aifReportPlacementPin
-- BoundedQueue
-- semaCallExpr
+- compute.cpp
+- impl RelLoop
 - rt_alloc
 - report.psm
-- flatSetScalarStride
+- .spawn
 - An owned call result consumed directly as an argument now has an owner
-- workspace.psm
+- UmsDiagnostic
 - input.psm
 - UmsTokenKind
 - algorithms.cpp
-- algorithms.psm
-- UmsDiagnostic
+- benchRun
+- arena_census.py
 - kv-adaptive-hash-2026-09-06/ceiling.c
 - M1.0 — why `-flto` declines the inline
-- list_release
+- The 2026-09-30 `--verify` sweep
 - ir_intern
 - aifEmitManifest
 - key-before.psm
 - copy.psm
 - test_101_generic_trait_impl.psm
 - test_103_default_trait_methods.psm
-- 10 · Known weaknesses
-- adversarial.cpp
-- benchRun
+- impl RangeLoop
+- run
+- compute.psm
 - Code Style
 - g6_bench.c
-- fn_may_return_param
-- Codegen
+- vec_push
+- The loop range guard was not sound, and the bound it used was one too loose
 - time.psm
 - package.py
 - di_type_for
@@ -126,16 +126,16 @@
 - README.md
 - prismio_llvm.h
 - adversarial.rs
-- map-update-2026-09-05/map-before.psm
+- impl Int
 - release_gate.py
 - The cross-language benchmark — current standing and historical session-3 report
-- host.psm
+- RangeLoop
 - TokenType
 - test_169_loop_range_proofs.psm
-- Process
+- Toolchain layout
 - algorithms.rs
 - main
-- _di_scope_file
+- run_debug_info_test
 - World
 - aifEmitBrackets
 - test_107_associated_types.psm
@@ -144,15 +144,15 @@
 - preexisting-ownership-repro.psm
 - project.psm
 - Engine
-- node_to_ptr
+- ASTNode
 - site_arena_scope
-- debug_info.psm
+- .concat
 - impl Parser
 - common/target.psm
-- hashquality.c
+- stdio
 - shorthash.c
 - aif.py
-- sys
+- re
 - test_104_where_clauses.psm
 - test_118_impl_trait.psm
 - Single-probe updates and direct entry lookup
@@ -163,60 +163,60 @@
 - test_164_array_fields.psm
 - test_71_nonlexical_extent.psm
 - LiveProgress
-- aifRunProfiled
+- relations.psm
 - rt_free
-- run
-- umsLex
-- find_binding
+- Benchmarks
+- .charAt
+- elide_middle
 - struct_entry
 - Cross-language results — Prismio vs Rust vs Swift
 - test_232_channel_copies.psm
-- flow_build
+- rangeEmitAccess
 - build_curated_module
 - common.psm
 - neg_195_callable_bound.psm
-- Which std functions are properties
+- platform.psm
 - aif_concurrency.psm
-- TypeInfo
+- manifest_records
 - assert
 - test_115_trait_imports.psm
 - test_92_field_view_provenance.psm
 - test_map_update.psm
 - Decisions
 - g5_asset_cache.psm
-- test_165_ranges_repeat_labels.psm
+- Iterator
 - math.psm
-- test_44_aif_region.psm
+- compute.rs
 - memory.cpp
 - layout.py
 - AIF — The T4 Cycle Collector
-- compute.rs
+- next_random
 - AIF — Design Rationale
 - bits_test
 - AIF — Layout Results (A1)
 - M6 slice 2 — ordinary struct-path TBAA, and the g2 regression it caused
-- test_172_mut_collections.psm
+- test_165_ranges_repeat_labels.psm
 - release.py
 - test_100_generic_inherent_impl.psm
 - test_240_overload_exactness.psm
 - test_70_struct_field_release.psm
-- impl I64
-- verify
+- tree_traversal
+- vgphase.psm
 - stdlib
 - .solve
 - C code style
 - prismio
-- Inlining the flat push: rejected, and why the obvious gate does not save it
-- test_43_aif_scope_drop.psm
+- test_72_reassigned_ownership.psm
+- phase.cpp
 - AIF — Workload Declaration, Cost Model, and Layout Search
 - test_128_enum_null_reserved.psm
 - test_69_task_results.psm
-- scalarToSlot
+- list_release
 - Model
 - bench.py
 - decl_entry
-- nodeReturnsName
-- AIF — Gap Analysis
+- The loop range guard: one precondition per loop, and both checks are gone
+- join
 - g2_cull_probe.c
 - test_258_stdin_helpers.psm
 - .toString
@@ -230,8 +230,8 @@
 - memory.rs
 - test_96_channels.psm
 - layout.psm
-- scanner.psm
-- neg_190_failure_builtin_arguments.psm
+- lexCheckIdentifierSecurity
+- `Int` width — the decision, and the three measurements that made it
 - neg_165_array_field_refused.psm
 - test_132_counted_fill.psm
 - test_157_shared_container_elements.psm
@@ -247,16 +247,16 @@
 - test_154_extern_globals.psm
 - test_130_list_alias_scopes.psm
 - test_177_type_functions.psm
-- manifest_writer.psm
-- test_248_enum_is_a_type.psm
+- Building Prismio on macOS (and Linux)
+- allocPlacedStruct
 - command.psm
 - ceiling-knapsack.c
 - benchPrint
-- stdio
+- cost.c
 - .sites_of
 - test_126_push_predication.psm
 - test_15_compiler_sim.psm
-- main
+- test_254_array_and_slice_methods.psm
 - test_155_vec_methods.psm
 - g2_bench.c
 - test_121_guard_effect_analysis.psm
@@ -270,20 +270,20 @@
 - g3_scene_graph.psm
 - test_257_global_arrays.psm
 - Compile time — where it goes, and what it scales like
-- `Int` width — the decision, and the three measurements that made it
-- Loop versioning exposes Prismio's flat-list fast path
+- Results: `__builtin_string_hash` (2026-09-12)
+- Codegen
 - test_73_recursive_release.psm
 - test_51_optional_refs.psm
 - AIF — The Target Workload
 - AIF — Adaptive Inference Framework
 - Channels: what 0.1 needs, and the production design after it
 - test_59_bracket_summary.psm
-- test_112_operator_traits.psm
+- 4 · Transfer rules
 - neg_65_generic_trait_impl_bound.psm
 - neg_84_transitive_supertrait.psm
 - test_148_struct_index.psm
 - test_167_frame_struct_fields.psm
-- test_238_scalar_optionals.psm
+- 5 · The fixed-point algorithm
 - test_66_payload_enums.psm
 - test_86_impl_blocks.psm
 - g2_bench_arena.c
@@ -309,11 +309,11 @@
 - test_231_cold_functions.psm
 - test_80_data_view_conversion.psm
 - test_52_aif_cycle_collector.psm
-- M4.3b — DataView element reads
-- test_74_reinit_assignment.psm
-- M5.1 — allocator evaluation
+- test_259_display_print.psm
+- field_release_of
+- test_88_map_keys.psm
 - AIF — Evaluation as a General-Purpose Memory Model
-- MEM-035: the stencil's offsets were never the problem — its condition was
+- quicksort and graph_bfs: what the gap was, 2026-10-01
 - LLVMValueRef
 - 3 · Steps
 - M2.1b — consuming same-tag rebuilds reuse their input block
@@ -321,33 +321,33 @@
 - test_216_for_push_guard.psm
 - maphash.psm
 - AIF — Adaptive Inference Framework
-- 8.4 Views — slices and element references
-- field_release_of
+- 2 · Fact domains
+- aif_tier_of
 - 16. A practical review checklist
 - test_181_std_math.psm
 - test_193_map_methods.psm
 - test_48_aif_shared_elements.psm
 - test_56_list_capacity.psm
 - test_57_pin_tiers.psm
-- compile_bench.py
+- Performance: what is open, and how to measure it
 - test_84_task_release.psm
 - 11 · Known weaknesses
-- BenchSphere
+- test_140_string_search.psm
 - Genuinely-cold compilation
 - Prismio performance benchmarks
 - test_143_string_compare.psm
 - test_119_loop_range_guard.psm
-- 5 · The cost model
+- Results: LLVM 22.1.8 to 23.1.1 (2026-09-17)
 - test_63_placement_pin.psm
 - Map probing and full-width key hashing
-- strFromFloat
+- M4.1 — first-class `Slice<T>`
 - Debug-mode integer overflow checking
 - A `spawn`ed call's owned temporary argument now has an owner
 - test_158_sized_arrays.psm
 - 3. Before changing code
 - 5 · Annotations
 - Security Policy
-- ownership.psm
+- 8 · Annotations as axioms and constraints
 - neg_57_second_bound_not_satisfied.psm
 - neg_68_blanket_trait_impl.psm
 - range_direction_probe.psm
@@ -365,13 +365,13 @@
 - bootstrap.sh
 - AIF Corpus
 - g2_frame_loop.psm
-- M4.4 — generic/container layout specialization
+- LayoutParticle
 - g2_bench.psm
 - g7_particles.psm
 - neg_78_default_body_unknown_call.psm
 - derived_tier
-- strSubstring
-- test_75_std_string.psm
+- strLength
+- test_89_closures.psm
 - noise floor that decided it
 - test_30_diamond_imports.psm
 - evidence/README.md
@@ -380,23 +380,23 @@
 - run_ums_test
 - The relational tier, byte-sized Bool elements, and three gaps read from disassembly
 - LAYOUT 6's candidate space, measured against what this compiler can emit
-- .charAt
+- 6 · Ownership contexts
 - edit_distance
-- Plain-data channels copy through the ring
-- test_46_aif_annotations.psm
+- BenchTree
+- build_tree
 - compiler_plib_interface
 - neg_95_trait_sink_not_honoured.psm
-- 7. Functions and control flow
-- aif_ledger_init
+- loop_named
+- test_176_match_diverges.psm
 - neg_258_global_array_computed.psm
-- test_141_string_list.psm
-- join
+- common.rs
+- Reading input: what is awkward and what to change
 - suite.rs
 - ir_jit_run_file
 - range_proof_entry
 - Releasing Prismio
-- test_77_spawn_literal.psm
-- vec_element_replace_probe.psm
+- drop_index
+- ir_loop_label
 - A general affine index matcher, built and reverted
 - `key_value_update`: one probe in `mapSet`, and a loop guard that is a net loss
 - test_64_generics.psm
@@ -414,18 +414,16 @@
 - test_04_structs.psm
 - test_100_reuse_token.psm
 - test_100_string_append_reuse.psm
-- test_35_short_circuit.psm
+- test_256_string_view_pushed_twice.psm
 - 1. Architecture
 - test_156_index_store.psm
 - test_188_stdin.psm
 - test_235_channel_owned_messages.psm
-- The v0.1 gate and benchmark matrix on the branch head, 2026-09-25
 - test_29_overloads.psm
 - test_253_void_closure.psm
 - test_50_scalar_lists.psm
 - binder_return_probe.psm
-- test_85_passthrough_escape.psm
-- neg_186_code_after_exhaustive_match.psm
+- A binding that escapes through a callee's return was freed under its caller
 - rc_alloc
 - 5. Ownership, handles, and globals
 - neg_257_global_array_mutable.psm
@@ -433,13 +431,7 @@
 - Null empty variants for boxed recursive enums
 - neg_259_global_array_write.psm
 - AIF — Engine/Game Boundary Results (A2)
-- test_09_strings.psm
-- run_module_artifact_test
 - M4.3c — mutable DataView round trip
-- test_17_string_runtime.psm
-- M4.3a — explicit DataView conversion boundary
-- test_34_string_escapes.psm
-- neg_111_separator_misuse.psm
 - test_94_selective_imports.psm
 - AIF Prototype
 - neg_192_property_declaration.psm
@@ -453,7 +445,6 @@
 - neg_73_trait_argument_bound_mismatch.psm
 - impl From for String
 - neg_77_missing_method_with_defaults.psm
-- 15. Working with agents
 - neg_80_where_bound_not_satisfied.psm
 - neg_89_missing_associated_type.psm
 - neg_96_trait_inout_not_honoured.psm
@@ -466,7 +457,7 @@
 - test_138_shadowing.psm
 - test_13_globals.psm
 - test_14_multi_args.psm
-- Prismio IDE protocol
+- Progress
 - test_162_removal_parks_under_view.psm
 - test_19_runtime_split.psm
 - test_25_conventions.psm
@@ -475,7 +466,7 @@
 - test_133_string_dispatch.psm
 - test_32_sized_int_modulo.psm
 - test_53_memory_budget.psm
-- impl Char
+- Which std functions are properties
 - neg_158_vec_last_needs_name.psm
 - neg_183_slice_returned_read_only.psm
 - neg_20_pin_refuted.psm
@@ -484,7 +475,6 @@
 - test_245_checked_conversions.psm
 - test_39_typed_arrays.psm
 - 8. Comments
-- test_fft_direct.psm
 - neg_109_impl_trait_bound.psm
 - neg_161_index_store_refused.psm
 - Color
@@ -579,7 +569,6 @@
 - scalar_list_read.psm
 - scalar_list_sieve.psm
 - scalar_list_write.psm
-- test_bfs.psm
 - aif_vec_display.psm
 - neg_01_type_mismatch.psm
 - neg_03_use_after_move.psm
@@ -637,109 +626,105 @@
   ums/ARCHITECTURE.md → aif/corpus/g5_asset_cache.psm
 - `Manifest syntax` --references--> `release()`  [INFERRED]
   ums/README.md → aif/corpus/g5_asset_cache.psm
-- `Public API, by phase` --references--> `reserve()`  [INFERRED]
-  docs/CHANNELS_PLAN.md → aif/evidence/vg-ceiling-2026-09-06/vgphase.psm
 - `5 · What was rejected` --references--> `gcd_lcm()`  [INFERRED]
   aif/evidence/RESULTS-knapsack-flat-set.md → benchmarks/cpp/algorithms.cpp
-- `3 · The benchmark sweep` --references--> `tree_traversal()`  [INFERRED]
-  aif/evidence/RESULTS-push-predication.md → benchmarks/cpp/algorithms.cpp
+- `The verdict rule (benchmarks/run.py `verdict`, schema 3)` --references--> `edit_distance()`  [INFERRED]
+  aif/evidence/RESULTS-loop-hoist-condition-nested.md → benchmarks/cpp/algorithms.cpp
+- `4 · Phases` --references--> `channel_pipeline()`  [INFERRED]
+  docs/CHANNELS_PLAN.md → benchmarks/cpp/compute.cpp
 
 ## Import Cycles
 - None detected.
 
-## Communities (647 total, 140 thin omitted)
+## Communities (636 total, 138 thin omitted)
 
-### Community 0 - "strFromU64Radix"
-Cohesion: 0.06
-Nodes (19): strBinary(), strFromI64Radix(), strFromIntRadix(), strFromU64Radix(), strHex(), strOctal(), strRadixDigits(), impl I16 (+11 more)
+### Community 0 - "string.psm"
+Cohesion: 0.03
+Nodes (59): Verification of the final compiler, impl Display for I64, str_double_valid(), str_double_value(), str_find_byte_pair(), str_from_double_fixed(), str_from_double(), strAnyChars() (+51 more)
 
 ### Community 1 - "bridge.psm"
 Cohesion: 0.01
-Nodes (171): diag_source_line(), ir_add_checked(), ir_arena_hint_begin(), ir_arena_hint_end(), ir_array_copy_into(), ir_array_from_value(), ir_array_literal_str_elem(), ir_array_load() (+163 more)
+Nodes (260): `sort()` from a packaged `.plib`, nodeIsCold(), ir_add_checked(), ir_arena_hint_begin(), ir_arena_hint_end(), ir_array_alloca(), ir_array_alloca_zeroed(), ir_array_copy_into() (+252 more)
 
 ### Community 2 - "std/io.psm"
 Cohesion: 0.02
 Nodes (123): prismio_rt_eprint_float(), prismio_rt_eprintln_float(), prismio_rt_print_float(), prismio_rt_println_float(), str_with_capacity(), eprint(), eprint(), eprint() (+115 more)
 
 ### Community 3 - "checker.psm"
-Cohesion: 0.05
-Nodes (154): 4. Optional / nullable reference fields — **DONE, 2026-08-07; return position 2026-08-19**, 2 · Order of work and status, nodeIsProperty(), nodeSetType(), typeDisplay(), typeInvalid(), typeIsMoveOnly(), typeIsNumeric() (+146 more)
+Cohesion: 0.03
+Nodes (290): The surface, 4. Optional / nullable reference fields — **DONE, 2026-08-07; return position 2026-08-19**, 2 · Order of work and status, aifLayoutVetoDataViews(), ir_reset_decl_index(), ptr_to_type(), type_to_ptr(), indexModuleDeclarations() (+282 more)
 
 ### Community 4 - "aif_support.c"
 Cohesion: 0.02
-Nodes (71): aif_arena_range_first(), aif_arena_range_last(), aif_auto_arena_at_node(), aif_call_edge(), aif_call_opaque(), aif_check_placement_pins(), aif_con_arg(), aif_con_bind() (+63 more)
+Nodes (70): aif_arena_range_first(), aif_arena_range_last(), aif_auto_arena_at_node(), aif_check_placement_pins(), aif_con_arg(), aif_con_bind(), aif_con_borrow(), aif_con_escape_caller() (+62 more)
 
-### Community 5 - "string.psm"
-Cohesion: 0.02
-Nodes (136): What was refuted: the flat guard for `loop` and `for`, 6 · What is left, 12 · Verification, round 2, 9 · Case mapping: a search per scalar was 5.4× Rust, The byte read is a branch, Verification of the final compiler, Language surface, isSourcePath() (+128 more)
+### Community 5 - "impl String"
+Cohesion: 0.03
+Nodes (50): str_find_byte(), str_find_needle(), charIsSpace(), strClone(), strContains(), strContainsChar(), strCopyRangeInto(), strCountOf() (+42 more)
 
 ### Community 6 - "compile.psm"
 Cohesion: 0.04
-Nodes (104): 1.1 What was actually quadratic, 16. Fix superlinear compile time — **DONE, 2026-08-17**, dumpAstJson(), dumpChain(), dumpFileTable(), dumpNode(), hexDigit(), jsonFieldInt() (+96 more)
+Nodes (103): 7.1 Fixed, 2026-08-17 (compile time), 7 · `tools/ir_snapshot.py` reports a false difference when anything else compiles the same tree, aif_layout_force_applied(), aif_layout_forced_count(), aif_layout_forced_hot(), aif_layout_forced_type(), dumpAstJson(), dumpChain() (+95 more)
 
-### Community 7 - "impl Parser"
-Cohesion: 0.10
-Nodes (14): nodeMarkCold(), nodeMarkProperty(), diag_error_at_code(), appendTraitRefTo(), copyTypeAnnotationInto(), ffiContractTakesArgument(), findGenericParamNamed(), implParamCount() (+6 more)
+### Community 7 - "gate_ui.py"
+Cohesion: 0.09
+Nodes (24): graph_bfs: not a code gap, captured_stage(), header(), macos_cross_flags(), main(), pinned_llvm_bin(), run_captured(), shown() (+16 more)
 
 ### Community 8 - "llvm-api-backend.c"
 Cohesion: 0.04
-Nodes (58): Toolchain layout, M10 · Link three LLVM targets, not 25: done in the working tree, uncommitted, check_llvm_version(), debug_dispose(), default_target_cpu(), dump_bad_module(), emit_trace_enabled(), emit_trace_ms() (+50 more)
+Nodes (61): Commands, M10 · Link three LLVM targets, not 25: done in the working tree, uncommitted, check_llvm_version(), debug_dispose(), default_target_cpu(), dump_bad_module(), emit_trace_enabled(), emit_trace_ms() (+53 more)
 
 ### Community 9 - "model.psm"
 Cohesion: 0.03
-Nodes (84): aif_elem_key(), aif_enum_new(), aif_extern_contract_set(), aif_field_has_range(), aif_field_range_bytes(), aif_field_range_hi(), aif_field_range_lo(), aif_fn_new() (+76 more)
+Nodes (86): aif_check_pins(), aif_check_placement_pins(), aif_elem_key(), aif_enum_new(), aif_extern_contract_set(), aif_fn_new(), aif_is_struct(), aif_layout_all_fields_sequential() (+78 more)
 
-### Community 10 - "generateAssignment"
-Cohesion: 0.07
-Nodes (77): 4 · The shape of the change (as planned), Concurrency, typeIrKey(), ir_array_alloca(), ir_array_alloca_zeroed(), ir_array_copy_key(), ir_array_copy(), ir_array_literal_begin() (+69 more)
-
-### Community 11 - "ASTNode"
-Cohesion: 0.07
-Nodes (57): Two missing edges, and a missing type, loopBodyOf(), ASTNode, ptr_to_token(), impl Parser, semaForSourceIsPlace(), semaMatchStatement(), enumArmBinders() (+49 more)
+### Community 10 - "main"
+Cohesion: 0.05
+Nodes (21): 6 · Fails open, and the test that stops it failing open quietly, A constant shared across the seam has one spelling everywhere, find_prismio_exe(), main(), parse_runner_args(), run_aif_human_report_test(), run_aif_loop_bracket_test(), run_bootstrap_cache_key_test() (+13 more)
 
 ### Community 12 - "Display"
-Cohesion: 0.03
-Nodes (84): eprint(), eprintln(), print(), println(), impl Display for Bool, impl Display for Char, impl Display for Float, impl Display for I16 (+76 more)
+Cohesion: 0.04
+Nodes (74): eprint(), eprintln(), print(), println(), impl Display for Bool, impl Display for Char, impl Display for Float, impl Display for I16 (+66 more)
 
 ### Community 13 - "setup.py"
 Cohesion: 0.10
-Nodes (31): blocked(), Check, check_disk(), check_git(), check_llvm(), check_network(), check_platform(), check_python() (+23 more)
+Nodes (32): blocked(), Check, check_disk(), check_git(), check_llvm(), check_network(), check_platform(), check_python() (+24 more)
 
 ### Community 14 - "program_support.c"
 Cohesion: 0.04
-Nodes (51): 1 · The reader, 3 · Throughput, 4 · Reproducing, Standard input, and the arena that could not serve a C allocation, compiler_library_emission_module(), compiler_plib_error(), spawn_and_wait(), rt_base_alloc() (+43 more)
+Nodes (48): 15. Concurrency / task model — **DONE, 2026-08-19**, spawn_and_wait(), prismio_memory_thread_enter(), append_module_name(), current_directory(), directory_exists(), fs_lines_close(), fs_lines_has_line() (+40 more)
 
 ### Community 15 - "context.psm"
 Cohesion: 0.03
-Nodes (77): ir_alloc_cycle(), ir_alloc_object(), ir_alloc_rc(), ir_alloc_region(), aif_arena_at_node(), aif_arena_range_first(), aif_arena_range_last(), aif_arg_copies_view() (+69 more)
+Nodes (65): aif_arena_range_first(), aif_arena_range_last(), aif_arg_copies_view(), aif_auto_arena_at_node(), aif_call_arg_outlives_call(), aif_call_arg_retained(), aif_elem_literal_copies_only(), aif_elem_owner_at_node() (+57 more)
 
-### Community 16 - "unicode_case.psm"
-Cohesion: 0.33
-Nodes (10): unicodeCaseDelta(), unicodeCaseException(), unicodeCaseFold(), unicodeCaseMapped(), unicodeCaseRangeRow(), unicodeIsCased(), unicodeIsCaseIgnorable(), unicodeLowercase() (+2 more)
+### Community 16 - "Language surface"
+Cohesion: 0.06
+Nodes (54): 11 · A `break` in a nested loop is that loop's, 12 · Verification, round 2, 7 · The ASCII regression was the caller's loop, not `toUpper`'s, 9 · Case mapping: a search per scalar was 5.4× Rust, Round 2: case, Trojan Source, UTS #39 -- and what measuring them found, Language surface, charToLower(), strAsciiCaseInto() (+46 more)
 
-### Community 17 - "LLVMTypeRef"
-Cohesion: 0.24
-Nodes (12): array_base(), array_copy_bytes(), array_slot(), existing_global_of_type(), ir_array_alloca(), ir_array_alloca_zeroed(), ir_array_copy(), ir_array_copy_into() (+4 more)
+### Community 17 - "array_base"
+Cohesion: 0.36
+Nodes (9): array_base(), array_copy_bytes(), array_slot(), ir_array_alloca(), ir_array_alloca_zeroed(), ir_array_copy(), ir_array_copy_into(), ir_array_from_value() (+1 more)
 
-### Community 18 - "test_45_aif_affine_collections.psm"
-Cohesion: 0.09
-Nodes (36): 1 · What this closes, 2 · The defect was documented, deliberate, and had stopped being true, 4 · The two things that cost the most to find, 5 · The fixture, and how it nearly measured nothing, 6 · Timing, Appendix — M2's closing state, 2026-08-23, Delivered, M2.0 — release on reassignment, and the M2 gate restated (+28 more)
+### Community 18 - "__builtin_string_len"
+Cohesion: 0.05
+Nodes (77): What was refuted: the flat guard for `loop` and `for`, strAllChars(), strBytes(), strChars(), strCountIf(), strCountOfChar(), strIsEmpty(), strLastIndexOfChar() (+69 more)
 
 ### Community 19 - "lang_runtime.c"
 Cohesion: 0.03
-Nodes (61): 3 · Implementation, arena_current_slot(), data_view_add_column(), data_view_begin(), data_view_check_index(), data_view_finish(), data_view_release(), data_view_to_list() (+53 more)
+Nodes (56): aif_ledger_init(), arena_current_slot(), cyc_lock_init(), data_view_add_column(), data_view_begin(), data_view_check_index(), data_view_finish(), data_view_release() (+48 more)
 
 ### Community 20 - "std/vec.psm"
 Cohesion: 0.03
-Nodes (22): binarySearch(), isSorted(), listHeapSort(), listInsertionSort(), listPartialInsertionSort(), listPartitionLeft(), listPartitionRight(), listSiftDown() (+14 more)
+Nodes (23): Binary size: where it goes, binarySearch(), isSorted(), listHeapSort(), listInsertionSort(), listPartialInsertionSort(), listPartitionLeft(), listPartitionRight() (+15 more)
 
 ### Community 21 - "resolve_value"
 Cohesion: 0.08
 Nodes (61): byte_gep(), coerce_for(), data_view_tbaa_tag(), global_named(), intern_value(), ir_array_copy_key(), ir_array_load(), ir_array_zero_key() (+53 more)
 
-### Community 22 - "src/main.psm"
-Cohesion: 0.06
-Nodes (82): aif_layout_force(), diag_error_code(), diag_print_help(), diag_set_json_mode(), compiler_spawn_arg(), compiler_spawn_wait(), compileOptions(), CompileOptions (+74 more)
+### Community 22 - "ums_cli.psm"
+Cohesion: 0.05
+Nodes (106): 8 · A harness trap, recorded because it cost an hour, benchLineProcessing(), aif_layout_force(), diag_error_code(), diag_print_help(), diag_styled_err(), diag_warning_code(), compiler_spawn_arg() (+98 more)
 
 ### Community 23 - "test_98_multiple_trait_bounds.psm"
 Cohesion: 0.28
@@ -747,123 +732,123 @@ Nodes (8): activeScore(), checkedScore(), main(), impl Enabled for Int, impl Sco
 
 ### Community 24 - "unicode.psm"
 Cohesion: 0.05
-Nodes (64): 1 · The tables came from the interpreter, and the interpreter was wrong, 2 · Conformance, against the UCD's own tests, 3 · Representation: readable, after one codegen fix, 4 · std.unicode, before and after, 5 · Identifiers: UAX #31, 6 · Verification, Unicode 18.0.0 from the UCD, UAX #31 identifiers, and constant array literals, scalarWidth() (+56 more)
+Nodes (63): 1 · The tables came from the interpreter, and the interpreter was wrong, 2 · Conformance, against the UCD's own tests, 3 · Representation: readable, after one codegen fix, 4 · std.unicode, before and after, 5 · Identifiers: UAX #31, 6 · Verification, Unicode 18.0.0 from the UCD, UAX #31 identifiers, and constant array literals, scalarWidth() (+55 more)
 
 ### Community 25 - "build_driver.c"
 Cohesion: 0.04
-Nodes (72): accept_if_exists(), append_joined_argument(), append_quoted_argument(), clang_identity(), compiler_binary_hash(), compiler_check_executable(), compiler_check_host_abi(), compiler_emit_local_toolchain() (+64 more)
+Nodes (80): absolute_directory(), accept_if_exists(), append_joined_argument(), append_quoted_argument(), clang_identity(), compiler_binary_hash(), compiler_check_executable(), compiler_check_host_abi() (+72 more)
 
-### Community 26 - ".equals"
-Cohesion: 0.06
-Nodes (65): intRotateBuiltin(), ir_add(), ir_mul(), ir_range_proof_new(), ir_range_trace(), ir_sub(), inlineOpName(), generateWhileRangeGuard() (+57 more)
+### Community 26 - "ranges.psm"
+Cohesion: 0.09
+Nodes (41): generateForRangeGuard(), generateWhileRangeGuard(), rangeBindsInPattern(), rangeBindsInPatternChain(), rangeBoundSideOk(), rangeConjunct(), rangeConjunctCount(), rangeFactBounds() (+33 more)
 
 ### Community 27 - "ptr_to_node"
-Cohesion: 0.03
-Nodes (254): 4 · Guards the new bindings needed, which user bindings needed already, `sort()` from a packaged `.plib`, 3 · How, aifArgTypeAt(), aifAnnotationLeafName(), aifFieldTypeName(), aifLayoutFixStandardLibrary(), aifRegisterTypeEdges() (+246 more)
+Cohesion: 0.04
+Nodes (178): Two missing edges, and a missing type, 3 · How, aifArgTypeAt(), aifAnnotationLeafName(), aifRegisterTypeEdges(), aifBlockChain(), aifChainEscapesUnjoined(), aifChainJoins() (+170 more)
 
 ### Community 28 - "process.psm"
-Cohesion: 0.05
-Nodes (51): Conversions: the release gate, run on a packaged RC, Not covered, Two defects in the gate's own harness, main(), StreamMode, Inherit, proc_close(), proc_env_get() (+43 more)
+Cohesion: 0.08
+Nodes (25): proc_close(), proc_env_get(), proc_env_has(), proc_env_remove(), proc_env_set(), proc_kill(), proc_pid(), proc_read_all() (+17 more)
 
-### Community 29 - "test_runner.py"
-Cohesion: 0.02
-Nodes (112): 6 · Fails open, and the test that stops it failing open quietly, 7 · Coverage, What was kept, Verified discriminating, by mutating the compiler and rebuilding it, What changed, 5 · The gate, 6 · Reproducers, 5 · The guard, and why the fixture alone is not one (+104 more)
+### Community 29 - "run_command"
+Cohesion: 0.05
+Nodes (24): What was kept, Verified discriminating, by mutating the compiler and rebuilding it, What changed, 5 · The guard, and why the fixture alone is not one, emitted_layout_for(), run_aif_minimal_cause_test(), why(), run_aif_test() (+16 more)
 
 ### Community 30 - "generate_unicode_tables.py"
 Cohesion: 0.07
-Nodes (36): array_rows(), case_column(), case_folding(), case_tables(), compositions(), confusables(), data_lines(), decompositions() (+28 more)
+Nodes (35): array_rows(), case_column(), case_folding(), case_tables(), compositions(), confusables(), data_lines(), decompositions() (+27 more)
 
 ### Community 31 - "mapSet"
-Cohesion: 0.14
-Nodes (40): clock_gettime(), intProbe(), main(), now(), stringProbe(), wideProbe(), Stamp, main() (+32 more)
+Cohesion: 0.12
+Nodes (47): clock_gettime(), intProbe(), main(), now(), stringProbe(), wideProbe(), Stamp, main() (+39 more)
 
 ### Community 32 - "run.py"
 Cohesion: 0.05
-Nodes (41): build_all(), build_key(), collect_environment(), color_enabled(), command_text(), compiler_identity(), elimination_benchmarks(), elimination_cell() (+33 more)
+Nodes (42): build_all(), build_key(), collect_environment(), color_enabled(), command_text(), compiler_identity(), elimination_benchmarks(), elimination_cell() (+34 more)
 
 ### Community 33 - "ir/stmt.psm"
 Cohesion: 0.07
-Nodes (95): quicksort: 1.12x -> 1.02-1.03x of C++, What changed, ir_add_nsw(), ir_alloca(), ir_and(), ir_br_numbered(), ir_clear_returned(), ir_cond_br_numbered() (+87 more)
+Nodes (79): What changed, M5 · `std.vec` in place of hand-rolled search loops, ir_add_nsw(), ir_br_numbered(), ir_clear_returned(), ir_cond_br_numbered(), ir_debug_location(), ir_debug_scope_push() (+71 more)
 
-### Community 34 - "Option"
-Cohesion: 0.09
-Nodes (20): 1 · The shapes, 3 · What moved, 4 · Pinned, Three ownership shapes that freed memory that was not live, 2 · What the audit found, Option, None, Some (+12 more)
+### Community 34 - "cleanup_files"
+Cohesion: 0.06
+Nodes (16): Level 2 — T2 and scope drop — **DONE, 2026-08-06**, The layout optimiser — **PARTLY DONE, 2026-08-07. `workload` deliberately not built**, cleanup_files(), run_aif_drop_emission_test(), run_aif_layout_test(), run_aif_struct_field_test(), run_aif_view_test(), run_check_command_test() (+8 more)
 
 ### Community 35 - "fs.psm"
-Cohesion: 0.06
-Nodes (64): 4 · The toolchain object cache, 5 · Why `std.input` and not `std.io`, and the workload link, benchLineProcessing(), rt_workload_stub(), isPrismioCheckout(), standardModulePath(), cliVersion(), initUmsProject() (+56 more)
+Cohesion: 0.07
+Nodes (52): 4 · The toolchain object cache, current_directory(), delete_file(), directory_exists(), executable_directory(), file_exists(), fs_append_file(), fs_lines_close() (+44 more)
 
 ### Community 36 - "NodeKind"
 Cohesion: 0.04
 Nodes (57): NodeKind, ARRAY_LITERAL_EXPR, ASSIGNMENT_STATEMENT, ASSOC_CONST, ASSOC_TYPE, ASSOC_TYPE_REF, BINARY_EXPR, BLOCK (+49 more)
 
 ### Community 37 - "str_with_capacity"
-Cohesion: 0.16
-Nodes (8): str_with_capacity(), strEmpty(), strFromBool(), impl Bool, termByte(), termFill(), termStyledLength(), impl String
+Cohesion: 0.15
+Nodes (10): str_with_capacity(), termByte(), termFill(), termPutText(), termPutVisible(), termSequenceEnd(), termStartsSequence(), termStyledLength() (+2 more)
 
 ### Community 38 - "Eq"
 Cohesion: 0.06
 Nodes (36): impl Eq for Bool, impl Eq for Char, impl Eq for Float, impl Eq for I16, impl Eq for I64, impl Eq for I8, impl Eq for Int, impl Eq for Isize (+28 more)
 
 ### Community 39 - "map.psm"
-Cohesion: 0.07
-Nodes (35): 1. `mixed_map_removal` — P0 — done 2026-09-25, API to settle before implementation, Checklist, list_truncate(), mapBucketOfEntry(), mapClear(), mapEmpty(), mapFromEntries() (+27 more)
+Cohesion: 0.06
+Nodes (41): Checklist, mapBucketOfEntry(), mapClear(), mapEmpty(), mapFromEntries(), mapHashOf(), mapInitialCapacity(), mapInsert() (+33 more)
 
 ### Community 40 - "Key"
-Cohesion: 0.18
-Nodes (29): mapGet(), mapGetOr(), mapHas(), mapIndexOf(), mapInitialCapacity(), mapKeyAt(), mapLen(), mapNew() (+21 more)
+Cohesion: 0.11
+Nodes (45): mapGet(), mapGetOr(), mapHas(), mapIndexOf(), mapInitialCapacity(), mapKeyAt(), mapLen(), mapNew() (+37 more)
 
-### Community 41 - "nodeGetType"
+### Community 41 - "symbols.psm"
+Cohesion: 0.11
+Nodes (36): diag_file_count(), ir_caller_can_access_extern(), ir_caller_extern_hidden_level(), ir_file_imports_module(), ir_select_active(), ir_select_any(), ir_select_has(), semaAnyArgumentInvalid() (+28 more)
+
+### Community 42 - "rt_base_alloc"
+Cohesion: 0.13
+Nodes (17): 11.2 · What the corpus actually still called, and the false lead, 11.3 · The answer: outline the growth path, 11.4 · Measured, through the driver, 11.5 · The split is invisible with the feature off, 11 · M1.3 — the deeper form, decided by measurement, Method, 3 · Throughput, 4 · Reproducing (+9 more)
+
+### Community 43 - "dbm.psm"
+Cohesion: 0.19
+Nodes (17): dbmAssign(), dbmAssumeLE(), dbmClose(), dbmCopy(), dbmCopyInto(), dbmForget(), dbmIsBottom(), dbmJoin() (+9 more)
+
+### Community 44 - "test_runner.py"
 Cohesion: 0.09
-Nodes (48): nodeGetType(), nodeHasType(), diag_file_count(), ir_caller_can_access_extern(), ir_caller_extern_hidden_level(), debugTypeName(), channelCopyStruct(), isBareNone() (+40 more)
-
-### Community 42 - "The 2026-09-30 `--verify` sweep"
-Cohesion: 0.12
-Nodes (34): 1 · How it was found, 2 · The defect, 3 · The fix, and why only one of the three, 4 · Before / after, 5 · What this opens up, The hot element accessor was never curated, Boundary, 3 · The change (+26 more)
-
-### Community 43 - "impl RelLoop"
-Cohesion: 0.08
-Nodes (39): ir_range_proof_mark(), dbmAssign(), dbmAssumeLE(), dbmClose(), dbmCopy(), dbmCopyInto(), dbmForget(), dbmGet() (+31 more)
-
-### Community 44 - "list_new_with_capacity"
-Cohesion: 0.10
-Nodes (22): 6 · `list_new_with_capacity`, the one speed result, Boxed `List` replacement ownership, Discriminator, Gates, Why an exclusive operation, 13. Generic containers — `Map<K,V>`, growable `Vec<T>` — **PARTLY DONE, 2026-08-19**, 17. `Int` ↔ `Float` conversion **[minor]**, 18. Struct size / layout introspection **[minor]** (+14 more)
+Nodes (18): 7 · Coverage, 5 · The gate, 6 · Reproducers, compile_prismio_file(), expected_errors(), progress(), run_byte_loop_vectorise_test(), run_corpus_test() (+10 more)
 
 ### Community 45 - "aifWalk"
-Cohesion: 0.05
-Nodes (65): aif_compute_type_acyclic(), aif_con_at(), aif_con_bind(), aif_con_fn(), aif_con_live_in(), aif_con_pin(), aif_con_pin_region(), aif_con_return_binding() (+57 more)
+Cohesion: 0.06
+Nodes (52): aif_compute_type_acyclic(), aif_con_at(), aif_con_bind(), aif_con_fn(), aif_con_live_in(), aif_con_pin(), aif_con_pin_region(), aif_con_return_binding() (+44 more)
 
 ### Community 46 - "bracket_place"
-Cohesion: 0.08
-Nodes (65): 9 · Call-site placement, landed *(2026-08-16, second session)*, 0. What this session was asked to do, and why it did something else, 1. The census, before, 2. The recorded blocker was a circularity, not a missing obligation, 3. A latent soundness hole, found by turning the feature on, 4. What it buys, measured, 5. Where it does not fire, and why each is correct, 6. Gate (+57 more)
+Cohesion: 0.06
+Nodes (71): 9 · Call-site placement, landed *(2026-08-16, second session)*, 0. What this session was asked to do, and why it did something else, 1. The census, before, 2. The recorded blocker was a circularity, not a missing obligation, 3. A latent soundness hole, found by turning the feature on, 4. What it buys, measured, 5. Where it does not fire, and why each is correct, 6. Gate (+63 more)
 
-### Community 47 - "Token"
-Cohesion: 0.26
-Nodes (6): charCode(), isOperator(), isSeparator(), impl Lexer, isBoolean(), Token
+### Community 47 - "src/main.psm"
+Cohesion: 0.07
+Nodes (47): Found while building this, not caused by it, Measurement 1 — the `+` chain had to be flattened, Measurement 2 — a property may not allocate, The cost: 64 claimed global names, The String surface: operators, properties, iteration, Verification, What landed, 1 · Left for 0.1 (+39 more)
 
 ### Community 48 - "arena_state"
-Cohesion: 0.08
-Nodes (33): 0. The two halves, and why neither ships alone, 2. `g2.psm`, unannotated, 3. The corpus, 4. What the IR diff is, all of it, 6. What did not change, and is worth knowing, M3.2c-ii + M3.2d — an arena that opens and closes between statements, Automatic arena placement — **DONE, 2026-08-07**, 7.1 Arena placement (+25 more)
+Cohesion: 0.12
+Nodes (27): 4. What the IR diff is, all of it, Automatic arena placement — **DONE, 2026-08-07**, 17. `Int` ↔ `Float` conversion **[minor]**, 18. Struct size / layout introspection **[minor]**, 19. Memory budget reporting — **DONE, 2026-08-07**, 20. `List<T>` miscompiles for scalar element types — **DONE, 2026-08-07**, 21. PIR — the compiler's IR and package-distribution format **[compiler track]**, Tier 4 — minor, found in passing (+19 more)
 
 ### Community 49 - "nominal_find"
 Cohesion: 0.05
-Nodes (51): aif_con_pin_region(), aif_elem_key(), aif_enum_new(), aif_extern_contract(), aif_extern_contract_set(), aif_field_access(), aif_field_has_range(), aif_field_range_bytes() (+43 more)
+Nodes (53): aif_con_pin_region(), aif_elem_key(), aif_enum_new(), aif_extern_contract(), aif_extern_contract_set(), aif_field_access(), aif_field_has_range(), aif_field_is_counted() (+45 more)
 
-### Community 50 - "generateModule"
-Cohesion: 0.04
-Nodes (81): ir_blank_line(), ir_call_indirect_ptr(), ir_clear_local_var_types(), ir_clear_var_types(), ir_debug_begin(), ir_debug_enabled(), ir_debug_end(), ir_debug_enum() (+73 more)
+### Community 50 - "debug.psm"
+Cohesion: 0.11
+Nodes (17): ir_debug_begin(), ir_debug_end(), ir_debug_function_end(), ir_debug_scope_pop(), ir_debug_signature_param(), ir_debug_signature(), debugBeginModule(), debugCloseFunction() (+9 more)
 
 ### Community 51 - "key.psm"
-Cohesion: 0.05
-Nodes (23): keyHashBytes(), keyMixInt(), keyMixWide(), impl Key for Bool, impl Key for Char, impl Key for I64, impl Key for Int, impl Key for String (+15 more)
+Cohesion: 0.06
+Nodes (20): keyHashBytes(), keyMixInt(), keyMixWide(), keyStrengthen(), impl Key for Bool, impl Key for Char, impl Key for I64, impl Key for Int (+12 more)
 
 ### Community 52 - "diagnostics.c"
-Cohesion: 0.09
-Nodes (42): diag_add_file(), diag_detect_color(), diag_digits(), diag_elapsed(), diag_emit(), diag_emit_json(), diag_emit_json_summary(), diag_env_set() (+34 more)
+Cohesion: 0.08
+Nodes (43): 10 · Trojan Source and UTS #39, tested, diag_add_file(), diag_detect_color(), diag_digits(), diag_elapsed(), diag_emit(), diag_emit_json(), diag_emit_json_summary() (+35 more)
 
 ### Community 53 - "option.psm"
-Cohesion: 0.07
-Nodes (37): 14. Error handling — tagged unions, `Option` / `Result` — **DONE, 2026-08-19**, optionIsNone(), optionIsSome(), optionOr(), resultErrOr(), resultIsOk(), resultOr(), errFromParse() (+29 more)
+Cohesion: 0.04
+Nodes (59): A field read is a view of the object it was read from, Scope, The defect, Verification, What it costs, 1 · The shapes, 3 · What moved, 4 · Pinned (+51 more)
 
 ### Community 54 - "test_102_generic_trait_arguments.psm"
 Cohesion: 0.08
@@ -871,27 +856,23 @@ Nodes (28): impl ScaleBy for String, acceptsWrapped(), crossTag(), fail(), main(
 
 ### Community 55 - "main"
 Cohesion: 0.06
-Nodes (10): 2 · Three bugs the library could not be written over, 4 · Not done, std.math: Float's functions, and the three Float codegen bugs under them, impl Int, impl U16, impl U32, impl U64, impl U8 (+2 more)
+Nodes (7): impl I64, impl U16, impl U32, impl U64, impl U8, fail(), main()
 
 ### Community 56 - "ir_symbols.c"
 Cohesion: 0.05
-Nodes (12): drop_index(), ir_drop_kind(), ir_drop_slot(), ir_drop_type(), ir_loop_break_label_named(), ir_loop_continue_label_named(), ir_loop_drop_floor(), ir_loop_drop_floor_named() (+4 more)
+Nodes (20): find_binding(), ir_binding_owns_slot(), ir_binding_predates_loop(), ir_get_var_data(), ir_get_var_slot(), ir_get_var_type(), ir_has_var_type(), ir_is_list_exclusive() (+12 more)
 
 ### Community 57 - "alpha.psm"
 Cohesion: 0.08
 Nodes (27): main(), main(), main(), main(), fail(), main(), main(), main() (+19 more)
 
-### Community 58 - "impl Float"
-Cohesion: 0.05
-Nodes (4): 1 · The lowering, benchFft(), benchFftTransform(), impl Float
-
 ### Community 59 - "bits_set"
-Cohesion: 0.15
-Nodes (32): aif_oom(), bits_clear(), bits_count_at_least_two(), bits_ensure(), bits_free(), bits_is_empty(), bits_or(), bits_set() (+24 more)
+Cohesion: 0.16
+Nodes (33): aif_oom(), bits_clear(), bits_count_at_least_two(), bits_ensure(), bits_free(), bits_is_empty(), bits_or(), bits_set() (+25 more)
 
 ### Community 60 - "Ord"
-Cohesion: 0.07
-Nodes (23): impl Ord for Char, impl Ord for Float, impl Ord for I16, impl Ord for I64, impl Ord for I8, impl Ord for Int, impl Ord for Isize, impl Ord for String (+15 more)
+Cohesion: 0.06
+Nodes (28): impl Ord for Char, impl Ord for Float, impl Ord for I16, impl Ord for I64, impl Ord for I8, impl Ord for Int, impl Ord for Isize, impl Ord for String (+20 more)
 
 ### Community 61 - "Default"
 Cohesion: 0.08
@@ -902,96 +883,96 @@ Cohesion: 0.11
 Nodes (18): TypeKind, ARRAY, CHAR, DATAELEMENT, DATAVIEW, ENUM, FLOAT, FUNCTION (+10 more)
 
 ### Community 63 - "Architecture direction — what to build next, and what the literature already settled"
-Cohesion: 0.17
-Nodes (12): 0 · The diagnosis, and the one thing everybody had backwards, 1 · Close the runtime seam — built, with one deployment decision left, 2 · Reuse analysis — useful only where the program has its trigger shape, 3 · Regions: go non-lexical and polymorphic, 4 · Views and slices — bounded views and mutable data views shipped, 5 · The allocator — measured and closed for the current workload, 6 · The ranked plan, 7 · Measured dead ends — do not re-derive these (+4 more)
+Cohesion: 0.08
+Nodes (20): Direct mimalloc result, Direct rpmalloc result, Final gate and decision, Initial dynamic-interposition result, M5.1 — allocator evaluation, Question and acceptance rule, Research choice, Rust standing (+12 more)
 
 ### Community 64 - "aifCallSites"
 Cohesion: 0.06
-Nodes (44): 2 · What it was not, 5 · What is still open, 1 · The blocker, as recorded and as measured, aifCallIsSummarised(), aifCompilerBuiltinContract(), aifDeclaredContract(), aifDeclaredReturnIsAlias(), aifDeclaredReturnIsProduce() (+36 more)
+Nodes (51): 2 · What it was not, 5 · What is still open, 1 · The blocker, as recorded and as measured, Found on the way, aifCallIsSummarised(), aifCompilerBuiltinContract(), aifDeclaredContract(), aifDeclaredReturnIsAlias() (+43 more)
 
 ### Community 65 - "adversarial.psm"
 Cohesion: 0.13
 Nodes (25): benchAdversarialNext(), benchAllocationEscape(), benchAosVsSoa(), benchBranchMispredict(), benchConsumeAdversarialObject(), benchDeadCodeElimination(), benchDeadKernel(), benchDependencyChain() (+17 more)
 
 ### Community 66 - "setup_llvm.py"
-Cohesion: 0.11
-Nodes (27): fetch(), adopt(), build_zstd(), compile_one(), download(), exe(), extract(), is_bitcode() (+19 more)
+Cohesion: 0.06
+Nodes (49): release(), `verify` mode — every inferred fact becomes a runtime assertion, 10. Per-module optimisation levels **[specified 2026-08-17, not implemented]**, 11. `verify` build mode **[needed]**, 12. Handles instead of raw pointers **[needed, long-horizon]**, 5. A pass between sema and codegen **[enabling]**, 6. Three allocation hooks, not one **[needed]**, 7. Scope-based drop / RAII **[needed]** (+41 more)
 
 ### Community 67 - "command_quote_arg"
-Cohesion: 0.12
-Nodes (40): absolute_directory(), codegen_uses_clang(), compare_dotted_versions(), compile_ir_to_object(), compiler_build_executable(), compiler_link_inputs_supported(), compiler_prepare_output_path(), compiler_run_executable_with() (+32 more)
+Cohesion: 0.13
+Nodes (37): codegen_uses_clang(), compare_dotted_versions(), compile_ir_to_object(), compiler_build_executable(), compiler_link_inputs_supported(), compiler_run_executable_with(), compiler_temp_ir_path(), compiler_temp_path() (+29 more)
 
 ### Community 68 - "unicode_conformance.psm"
-Cohesion: 0.08
-Nodes (38): 7 · The ASCII regression was the caller's loop, not `toUpper`'s, identifierSkeleton(), readLines(), builderPiece(), strFromScalar(), impl StringBuilder, StringBuilder, firstByte() (+30 more)
+Cohesion: 0.11
+Nodes (31): identifierSkeleton(), builderPiece(), strFromScalar(), strJoin(), impl StringBuilder, StringBuilder, firstByte(), main() (+23 more)
 
-### Community 69 - "ir/expr.psm"
-Cohesion: 0.09
-Nodes (78): 3 · What it was, 7 · What is left, measured, What was built, typeIntBits(), typeIntIsUnsigned(), ir_alloc_stack(), ir_call_arg(), ir_call_begin() (+70 more)
+### Community 69 - "nodeIsNull"
+Cohesion: 0.03
+Nodes (285): Kept from the attempt, 3 · What it was, 7 · What is left, measured, 4 · The shape of the change (as planned), The AIF oracle, nodeIsNull(), nodeGetType(), nodeHasType() (+277 more)
 
 ### Community 70 - "block_done"
 Cohesion: 0.14
 Nodes (36): block_done(), block_for(), element_from_memory(), element_memory_type(), element_to_memory(), flat_element_address(), ir_br_numbered(), ir_cond_br_numbered() (+28 more)
 
 ### Community 71 - "subprocess"
-Cohesion: 0.05
-Nodes (34): digest(), main(), run(), digest(), main(), run(), main(), run_once() (+26 more)
+Cohesion: 0.04
+Nodes (40): build(), copy_project(), main(), scenario(), touch(), digest(), main(), run() (+32 more)
 
 ### Community 72 - "backend_fail"
 Cohesion: 0.06
-Nodes (48): apply_borrow_attrs(), array_literal_push(), backend_fail(), const_from_text(), grow_table(), ir_alloca(), ir_array_literal_elem(), ir_array_literal_str_elem() (+40 more)
+Nodes (51): apply_borrow_attrs(), array_literal_push(), backend_fail(), const_from_text(), grow_table(), ir_alloca(), ir_array_literal_elem(), ir_array_literal_str_elem() (+43 more)
 
 ### Community 73 - "aifReportPlacementPin"
-Cohesion: 0.13
-Nodes (23): aif_fn_bracket_blockers(), aif_fn_call_sites(), aif_fn_calls_in_region(), aif_fn_name(), aif_fn_symbol(), aif_site_col(), aif_site_derived_tier(), aif_site_file() (+15 more)
+Cohesion: 0.14
+Nodes (21): aif_fn_bracket_blockers(), aif_fn_call_sites(), aif_fn_calls_in_region(), aif_fn_name(), aif_site_col(), aif_site_derived_tier(), aif_site_file(), aif_site_fn() (+13 more)
 
-### Community 74 - "BoundedQueue"
-Cohesion: 0.16
-Nodes (7): BoundedQueue, cap_, closed_, mu_, not_empty_, not_full_, queue_
+### Community 74 - "compute.cpp"
+Cohesion: 0.08
+Nodes (20): BenchSphere, cb, cg, cr, r, x, y, z (+12 more)
 
-### Community 75 - "semaCallExpr"
-Cohesion: 0.17
-Nodes (27): ir_has_var_type(), semaArrayIsProperty(), semaArrayKnownLength(), semaArrayLacksVecMethod(), semaArrayLower(), semaArrayTakesCount(), semaChannelIsProperty(), semaCallExpr() (+19 more)
+### Community 75 - "impl RelLoop"
+Cohesion: 0.19
+Nodes (5): ir_range_proof_mark(), ir_range_proof_marked(), dbmGet(), relCommit(), impl RelLoop
 
 ### Community 76 - "rt_alloc"
-Cohesion: 0.06
+Cohesion: 0.07
 Nodes (42): 2 · The leak, 0 · Why this file exists, 1 · The measurement, 2 · What was wrong: `str_substring` rescans the whole buffer, 3 · The compiler itself, 4 · What did *not* move, and why that is the finding, 5 · What this changes about the ranking, 1 · What was actually true before (+34 more)
 
 ### Community 77 - "report.psm"
-Cohesion: 0.07
-Nodes (61): M4 · `T?` where a sentinel stands in for absence, aif_alias_name(), aif_arena_blockers(), aif_cause_build(), aif_cause_col(), aif_cause_domain_for(), aif_cause_file(), aif_cause_line() (+53 more)
+Cohesion: 0.06
+Nodes (74): M4 · `T?` where a sentinel stands in for absence, aif_alias_name(), aif_arena_blockers(), aif_cause_build(), aif_cause_col(), aif_cause_domain_for(), aif_cause_file(), aif_cause_line() (+66 more)
 
-### Community 78 - "flatSetScalarStride"
-Cohesion: 0.11
-Nodes (24): Kept from the attempt, 1 · Why this existed, 2 · What was built, 3 · What it is worth, 5 · What is still declined, min/max/abs, and the call that used to cost 1.79x, M5 · `std.vec` in place of hand-rolled search loops, ir_list_data() (+16 more)
+### Community 78 - ".spawn"
+Cohesion: 0.13
+Nodes (20): Conversions: the release gate, run on a packaged RC, Not covered, Two defects in the gate's own harness, main(), StreamMode, Inherit, proc_exec(), proc_spawn_arg() (+12 more)
 
 ### Community 79 - "An owned call result consumed directly as an argument now has an owner"
 Cohesion: 0.25
 Nodes (8): 1 · The defect, 2 · The fix, and the three conditions on it, 3 · Before / after, 4 · The discriminator, 5 · What this does not reach, An owned call result consumed directly as an argument now has an owner, `spawn` is excluded structurally, and that is required, The retention guard that was asked for does not exist and is not needed
 
-### Community 80 - "workspace.psm"
-Cohesion: 0.07
-Nodes (36): umsBuildPlanCreate(), umsBuildProfileValid(), umsPlannedOutput(), impl UmsDiagnostic, umsBootstrapPrefixLength(), umsHostExecutable(), umsProjectHost(), umsProjectOwnsHost() (+28 more)
+### Community 80 - "UmsDiagnostic"
+Cohesion: 0.10
+Nodes (38): umsBuildPlanCreate(), umsPlannedOutput(), umsDiagnosticAdd(), impl UmsDiagnostic, UmsDiagnostic, umsDependencyScope(), umsLowerDocument(), umsSpanOf() (+30 more)
 
 ### Community 81 - "input.psm"
-Cohesion: 0.15
-Nodes (12): 1 · The program that does not build, 3 · What to change, cheapest first, 4 · Order, Reading input: what is awkward and what to change, io_stdin_has_line(), io_stdin_read_all(), io_stdin_take_line(), impl Iterator for StdinLines (+4 more)
+Cohesion: 0.17
+Nodes (10): 1 · The reader, 3 · What to change, cheapest first, io_stdin_has_line(), io_stdin_read_all(), io_stdin_take_line(), impl Iterator for StdinLines, impl Stdin, Stdin (+2 more)
 
 ### Community 82 - "UmsTokenKind"
 Cohesion: 0.09
 Nodes (35): UmsAstStatementKind, ASSIGNMENT, CALL, UNKNOWN, UmsAstValueKind, ARRAY, BOOLEAN, IDENTIFIER (+27 more)
 
 ### Community 83 - "algorithms.cpp"
-Cohesion: 0.11
-Nodes (24): 2 · What it is worth, which is almost nothing here, 3 · Step 2 of the task was not attempted, and why, MEM-033: the cycle collector stops locking when there is nothing to lock against, `s_expression_parse`'s arms are not the same program, build_one_sexpr(), build_tree(), eval_sexpr_ast(), fibonacci() (+16 more)
+Cohesion: 0.10
+Nodes (25): binary_search_work(), build_one_sexpr(), build_tree(), dijkstra_shortest_path(), eval_sexpr_ast(), fibonacci(), gcd_value(), knapsack() (+17 more)
 
-### Community 84 - "algorithms.psm"
-Cohesion: 0.09
-Nodes (37): 2 · Pass-throughs, also asked of sites, 3 · A temporary the callee hands a view of back, 5 · What moved, 6 · Still open, Who owns a call's result: asked of the call, not of its allocation site, 6 · The regression that was kept, 2 · Measured, BenchSExpr (+29 more)
+### Community 84 - "benchRun"
+Cohesion: 0.08
+Nodes (51): 5 · What moved, 5 · Measured, BenchSExpr, Empty, Num, Op, benchBinarySearch(), benchBuildOneExpr() (+43 more)
 
-### Community 85 - "UmsDiagnostic"
-Cohesion: 0.30
-Nodes (11): umsDiagnosticAdd(), UmsDiagnostic, umsDependencyScope(), umsLowerDocument(), umsSpanOf(), impl UmsProjectModel, UmsAstDocument, UmsAstStatement (+3 more)
+### Community 85 - "arena_census.py"
+Cohesion: 0.10
+Nodes (14): blockers_for(), main(), manifest_symbols(), programs(), summary_brackets(), 1 · Decisions, `Array<T, N>` is an array whose length is part of its type, Collections (+6 more)
 
 ### Community 86 - "kv-adaptive-hash-2026-09-06/ceiling.c"
 Cohesion: 0.16
@@ -1001,9 +982,9 @@ Nodes (24): fm_get_or(), fm_init(), fm_probe(), fm_rehash(), fm_set(), im_get_or
 Cohesion: 0.09
 Nodes (23): 0 · The answer, 10.1 · Emptying a function body without a `deleteBody`, 10.2 · Checked against the tool it replaces, 10.3 · It is also cheaper, 10.4 · The corpus, re-measured after the port, 10 · The merge moves in process, and the last blocker goes, 1 · Why the `llvm-link` merge escaped this and LTO did not, 2 · The part that decides how M1.1 is built: the match must be exact (+15 more)
 
-### Community 88 - "list_release"
-Cohesion: 0.13
-Nodes (22): 1 · The four, by fixture, 2 · The fifth was not fixed; it was never a gate failure, 3 · What the four have that test_62 does not, 4 · Why this cannot be fixed by adding the missing disposition, 4a · What is inferred rather than measured, 5 · Reproducing, `PRISMIO_INLINE_ELEMS=0` fails four fixtures, and the fifth was never one, list_check_insert_index() (+14 more)
+### Community 88 - "The 2026-09-30 `--verify` sweep"
+Cohesion: 0.10
+Nodes (36): 3 · The fix, and why only one of the three, Discriminating gate, `sortBy` on flat structs, and `list_set` within one flat list, 1. `mixed_map_removal` — P0 — done 2026-09-25, API to settle before implementation, The 2026-09-30 `--verify` sweep, list_check_insert_index(), list_copy_elem() (+28 more)
 
 ### Community 89 - "ir_intern"
 Cohesion: 0.10
@@ -1011,7 +992,7 @@ Nodes (31): diag_file_module(), find_struct(), ir_caller_can_access_extern(), ir
 
 ### Community 90 - "aifEmitManifest"
 Cohesion: 0.10
-Nodes (22): aif_arena_high_water(), aif_arena_unsized_sites(), aif_con_count(), aif_layout_reordered(), aif_nominal_acyclic(), aif_nominal_count(), aif_nominal_is_struct(), aif_order_symbol() (+14 more)
+Nodes (20): aif_arena_high_water(), aif_arena_unsized_sites(), aif_field_has_range(), aif_field_range_bytes(), aif_field_range_hi(), aif_field_range_lo(), aif_layout_reordered(), aif_order_symbol() (+12 more)
 
 ### Community 91 - "key-before.psm"
 Cohesion: 0.10
@@ -1029,33 +1010,33 @@ Nodes (18): fail(), main(), markAny(), pairKindAny(), readAny(), impl Marked for
 Cohesion: 0.11
 Nodes (16): fail(), greetThrough(), main(), impl Bump for Counter, impl Greet for Cat, impl Greet for Dog, impl ScaleBy for Dog, impl Tagged for Box (+8 more)
 
-### Community 95 - "10 · Known weaknesses"
-Cohesion: 0.29
-Nodes (7): 10.1 The cache model has no associativity and no conflict misses, 10.2 `HandleCost` is a placeholder, 10.3 Profiles age, 10.4.1 A fabricated instance count decides the cache tier, and therefore the layout, 10.4 Static frequency estimation is crude, 10.5 One profile, one target, 10 · Known weaknesses
+### Community 95 - "impl RangeLoop"
+Cohesion: 0.16
+Nodes (6): ir_range_proof_new(), ir_range_trace(), rangeBitCount(), rangeBodyDeclares(), rangeShift(), impl RangeLoop
 
-### Community 96 - "adversarial.cpp"
-Cohesion: 0.10
-Nodes (34): adversarial_next(), AdversarialObject, a, b, c, d, allocation_escape(), aos_vs_soa() (+26 more)
+### Community 96 - "run"
+Cohesion: 0.13
+Nodes (30): adversarial_next(), AdversarialObject, a, b, c, d, allocation_escape(), aos_vs_soa() (+22 more)
 
-### Community 97 - "benchRun"
-Cohesion: 0.10
-Nodes (40): 5 · Measured, The result, benchBinarySearch(), benchLz4Compress(), benchPrimeSieve(), benchSortStrings(), benchRandom(), BenchBand (+32 more)
+### Community 97 - "compute.psm"
+Cohesion: 0.13
+Nodes (22): 3 · Cost, The result, BenchBand, benchBandSum(), benchChannelPipeline(), benchEcsUpdate(), benchFft(), benchFftTransform() (+14 more)
 
 ### Community 98 - "Code Style"
-Cohesion: 0.11
-Nodes (19): 10. State and cleanup, 11. CLI architecture, 12. FFI and native boundaries, 13. Performance, 14. Testing and validation, 17. The governing principles, 2. Production-code standard, 4. Language and module layout (+11 more)
+Cohesion: 0.07
+Nodes (29): 10. State and cleanup, 11. CLI architecture, 12. FFI and native boundaries, 13. Performance, 14. Testing and validation, 15. Working with agents, 17. The governing principles, 2. Production-code standard (+21 more)
 
 ### Community 99 - "g6_bench.c"
 Cohesion: 0.19
 Nodes (23): apply_orders(), arena_alloc(), arena_reserve(), arena_reset(), list_free_all(), list_new(), list_push(), main() (+15 more)
 
-### Community 100 - "fn_may_return_param"
-Cohesion: 0.07
-Nodes (28): A field read is a view of the object it was read from, Scope, The defect, Verification, What it costs, Why neither existing fact caught it, 1 · The defect, 2 · Why the wide test was there (+20 more)
-
-### Community 101 - "Codegen"
+### Community 100 - "vec_push"
 Cohesion: 0.06
-Nodes (35): 10 · Task 1.3 (MEM-011), curating `list_push_slot`: it works, and it loses, 1 · The bug, 2 · The fix, in three parts, 3 · What the exact bound unlocked, 7 · The TBAA audit (MEM-024), in full, 9 · Cross-language, on the final compiler, The loop range guard was not sound, and the bound it used was one too loose, 1 · The distinction that was missing (+27 more)
+Nodes (43): 1 · One allocation site, every call's answer, 2 · Pass-throughs, also asked of sites, 3 · A temporary the callee hands a view of back, 4 · Guards the new bindings needed, which user bindings needed already, 6 · Still open, Who owns a call's result: asked of the call, not of its allocation site, Why neither existing fact caught it, 1 · The defect (+35 more)
+
+### Community 101 - "The loop range guard was not sound, and the bound it used was one too loose"
+Cohesion: 0.06
+Nodes (34): 6 · The regression that was kept, 1 · The bug, 2 · The fix, in three parts, 3 · What the exact bound unlocked, 6 · Totality, 7 · The TBAA audit (MEM-024), in full, 9 · Cross-language, on the final compiler, The loop range guard was not sound, and the bound it used was one too loose (+26 more)
 
 ### Community 102 - "time.psm"
 Cohesion: 0.16
@@ -1066,8 +1047,8 @@ Cohesion: 0.12
 Nodes (19): compare(), main(), parse_bracketing(), parse_compiler(), parse_oracle(), parse_threads(), run(), under_neutral_name() (+11 more)
 
 ### Community 104 - "di_type_for"
-Cohesion: 0.17
-Nodes (31): diag_file_count(), diag_file_path(), di_basic(), di_cache(), di_cached(), di_data_element_type(), di_enum_type(), di_field_type_name() (+23 more)
+Cohesion: 0.21
+Nodes (26): diag_file_count(), diag_file_path(), di_basic(), di_cache(), di_cached(), di_data_element_type(), di_enum_type(), di_field_type_name() (+18 more)
 
 ### Community 105 - "test_127_enum_null_variant.psm"
 Cohesion: 0.15
@@ -1078,8 +1059,8 @@ Cohesion: 0.31
 Nodes (12): build_system(), count_alive(), fade(), integrate(), main(), spawn_particle(), Particle, 2.1 · It was built on 2026-08-17, and the corpus does not reproduce the 0.87× (+4 more)
 
 ### Community 107 - "README.md"
-Cohesion: 0.13
-Nodes (12): Code style, graphify, Runtime surface, Where the project's state lives, A first look, Building from source, Contributing, Install (+4 more)
+Cohesion: 0.10
+Nodes (15): 1 · `tools/release_gate.py`, The v0.1 gate and benchmark matrix on the branch head, 2026-09-25, Before a release, Code style, graphify, Runtime surface, Where the project's state lives, A first look (+7 more)
 
 ### Community 108 - "prismio_llvm.h"
 Cohesion: 0.07
@@ -1089,21 +1070,21 @@ Nodes (12): LLVMOpaqueAttributeRef, LLVMOpaqueBasicBlock, LLVMOpaqueBuilder, LLV
 Cohesion: 0.12
 Nodes (21): adversarial_next(), AdversarialObject, allocation_escape(), branch_mispredict(), consume_adversarial_object(), dead_code_elimination(), dead_kernel(), function_call_overhead() (+13 more)
 
-### Community 110 - "map-update-2026-09-05/map-before.psm"
-Cohesion: 0.20
-Nodes (16): mapGet(), mapGetOr(), mapHas(), mapIndexOf(), mapInitialCapacity(), mapKeyAt(), mapLen(), mapNew() (+8 more)
+### Community 110 - "impl Int"
+Cohesion: 0.10
+Nodes (5): 1 · The lowering, 2 · Three bugs the library could not be written over, 4 · Not done, std.math: Float's functions, and the three Float codegen bugs under them, impl Int
 
 ### Community 111 - "release_gate.py"
-Cohesion: 0.32
-Nodes (21): bad(), bootstrap(), check_corpus(), check_cross_target(), check_differential(), check_environment_switch(), check_fixpoint(), check_generations() (+13 more)
+Cohesion: 0.22
+Nodes (29): bad(), bootstrap(), check_corpus(), check_cross_target(), check_differential(), on_line(), check_environment_switch(), check_fixpoint() (+21 more)
 
 ### Community 112 - "The cross-language benchmark — current standing and historical session-3 report"
 Cohesion: 0.08
 Nodes (26): 0 · The one-paragraph answer, 10 · Reproducing, 1 · The full matrix, 2 · Prediction → session-3 measurement → now, per axis, 3 · The claim, stated the way the numbers support it, 4 · `region` on g2: session 3's sharpest negative result is fixed, 5.1 · The residual — the only design number, and it held, 5.2 · Executable size — still a large win, and it grew (+18 more)
 
-### Community 113 - "host.psm"
-Cohesion: 0.18
-Nodes (23): 8 · A harness trap, recorded because it cost an hour, diag_styled_err(), diag_warning_code(), compiler_check_executable(), compiler_check_host_abi(), compiler_emit_local_toolchain(), compiler_forward_cli(), compiler_host_stamp_matches() (+15 more)
+### Community 113 - "RangeLoop"
+Cohesion: 0.19
+Nodes (19): rangeApplyUpdate(), rangeClassify(), rangeClassifyChain(), rangeIsLoop(), rangeIsNamedTarget(), rangeMax(), rangeMin(), rangeUpdateAmount() (+11 more)
 
 ### Community 114 - "TokenType"
 Cohesion: 0.08
@@ -1113,21 +1094,21 @@ Nodes (26): TokenType, AMPERSAND, ARITHMETIC_OPERATOR, ARROW, ASSIGNMENT_OPERATO
 Cohesion: 0.19
 Nodes (25): Slot, At, Empty, ascending(), binderShadow(), bisect(), bisectSum(), check() (+17 more)
 
-### Community 116 - "Process"
-Cohesion: 0.25
-Nodes (7): A struct crossing a `.plib` read its fields one slot late, Not verified, Results: the subprocess API (2026-09-12 to 2026-09-16), Two defects the fixture found, Validation of the final tree, What the design had to work around, Process()
+### Community 116 - "Toolchain layout"
+Cohesion: 0.11
+Nodes (12): A struct crossing a `.plib` read its fields one slot late, Not verified, Results: the subprocess API (2026-09-12 to 2026-09-16), Two defects the fixture found, Validation of the final tree, What the design had to work around, Toolchain layout, Process() (+4 more)
 
 ### Community 117 - "algorithms.rs"
-Cohesion: 0.10
-Nodes (16): build_one_sexpr(), build_tree(), eval_sexpr_ast(), gcd_lcm(), gcd_value(), merge_range(), mergesort_work(), parse_sexpr_ast() (+8 more)
+Cohesion: 0.12
+Nodes (13): build_one_sexpr(), eval_sexpr_ast(), gcd_lcm(), gcd_value(), merge_range(), mergesort_work(), parse_sexpr_ast(), quick_range() (+5 more)
 
 ### Community 118 - "main"
-Cohesion: 0.18
-Nodes (15): filter(), find(), min(), take(), fail(), filter(), main(), impl Parser (+7 more)
+Cohesion: 0.10
+Nodes (28): clone(), concat(), extend(), fill(), filter(), find(), indexWhere(), max() (+20 more)
 
-### Community 119 - "_di_scope_file"
-Cohesion: 0.33
-Nodes (3): _di_located_lines(), _di_located_spans(), _di_scope_file()
+### Community 119 - "run_debug_info_test"
+Cohesion: 0.10
+Nodes (12): _di_composite(), _di_located_lines(), _di_located_spans(), _di_nodes(), _di_scope_file(), _di_tuple(), _emitted_struct(), _expected_layout() (+4 more)
 
 ### Community 120 - "World"
 Cohesion: 0.24
@@ -1157,28 +1138,24 @@ Nodes (22): Maybe, None, Some, Reversed, Empty, Value, Three, First (+14 more)
 Cohesion: 0.14
 Nodes (20): UmsDependencyScope, API, IMPLEMENTATION, TEST_IMPLEMENTATION, UNKNOWN, umsDependencyFind(), umsDependencyScopeName(), impl UmsDependency (+12 more)
 
-### Community 129 - "node_to_ptr"
-Cohesion: 0.07
-Nodes (84): node_to_ptr(), ptr_null(), createNode(), nodeList(), nodeListPush(), nodeSpanFrom(), NodeList, irHoistOne() (+76 more)
+### Community 129 - "ASTNode"
+Cohesion: 0.04
+Nodes (141): Answer: Prismio chooses after substitution, node_to_ptr(), ptr_null(), createNode(), nodeIsProperty(), nodeList(), nodeListPush(), nodeMarkCold() (+133 more)
 
 ### Community 130 - "site_arena_scope"
-Cohesion: 0.12
-Nodes (19): 1 · The headline, 2 · Why an escape-lattice change does not move this, 3 · The measurement that was wrong twice, and why, 4 · `region` measured on g2, 5 · What a region *can* serve, 7 · What would actually close this, Arena placement: what `region` serves, and what stops the rest, aif_arena_blockers() (+11 more)
+Cohesion: 0.11
+Nodes (21): 1 · The headline, 2 · Why an escape-lattice change does not move this, 3 · The measurement that was wrong twice, and why, 4 · `region` measured on g2, 5 · What a region *can* serve, 6 · `list_new_with_capacity`, the one speed result, 7 · What would actually close this, 8 · How much call-site bracketing could reach *(2026-08-16)* (+13 more)
 
-### Community 131 - "debug_info.psm"
-Cohesion: 0.18
-Nodes (18): Channel, EAST, NORTH, SOUTH, channelOf(), checkpointTotal(), describe(), main() (+10 more)
-
-### Community 132 - "impl Parser"
-Cohesion: 0.36
-Nodes (3): parserDescribe(), startsConstruct(), impl Parser
+### Community 131 - ".concat"
+Cohesion: 0.14
+Nodes (22): Channel, EAST, NORTH, SOUTH, channelOf(), checkpointTotal(), describe(), main() (+14 more)
 
 ### Community 133 - "common/target.psm"
 Cohesion: 0.28
 Nodes (12): ir_target_data_layout(), ir_target_is_explicit(), ir_target_pointer_bits(), ir_target_select(), ir_target_triple(), targetArchCode(), targetCurrent(), targetEnvCode() (+4 more)
 
-### Community 134 - "hashquality.c"
-Cohesion: 0.44
+### Community 134 - "stdio"
+Cohesion: 0.16
 Nodes (9): key_of(), main(), mg(), mi(), mix(), mp(), mr(), ms() (+1 more)
 
 ### Community 135 - "shorthash.c"
@@ -1189,9 +1166,9 @@ Nodes (20): bench_next_random(), cost_ns(), displacement(), keys_ids(), keys_sor
 Cohesion: 0.12
 Nodes (11): base_type(), bracket_masks(), elem_key(), elem_spelling_resolved(), main(), measure_masks(), scan(), report() (+3 more)
 
-### Community 137 - "sys"
-Cohesion: 0.05
-Nodes (25): blockers_for(), main(), manifest_symbols(), programs(), summary_brackets(), explain(), main(), parse() (+17 more)
+### Community 137 - "re"
+Cohesion: 0.07
+Nodes (16): explain(), main(), parse(), Record, artifact_symbols(), declared_externs(), Failure, main() (+8 more)
 
 ### Community 138 - "test_104_where_clauses.psm"
 Cohesion: 0.16
@@ -1211,11 +1188,11 @@ Nodes (21): 1 · AIF core — genuinely ours, 2 · AIF's stake in language featu
 
 ### Community 142 - "retain"
 Cohesion: 0.07
-Nodes (35): 1 · Headline, 2 · The finding: one decision accounts for the entire residue, 3 · What the game corpus showed that the compiler could not, 3a · Handles appear to eliminate T3 in engine code, 4.1 `retain_in(k)` is missing from FFI.md's contract vocabulary, 4.2 The cycle collector has no program that can exercise it, 4 · Two spec gaps the run found, 5 · Secondary measurements (+27 more)
+Nodes (34): 1 · Headline, 2 · The finding: one decision accounts for the entire residue, 3 · What the game corpus showed that the compiler could not, 3a · Handles appear to eliminate T3 in engine code, 4.1 `retain_in(k)` is missing from FFI.md's contract vocabulary, 4.2 The cycle collector has no program that can exercise it, 4 · Two spec gaps the run found, 5 · Secondary measurements (+26 more)
 
 ### Community 143 - "AIF — The Inference Engine"
-Cohesion: 0.05
-Nodes (42): 10 · Worked example, 1 · Architecture, 2.1 `E` — escape, 2.2 `A` — aliasing, 2.3 `T` — thread affinity, 2.4 `C` — cyclicity, 2.5 `L` — lifetime determinacy *(derived)*, 2.6 The product (+34 more)
+Cohesion: 0.25
+Nodes (8): 10 · Worked example, 1 · Architecture, 3.1 Nodes, 3.2 Edges, 3.3 Node ordering (normative), 3 · The fact graph, 9 · Incrementality, AIF — The Inference Engine
 
 ### Community 144 - "test_105_supertraits.psm"
 Cohesion: 0.17
@@ -1229,29 +1206,29 @@ Nodes (17): Shape, Cells, Empty, corners(), fail(), fourDown(), main(), makeGrid
 Cohesion: 0.23
 Nodes (20): build_a(), build_b0(), build_b(), build_c0(), build_c(), build_d0(), build_d(), build_e() (+12 more)
 
-### Community 148 - "aifRunProfiled"
-Cohesion: 0.13
-Nodes (16): aif_check_pins(), aif_check_placement_pins(), aif_layout_select(), aif_layout_split_select(), aif_place_arenas(), aif_profile_load(), aif_reset(), aif_set_owned_collections() (+8 more)
+### Community 148 - "relations.psm"
+Cohesion: 0.11
+Nodes (20): relBump(), relCollectChain(), relCollectNode(), relLoopNew(), relNegated(), RelLoop, REL_ANCHOR, REL_EMIT (+12 more)
 
 ### Community 149 - "rt_free"
 Cohesion: 0.14
 Nodes (28): 1 · What was built, 2.2 · Correctness of the runtime model, cyc_alloc(), cyc_buffer(), cyc_collect(), cyc_collect_now(), cyc_collect_white(), cyc_collections_run() (+20 more)
 
-### Community 150 - "run"
-Cohesion: 0.11
-Nodes (60): 6 · The result, The benchmark matrix, 2026-09-25, The table, Counted scalar fills and struct-list initialization, Full Suite Comparison (All 34 Workloads), Interpretation and remaining work, Measurement Results (25-run interleaved comparison), Reproduction and evidence (+52 more)
+### Community 150 - "Benchmarks"
+Cohesion: 0.12
+Nodes (46): 6 · The result, The benchmark matrix, 2026-09-25, The table, Counted scalar fills and struct-list initialization, Full Suite Comparison (All 34 Workloads), Interpretation and remaining work, Measurement Results (25-run interleaved comparison), Mechanisms (+38 more)
 
-### Community 151 - "umsLex"
-Cohesion: 0.16
-Nodes (16): umsAbsolutePath(), umsHostIsProjectBuildOutput(), umsRunnableScript(), umsSemverIdentifiers(), umsValidLicenseExpression(), umsValidName(), umsValidNumericVersion(), umsValidSemver() (+8 more)
+### Community 151 - ".charAt"
+Cohesion: 0.09
+Nodes (36): 2 · The measurement, and the probe that lied, 3 · Why this rules the builtin route out for these four, 4 · Migrating the call sites, The String operators lower to methods, and the prefixed names are gone, twoCharOperatorType(), umsBuildProfileValid(), umsManifestAddDependency(), umsManifestAppendDependencyBlock() (+28 more)
 
-### Community 152 - "find_binding"
-Cohesion: 0.10
-Nodes (20): find_binding(), ir_binding_owns_slot(), ir_binding_predates_loop(), ir_get_var_data(), ir_get_var_slot(), ir_get_var_type(), ir_has_var_type(), ir_is_list_exclusive() (+12 more)
+### Community 152 - "elide_middle"
+Cohesion: 0.09
+Nodes (9): elide_middle(), run_cold_function_test(), run_crlf_triple_string_test(), run_jit_test(), run_ownership_probes_test(), run_single_loop_inline_test(), run_source_not_utf8_test(), run_string_dispatch_codegen_test() (+1 more)
 
 ### Community 153 - "struct_entry"
 Cohesion: 0.09
-Nodes (33): ir_get_struct_field_count(), ir_get_struct_field_type_at(), ir_is_struct_type_name(), attach_cold(), attach_cold_rc(), get_or_declare_alloc_fn(), get_or_declare_free_fn(), ir_alloc_cycle() (+25 more)
+Nodes (35): ir_get_struct_field_count(), ir_get_struct_field_type_at(), ir_is_struct_type_name(), attach_cold(), attach_cold_rc(), get_or_declare_alloc_fn(), get_or_declare_free_fn(), ir_alloc_cycle() (+27 more)
 
 ### Community 154 - "Cross-language results — Prismio vs Rust vs Swift"
 Cohesion: 0.11
@@ -1261,13 +1238,13 @@ Nodes (16): 0.1 · Re-measured 2026-08-17, first pass since the `allocs` fix —
 Cohesion: 0.26
 Nodes (19): closeWakesReceiver(), double(), fail(), keptAcrossIterations(), main(), next(), notesStayBoxed(), produceCount() (+11 more)
 
-### Community 156 - "flow_build"
-Cohesion: 0.17
-Nodes (14): 1 · One allocation site, every call's answer, 1 · For 0.1: no known way to corrupt memory in a program that compiles, aif_owns_call_result_at_node(), call_fn_result_held(), call_result_held(), con_value_vs(), flow_build(), flow_edge() (+6 more)
+### Community 156 - "rangeEmitAccess"
+Cohesion: 0.21
+Nodes (14): ir_add(), ir_and(), ir_icmp_sge(), ir_icmp_sle(), ir_mul(), ir_sub(), rangeBinaryInterval(), rangeEmitAccess() (+6 more)
 
 ### Community 157 - "build_curated_module"
-Cohesion: 0.12
-Nodes (31): 8.1 · M1's exit gate is **not** met, and the reason matters, 8.2 · What landed, 8.3 · Why it stayed opt-in during M1.1, 8 · M1.1 built, and measured through the real driver, build_curated_module(), build_trace_enabled(), build_trace_ms(), build_trace_stage() (+23 more)
+Cohesion: 0.13
+Nodes (28): 8.1 · M1's exit gate is **not** met, and the reason matters, 8.2 · What landed, 8.3 · Why it stayed opt-in during M1.1, 8 · M1.1 built, and measured through the real driver, build_curated_module(), build_trace_enabled(), build_trace_ms(), build_trace_stage() (+20 more)
 
 ### Community 158 - "common.psm"
 Cohesion: 0.21
@@ -1277,21 +1254,21 @@ Nodes (15): benchPrintln(), benchPrintln(), benchPrintln(), benchWrite(), BenchB
 Cohesion: 0.39
 Nodes (6): Maybe, Just, Nothing, apply(), main(), impl Maybe
 
-### Community 160 - "Which std functions are properties"
-Cohesion: 0.09
-Nodes (16): Landing, Properties are declared: `prop`, Still open, The rule before, Which std functions are properties, Architecture, X86_64, Environment (+8 more)
+### Community 160 - "platform.psm"
+Cohesion: 0.17
+Nodes (10): Architecture, X86_64, Environment, GNU, Platform, Windows, PlatformQuery, platform (+2 more)
 
 ### Community 161 - "aif_concurrency.psm"
 Cohesion: 0.33
 Nodes (18): cli_arg(), register_forever(), break_is_absorbed_by_its_loop(), join_on_both_paths(), joined_stays_local(), loop_between_spawn_and_join(), main(), no_task_at_all() (+10 more)
 
-### Community 162 - "TypeInfo"
-Cohesion: 0.08
-Nodes (96): The surface, aifLayoutVetoDataViews(), aifNodeType(), ir_extern_decl_record(), ir_index_decl(), ir_reset_decl_index(), ptr_to_type(), type_to_ptr() (+88 more)
+### Community 162 - "manifest_records"
+Cohesion: 0.11
+Nodes (10): Analysis quality — three recorded gaps closed, 2026-08-06, aif_records(), aif_thread_records(), manifest_records(), run_aif_annotation_test(), run_aif_concurrency_test(), run_aif_widening_test(), run_pin_tier_test() (+2 more)
 
 ### Community 163 - "assert"
-Cohesion: 0.23
-Nodes (11): Language at a glance, exit(), assert(), main(), classify(), main(), checkedSum(), half() (+3 more)
+Cohesion: 0.26
+Nodes (10): exit(), assert(), main(), classify(), main(), checkedSum(), half(), main() (+2 more)
 
 ### Community 164 - "test_115_trait_imports.psm"
 Cohesion: 0.19
@@ -1313,21 +1290,21 @@ Nodes (17): A command is manifest data; which names are free is not, Current lim
 Cohesion: 0.32
 Nodes (16): acquire(), build_assets(), evict_unused(), load_material(), load_mesh(), load_texture(), main(), make_cache() (+8 more)
 
-### Community 169 - "test_165_ranges_repeat_labels.psm"
-Cohesion: 0.12
-Nodes (17): Iterator, fail(), main(), impl Iterator for Countdown, impl Iterator for Letters, Countdown, Letters, classify() (+9 more)
+### Community 169 - "Iterator"
+Cohesion: 0.20
+Nodes (7): Iterator, fail(), main(), impl Iterator for Countdown, impl Iterator for Letters, Countdown, Letters
 
 ### Community 170 - "math.psm"
 Cohesion: 0.07
 Nodes (11): impl I16, impl I8, impl Isize, impl Usize, main(), impl Square, Square, check() (+3 more)
 
-### Community 171 - "test_44_aif_region.psm"
-Cohesion: 0.30
-Nodes (14): Level 4 — strings and lists become move-only — **DONE, 2026-08-07**, arena_objects(), arena_regions(), str_concat(), breaks_out(), check(), escapes_inner(), inside() (+6 more)
+### Community 171 - "compute.rs"
+Cohesion: 0.12
+Nodes (6): band_sum(), BenchSphere, fft(), fft_transform(), parallel_reduction(), Particle
 
 ### Community 172 - "memory.cpp"
-Cohesion: 0.08
-Nodes (19): large_buffer_copy(), main(), now_ns(), BenchTree, left, right, value, build_memory_tree() (+11 more)
+Cohesion: 0.21
+Nodes (11): build_memory_tree(), large_buffer_copy(), memory_tree_sum(), MemoryParticle, life, vx, vy, x (+3 more)
 
 ### Community 173 - "layout.py"
 Cohesion: 0.23
@@ -1337,29 +1314,29 @@ Nodes (11): candidates(), field_align(), field_width(), Layout, main(), min_size
 Cohesion: 0.11
 Nodes (18): 10 · What still needs measurement, 1 · What is actually in scope, 2 · The headline result, 3.1 Why trial deletion and not tracing, 3.2 The procedure, 3 · Algorithm, 4 · The cyclic-edge restriction, 5 · Object header (+10 more)
 
-### Community 175 - "compute.rs"
-Cohesion: 0.06
-Nodes (20): binary_search_work(), dijkstra_shortest_path(), lz4_compress(), sort_strings(), BENCH_MOD, BenchTree, next_random(), band_sum() (+12 more)
+### Community 175 - "next_random"
+Cohesion: 0.12
+Nodes (12): binary_search_work(), dijkstra_shortest_path(), lz4_compress(), sort_strings(), next_random(), blake3_chunk(), bytecode_interpreter(), monte_carlo() (+4 more)
 
 ### Community 176 - "AIF — Design Rationale"
-Cohesion: 0.09
-Nodes (22): AIF — Design Rationale, Arena placement is a cost decision; `region` is a pin on it, Bake the static region, not the heap, C1, C10, C11, C2, C3 (+14 more)
+Cohesion: 0.10
+Nodes (20): AIF — Design Rationale, Arena placement is a cost decision; `region` is a pin on it, Bake the static region, not the heap, C1, C10, C11, C2, C3 (+12 more)
 
 ### Community 177 - "bits_test"
-Cohesion: 0.07
-Nodes (35): What landed, 2 · Why, Adding or removing a runtime source, Done, Left, with what the next attempt should know, The standing refactor, bits_test(), aif_compute_type_acyclic() (+27 more)
+Cohesion: 0.06
+Nodes (38): 1. Every program that printed a number leaked, Measured, What landed, Where it was, 2 · Why, Adding or removing a runtime source, Done, Left, with what the next attempt should know (+30 more)
 
 ### Community 178 - "AIF — Layout Results (A1)"
-Cohesion: 0.14
-Nodes (14): 1 · Headline, 2 · The static profile is exact, 3 · The model discriminates, and that is the real result, 4 · Spec defect found: LAYOUT §5.4's total could go negative, 5 · What this does not show, 6 · What to do next, AIF — Layout Results (A1), Reproducing (+6 more)
+Cohesion: 0.09
+Nodes (22): 1 · Headline, 2 · The static profile is exact, 4 · Spec defect found: LAYOUT §5.4's total could go negative, 6 · What to do next, AIF — Layout Results (A1), Reproducing, 8.1 Handles, 8.2 The compiler owns layout (+14 more)
 
 ### Community 179 - "M6 slice 2 — ordinary struct-path TBAA, and the g2 regression it caused"
-Cohesion: 0.20
-Nodes (9): All-g old/new — `build/tbaa3` → `build/m6-rc`, Commands, Five-arm standing, Gate, Generated code before timings, It is the instruction, not the layout, M6 slice 2 — ordinary struct-path TBAA, and the g2 regression it caused, The decline, and why it is this line and not g2's (+1 more)
+Cohesion: 0.33
+Nodes (5): All-g old/new — `build/tbaa3` → `build/m6-rc`, Commands, Five-arm standing, Gate, M6 slice 2 — ordinary struct-path TBAA, and the g2 regression it caused
 
-### Community 180 - "test_172_mut_collections.psm"
-Cohesion: 0.43
-Nodes (7): reverse(), fail(), fill(), grow(), main(), total(), Bag
+### Community 180 - "test_165_ranges_repeat_labels.psm"
+Cohesion: 0.27
+Nodes (10): classify(), countdown(), fail(), grade(), main(), nestedIf(), sumExclusive(), sumRange() (+2 more)
 
 ### Community 181 - "release.py"
 Cohesion: 0.23
@@ -1377,12 +1354,16 @@ Nodes (8): fail(), main(), twice(), impl Dup for Int, impl Dup for T, impl Name 
 Cohesion: 0.29
 Nodes (17): check(), crate_inventory_again(), main(), make_crate(), make_crate_inventory(), make_inventory(), nested_owner_again(), nested_owner() (+9 more)
 
-### Community 186 - "verify"
-Cohesion: 0.11
-Nodes (24): release(), `verify` mode — every inferred fact becomes a runtime assertion, 10. Per-module optimisation levels **[specified 2026-08-17, not implemented]**, 11. `verify` build mode **[needed]**, 12. Handles instead of raw pointers **[needed, long-horizon]**, 5. A pass between sema and codegen **[enabling]**, 6. Three allocation hooks, not one **[needed]**, 7. Scope-based drop / RAII **[needed]** (+16 more)
+### Community 185 - "tree_traversal"
+Cohesion: 0.18
+Nodes (10): 2 · What it is worth, which is almost nothing here, 3 · Step 2 of the task was not attempted, and why, MEM-033: the cycle collector stops locking when there is nothing to lock against, 1 · The distinction that was missing, 2 · The g6 test, which is the whole point, 3 · The benchmark sweep, 4 · Why the two targets did not move, which is the finding worth keeping, 5 · What the guard promises, and what it does not (+2 more)
+
+### Community 186 - "vgphase.psm"
+Cohesion: 0.32
+Nodes (11): 1 · The benchmark is a serial modulo chain, not a container benchmark, 2 · The reload that looks redundant is load-bearing, full(), main(), modonly(), nosum(), pushonly(), reserve() (+3 more)
 
 ### Community 187 - "stdlib"
-Cohesion: 0.24
+Cohesion: 0.22
 Nodes (12): ch_close(), ch_init(), main(), recv(), relax(), s1(), s2(), send() (+4 more)
 
 ### Community 189 - "C code style"
@@ -1390,20 +1371,20 @@ Cohesion: 0.18
 Nodes (11): A returned `String` must be freeable on every path, Allocations returned to Prismio go through `rt_base_alloc`, Before you commit, C code style, Comments, `extern fn` names are the ABI, Files and modules, Naming (+3 more)
 
 ### Community 190 - "prismio"
-Cohesion: 0.06
-Nodes (37): Checks, IR, Results: LLVM 22.1.8 to 23.1.1 (2026-09-17), What changed in the code, What the upgrade showed about the toolchain, Before opening a pull request, Building the compiler, Code of Conduct (+29 more)
+Cohesion: 0.12
+Nodes (19): Before opening a pull request, Building the compiler, Code of Conduct, Commit Messages, Contributing to Prismio, Getting Started, If you changed the syntax, Making Changes (+11 more)
 
-### Community 191 - "Inlining the flat push: rejected, and why the obvious gate does not save it"
-Cohesion: 0.33
-Nodes (5): Inlining the flat push: rejected, and why the obvious gate does not save it, The finding that motivated it, What would make it viable, Where it went wrong, and the gate that did not work, Why it was rejected
+### Community 191 - "test_72_reassigned_ownership.psm"
+Cohesion: 0.36
+Nodes (10): borrow_reassign(), callee_accumulator(), cloned_literal_keeps_length(), literal_mid_loop(), local_accumulator(), main(), makePiece(), returned_accumulator() (+2 more)
 
-### Community 192 - "test_43_aif_scope_drop.psm"
-Cohesion: 0.45
-Nodes (10): check(), early_exits(), early_return(), escapes(), explicit(), main(), nested(), per_iteration() (+2 more)
+### Community 192 - "phase.cpp"
+Cohesion: 0.24
+Nodes (4): large_buffer_copy(), main(), now_ns(), main()
 
 ### Community 193 - "AIF — Workload Declaration, Cost Model, and Layout Search"
-Cohesion: 0.20
-Nodes (10): 1 · The key reframing, 3.1 Syntax, 3.2 Execution semantics, 3.3 Why not a data file, and why not a declarative pattern description, 3 · `workload` declaration, 4 · The machine model, 6 · The candidate space, 8 · Empirical validation (+2 more)
+Cohesion: 0.05
+Nodes (40): 10.1 The cache model has no associativity and no conflict misses, 10.2 `HandleCost` is a placeholder, 10.3 Profiles age, 10.4.1 A fabricated instance count decides the cache tier, and therefore the layout, 10.4 Static frequency estimation is crude, 10.5 One profile, one target, 10 · Known weaknesses, 1 · The key reframing (+32 more)
 
 ### Community 194 - "test_128_enum_null_reserved.psm"
 Cohesion: 0.20
@@ -1413,9 +1394,9 @@ Nodes (16): Exposed, Empty, Node, Generic, None, Some, OptionalTree, Empty (+8 m
 Cohesion: 0.32
 Nodes (16): print(), println(), acknowledge(), check(), count_span(), int_result(), main(), name_span() (+8 more)
 
-### Community 196 - "scalarToSlot"
-Cohesion: 0.21
-Nodes (17): ir_bitcast(), ir_int_to_ptr(), ir_load_ptr(), ir_opt_pack(), ir_opt_unpack(), ir_ptr_to_int(), irPtrIntType(), flatScalarKey() (+9 more)
+### Community 196 - "list_release"
+Cohesion: 0.27
+Nodes (9): 1 · The four, by fixture, 2 · The fifth was not fixed; it was never a gate failure, 3 · What the four have that test_62 does not, 4 · Why this cannot be fixed by adding the missing disposition, 4a · What is inferred rather than measured, 5 · Reproducing, `PRISMIO_INLINE_ELEMS=0` fails four fixtures, and the fifth was never one, list_release() (+1 more)
 
 ### Community 197 - "Model"
 Cohesion: 0.13
@@ -1429,13 +1410,13 @@ Nodes (5): main(), pct(), PROCESS_MEMORY_COUNTERS, run_once(), suite()
 Cohesion: 0.14
 Nodes (14): add_binding(), decl_entry(), guard_safe_entry(), hash_str(), ir_decl_at(), ir_decl_count(), ir_get_fn_return_type(), ir_index_decl() (+6 more)
 
-### Community 200 - "nodeReturnsName"
-Cohesion: 0.18
-Nodes (13): 1 · The defect, 2 · Why it did not need a fixed point, 3 · Before / after, 4 · What is still declined, Ownership survives a second return, 1 · The defect, 2 · Which escape routes were already guarded, and which was not, 3 · The fix (+5 more)
+### Community 200 - "The loop range guard: one precondition per loop, and both checks are gone"
+Cohesion: 0.20
+Nodes (9): 2 · What it measured, 3 · The bug that made a correct analysis measure 1.29x slower, 4 · Two predictions from the C model, and how they held, 5 · What was rejected, 6 · Where the remaining gap actually is, 7 · The bug that hid all of this, 8 · What is left, 9 · The benchmark was fixed, and what that is worth on its own (+1 more)
 
-### Community 201 - "AIF — Gap Analysis"
-Cohesion: 0.17
-Nodes (12): 1 · Headline findings, 2.1 The invariant needs a boundary the spec does not currently draw, 2.2 Structs are affine references, not values, 2 · Frozen items, one by one, 3.1 What isn't behind the seam at all, 3 · The seam, precisely, 4.2 Scope-based drop, 4.3 Prismio cannot express its own solver (+4 more)
+### Community 201 - "join"
+Cohesion: 0.08
+Nodes (24): 1 · Why the item existed, 2.1 The mechanism, and it is not a wash, 2 · Where Prismio stands, 3 · What the program found immediately, 5 · Defect 2 — a callee-allocated argument still leaks, and it is not about spawn. Open., 6 · Gates, The concurrency axis, 1 · Headline findings (+16 more)
 
 ### Community 202 - "g2_cull_probe.c"
 Cohesion: 0.27
@@ -1446,8 +1427,8 @@ Cohesion: 0.38
 Nodes (9): check(), childLines(), childNumbers(), childOr(), childPrompt(), childWords(), fail(), main() (+1 more)
 
 ### Community 204 - ".toString"
-Cohesion: 0.20
-Nodes (15): fail(), find(), label(), lengthOf(), main(), make(), named(), spelled() (+7 more)
+Cohesion: 0.25
+Nodes (13): fail(), find(), label(), lengthOf(), main(), make(), named(), spelled() (+5 more)
 
 ### Community 205 - "aif_tiers.psm"
 Cohesion: 0.27
@@ -1474,8 +1455,8 @@ Cohesion: 0.14
 Nodes (16): 1 · Why bodies must ship, 2.1 Not LLVM IR, 2 · Content model, 3 · Deterministic emission, 4 · Merging, 5.1 Sealed surfaces SHALL publish ownership contracts, 5 · Sealed functions, 6.1 Format versioning (+8 more)
 
 ### Community 211 - "tokenization"
-Cohesion: 0.10
-Nodes (24): 2 · What it measured, 3 · The bug that made a correct analysis measure 1.29x slower, 4 · Two predictions from the C model, and how they held, 5 · What was rejected, 6 · Where the remaining gap actually is, 7 · The bug that hid all of this, 8 · What is left, 9 · The benchmark was fixed, and what that is worth on its own (+16 more)
+Cohesion: 0.13
+Nodes (20): -O3 for program builds, and the measurement that had gone stale, Result, The claim that was there, The fairness half, What it measures now, What it costs and what it buys, 1 · What the spec said, and what was actually there, 2 · The fix (+12 more)
 
 ### Community 212 - "memory.rs"
 Cohesion: 0.19
@@ -1486,16 +1467,16 @@ Cohesion: 0.49
 Nodes (9): capacity_and_length(), fail(), main(), pool_round_trip(), serial_round_trip(), step(), worker(), Answer (+1 more)
 
 ### Community 214 - "layout.psm"
-Cohesion: 0.13
-Nodes (30): 2 · The defect, 3 · The fix, 5.1 g3's 4095 — and the recorded cause was wrong, aifAlignUp(), aifComputeSizes(), aifComputeSizesOf(), aifComputeStructSize(), aifFieldIsInlineExact() (+22 more)
-
-### Community 215 - "scanner.psm"
 Cohesion: 0.11
-Nodes (26): diag_file_content(), diag_warning_at_code(), identifierIndex(), identifierWarnConfusable(), identifierWarnRestricted(), lexCheckIdentifierSecurity(), confusablePrototype(), identifierRangeRow() (+18 more)
+Nodes (34): 2 · The defect, 3 · The fix, 5.1 g3's 4095 — and the recorded cause was wrong, aifAlignUp(), aifComputeSizes(), aifComputeSizesOf(), aifComputeStructSize(), aifFieldIsInlineExact() (+26 more)
 
-### Community 216 - "neg_190_failure_builtin_arguments.psm"
+### Community 215 - "lexCheckIdentifierSecurity"
 Cohesion: 0.22
-Nodes (6): 9.1 · Why knapsack gains 3.7x, and why C++ `int` does not (2026-09-25), 9.2 · Built (2026-09-25), 9 · Idea #1: keep `Int` 32-bit, do index arithmetic in 64 bits where it is proved (2026-09-24), b(), c(), d()
+Nodes (13): diag_file_content(), diag_warning_at_code(), identifierIndex(), identifierWarnConfusable(), identifierWarnRestricted(), lexCheckIdentifierSecurity(), confusablePrototype(), identifierRangeRow() (+5 more)
+
+### Community 216 - "`Int` width — the decision, and the three measurements that made it"
+Cohesion: 0.11
+Nodes (15): 1 · What the literature actually claims, 2 · Index width is free. Measured, on both targets., 3 · Making overflow UB buys nothing. Measured, on real Prismio programs., 4 · Data width costs 1.33×. Measured, in Prismio., 5 · The cost, stated plainly, 6 · Verdict, 7 · Re-examined 2026-09-24: the whole benchmark suite, 8 · Adaptive width: `Int` means 64 bits, AIF stores it narrow (2026-09-24) (+7 more)
 
 ### Community 217 - "neg_165_array_field_refused.psm"
 Cohesion: 0.16
@@ -1557,33 +1538,33 @@ Nodes (13): aliasedReceiver(), check(), digest(), growsUnderneath(), lengthObser
 Cohesion: 0.31
 Nodes (8): fail(), main(), impl Box, impl Config, impl Server, Box, Config, Server
 
-### Community 232 - "manifest_writer.psm"
-Cohesion: 0.30
-Nodes (15): umsManifestAddDependency(), umsManifestAppendDependencyBlock(), umsManifestChildIndent(), umsManifestDependencyBlock(), umsManifestDependencyText(), umsManifestEscape(), umsManifestIndentAt(), umsManifestInsertDependency() (+7 more)
+### Community 232 - "Building Prismio on macOS (and Linux)"
+Cohesion: 0.20
+Nodes (9): Build it, Building Prismio on macOS (and Linux), Check you reached a fixed point, Cross-compiling from Windows, Refreshing the seed, Test, package, verify, Troubleshooting, What you need (+1 more)
 
-### Community 233 - "test_248_enum_is_a_type.psm"
-Cohesion: 0.36
-Nodes (7): Color, Blue, Green, Red, fail(), main(), weight()
+### Community 233 - "allocPlacedStruct"
+Cohesion: 0.20
+Nodes (10): ir_alloc_cycle(), ir_alloc_object(), ir_alloc_rc(), ir_alloc_region(), aif_arena_at_node(), aif_cycle_at_node(), aif_rc_at_node(), aif_tier_at_node() (+2 more)
 
 ### Community 234 - "command.psm"
 Cohesion: 0.26
 Nodes (12): UmsCommandStepKind, BUILD, RUN, SHELL, UNKNOWN, umsCommand(), umsCommandArgument(), umsCommandFind() (+4 more)
 
 ### Community 235 - "ceiling-knapsack.c"
-Cohesion: 0.37
-Nodes (11): knap_slow_tail(), main(), now_ns(), v0(), v1(), v2(), v3(), v4() (+3 more)
+Cohesion: 0.33
+Nodes (12): knap_slow_tail(), main(), now_ns(), v0(), v1(), v2(), v3(), v4() (+4 more)
 
 ### Community 236 - "benchPrint"
-Cohesion: 0.15
-Nodes (21): main(), phaseLargeBufferCopy(), main(), phaseKeyValueUpdate(), main(), run(), 1 · The benchmark is a serial modulo chain, not a container benchmark, 2 · The reload that looks redundant is load-bearing (+13 more)
+Cohesion: 0.27
+Nodes (8): main(), phaseLargeBufferCopy(), main(), phaseKeyValueUpdate(), main(), run(), one(), benchPrint()
 
-### Community 237 - "stdio"
-Cohesion: 0.13
+### Community 237 - "cost.c"
+Cohesion: 0.31
 Nodes (11): bench_next_random(), main(), measure(), mix_d(), mix_e(), mix_h(), mix_i(), now_ns() (+3 more)
 
 ### Community 238 - ".sites_of"
-Cohesion: 0.13
-Nodes (6): 8 · How much call-site bracketing could reach *(2026-08-16)*, Found on the way, Site, vs_sites(), vs_union(), vs_view_of()
+Cohesion: 0.15
+Nodes (5): ffi_arena_cannot_serve(), Site, vs_sites(), vs_union(), vs_view_of()
 
 ### Community 239 - "test_126_push_predication.psm"
 Cohesion: 0.38
@@ -1593,13 +1574,13 @@ Nodes (10): check(), digest(), fillBreak(), fillExact(), fillGrowing(), fillOneS
 Cohesion: 0.36
 Nodes (8): compile(), create_token(), fail(), main(), parse(), tokenize(), Parser, Token
 
-### Community 241 - "main"
-Cohesion: 0.15
-Nodes (16): clone(), concat(), fill(), indexWhere(), max(), reversed(), sorted(), toVec() (+8 more)
+### Community 241 - "test_254_array_and_slice_methods.psm"
+Cohesion: 0.47
+Nodes (5): toVec(), fail(), main(), visit(), visited
 
 ### Community 242 - "test_155_vec_methods.psm"
-Cohesion: 0.32
-Nodes (11): get(), removeAt(), fail(), ints(), jobs(), main(), points(), strings() (+3 more)
+Cohesion: 0.19
+Nodes (17): get(), reverse(), fail(), ints(), jobs(), main(), points(), strings() (+9 more)
 
 ### Community 243 - "g2_bench.c"
 Cohesion: 0.64
@@ -1626,8 +1607,8 @@ Cohesion: 0.19
 Nodes (11): fail(), main(), viaBound(), impl Pretty for T, impl Show for Cat, impl Show for Dog, Cat, Dog (+3 more)
 
 ### Community 249 - "test_42_aif_stack_promotion.psm"
-Cohesion: 0.32
-Nodes (13): Level 1 — T0 — **DONE, 2026-08-05**, check(), escapes(), loop_local(), main(), mixed(), mutated(), nested_in_array() (+5 more)
+Cohesion: 0.26
+Nodes (14): Level 1 — T0 — **DONE, 2026-08-05**, check(), escapes(), loop_local(), main(), mixed(), mutated(), nested_in_array() (+6 more)
 
 ### Community 250 - "test_68_optional_returns.psm"
 Cohesion: 0.36
@@ -1638,24 +1619,24 @@ Cohesion: 0.22
 Nodes (7): main(), useLeft(), impl Left for Bool, impl Left for Int, impl Right for Int, Left, Right
 
 ### Community 252 - "g3_scene_graph.psm"
-Cohesion: 0.35
-Nodes (13): build_hierarchy(), count_visible(), identity_transform(), link_child(), main(), make_node(), propagate(), unit_bounds() (+5 more)
+Cohesion: 0.26
+Nodes (16): build_hierarchy(), count_visible(), identity_transform(), link_child(), main(), make_node(), propagate(), unit_bounds() (+8 more)
 
 ### Community 253 - "test_257_global_arrays.psm"
 Cohesion: 0.31
 Nodes (8): fail(), known(), main(), sum(), letters, primes, ratios, words
 
 ### Community 254 - "Compile time — where it goes, and what it scales like"
-Cohesion: 0.20
-Nodes (9): 1 · The frontend was quadratic in module size, and is now linear, 2.1 AIF's whole fixed point is 18 ms, 2 · The frontend is 4% of a cold build, 3.0 What a small build is now made of, 3.1 The compiler's own self-build, 3 · Cold and incremental, 5 · Pricing the per-module split, without building one, 6 · Reproducing (+1 more)
+Cohesion: 0.18
+Nodes (10): 1.1 What was actually quadratic, 1 · The frontend was quadratic in module size, and is now linear, 2.1 AIF's whole fixed point is 18 ms, 2 · The frontend is 4% of a cold build, 3.0 What a small build is now made of, 3.1 The compiler's own self-build, 3 · Cold and incremental, 5 · Pricing the per-module split, without building one (+2 more)
 
-### Community 255 - "`Int` width — the decision, and the three measurements that made it"
-Cohesion: 0.22
-Nodes (9): 1 · What the literature actually claims, 2 · Index width is free. Measured, on both targets., 3 · Making overflow UB buys nothing. Measured, on real Prismio programs., 4 · Data width costs 1.33×. Measured, in Prismio., 5 · The cost, stated plainly, 6 · Verdict, 7 · Re-examined 2026-09-24: the whole benchmark suite, 8 · Adaptive width: `Int` means 64 bits, AIF stores it narrow (2026-09-24) (+1 more)
+### Community 255 - "Results: `__builtin_string_hash` (2026-09-12)"
+Cohesion: 0.28
+Nodes (8): Checks, Choosing the mix, Left open, Results: `__builtin_string_hash` (2026-09-12), The fixture, and that it is not vacuous, What the change is, str_hash(), str_hash_words()
 
-### Community 256 - "Loop versioning exposes Prismio's flat-list fast path"
-Cohesion: 0.20
-Nodes (9): Cost, Experiments rejected during this investigation, Gate, Loop versioning exposes Prismio's flat-list fast path, Research-directed next order, Seven-program A/B, The remaining branch, What changed in machine code (+1 more)
+### Community 256 - "Codegen"
+Cohesion: 0.09
+Nodes (24): Measured, The finding that motivated it, 10 · Task 1.3 (MEM-011), curating `list_push_slot`: it works, and it loses, Cost, Experiments rejected during this investigation, Gate, Loop versioning exposes Prismio's flat-list fast path, Research-directed next order (+16 more)
 
 ### Community 257 - "test_73_recursive_release.psm"
 Cohesion: 0.40
@@ -1674,16 +1655,16 @@ Cohesion: 0.07
 Nodes (27): 0 · Conformance language, 10.1 FFI, 10.2 Library distribution, 10 · Boundaries, 12 · What this model gives up *(informative)*, 1.1 What the invariant does not cover, 1 · The invariant, 2.1 Allocation site (+19 more)
 
 ### Community 261 - "Channels: what 0.1 needs, and the production design after it"
-Cohesion: 0.06
-Nodes (37): The measurement, The remaining tuned-g9 gap is not the channel topology, Two hypotheses, both refuted, What the handoff expected, What this leaves, Why the proposed slice cannot close it either, A data race in `--verify` itself, Commands (+29 more)
+Cohesion: 0.07
+Nodes (36): The measurement, The remaining tuned-g9 gap is not the channel topology, Two hypotheses, both refuted, What the handoff expected, What this leaves, Why the proposed slice cannot close it either, Plain-data channels copy through the ring, Reproduce (+28 more)
 
 ### Community 262 - "test_59_bracket_summary.psm"
 Cohesion: 0.44
 Nodes (9): print(), println(), bracketable(), drops(), fail(), main(), middle(), stores_param() (+1 more)
 
-### Community 263 - "test_112_operator_traits.psm"
-Cohesion: 0.39
-Nodes (5): fail(), main(), impl Eq for Version, impl Ord for Version, Version
+### Community 263 - "4 · Transfer rules"
+Cohesion: 0.25
+Nodes (8): 4.1 Escape module, 4.2 Aliasing module, 4.3 Thread module, 4.4 Cyclicity module, 4.5 Closure capture, 4.6 Dynamic dispatch, 4.7 Generics and ownership contexts, 4 · Transfer rules
 
 ### Community 264 - "neg_65_generic_trait_impl_bound.psm"
 Cohesion: 0.24
@@ -1701,9 +1682,9 @@ Nodes (8): fail(), main(), impl Letters, impl Squares, Holder, Letters, Squares,
 Cohesion: 0.39
 Nodes (11): assignedField(), emptyLiteralField(), fail(), inALoop(), literalFields(), main(), makeJob(), namedFields() (+3 more)
 
-### Community 268 - "test_238_scalar_optionals.psm"
-Cohesion: 0.26
-Nodes (11): Color, Blue, Green, Red, describe(), fail(), firstOr(), half() (+3 more)
+### Community 268 - "5 · The fixed-point algorithm"
+Cohesion: 0.25
+Nodes (8): 5.1 Iteration strategy (normative), 5.2 The algorithm, 5.3 The give-up condition — and why you cannot simply stop, 5.4 Determinism (normative), 5.5 Termination, 5.6 Minimal cause, 5.7 Optimisation levels, 5 · The fixed-point algorithm
 
 ### Community 269 - "test_66_payload_enums.psm"
 Cohesion: 0.26
@@ -1726,20 +1707,20 @@ Cohesion: 0.31
 Nodes (8): now_ms(), run_boxed_aos(), run_boxed_split(), run_chunked_inline(), run_chunked_split(), run_inline_aos(), run_inline_split(), run_soa()
 
 ### Community 274 - "prismio_task_spawn"
-Cohesion: 0.14
-Nodes (11): 2 · Why the ordinary release point is wrong here, 2.1 · Observability first, 2.3 · Middle IR and interprocedural facts, 2.4 · Representation, 2.5 · Only if telemetry asks for them, 2 · Later, 3 · What the deep dive established that still holds, Memory: what 0.1 needs, and where the architecture goes after (+3 more)
+Cohesion: 0.13
+Nodes (12): 2 · Why the ordinary release point is wrong here, 1 · For 0.1: no known way to corrupt memory in a program that compiles, 2.1 · Observability first, 2.3 · Middle IR and interprocedural facts, 2.4 · Representation, 2.5 · Only if telemetry asks for them, 2 · Later, 3 · What the deep dive established that still holds (+4 more)
 
 ### Community 275 - "`key_value_update`: the hash was the cost, and four other things were not"
-Cohesion: 0.20
-Nodes (9): 1 · The design was already at the C ceiling, 3 · What it is: a scrambling hash throws away locality, 4 · The fold, and why it is not just the identity, 5 · So the table checks its own hash, 7 · Verification, 8 · For the next agent, `key_value_update`: the hash was the cost, and four other things were not, Reproduce (+1 more)
+Cohesion: 0.22
+Nodes (8): 1 · The design was already at the C ceiling, 3 · What it is: a scrambling hash throws away locality, 4 · The fold, and why it is not just the identity, 5 · So the table checks its own hash, 7 · Verification, 8 · For the next agent, `key_value_update`: the hash was the cost, and four other things were not, Reproduce
 
 ### Community 276 - "AIF — Measurement and Falsification Plan"
 Cohesion: 0.12
 Nodes (17): 1 · The methodological point that matters most, 2.1 Definitions, 2.2 The claim under test, 2.3 False sharing from field insensitivity, 2 · Primary metric: tier distribution, 3.1 B1 is a weak headline and should not be the first result, 3.2 Baselines, 3 · Benchmark programs (+9 more)
 
 ### Community 277 - "list_get"
-Cohesion: 0.06
-Nodes (50): 2 · Four things that are not the cost, Internal linkage changes inlining, both ways, 1 · The measured design space, 2 · The recorded plan is worth nothing, 3 · Why the header reloads, and what actually fixes it, 4 · Why no LLVM pass will do this for us, 5 · The design that follows, 6 · If the induction-variable analysis is too much (+42 more)
+Cohesion: 0.04
+Nodes (78): 2 · Four things that are not the cost, Internal linkage changes inlining, both ways, 1 · The measured design space, 2 · The recorded plan is worth nothing, 3 · Why the header reloads, and what actually fixes it, 4 · Why no LLVM pass will do this for us, 5 · The design that follows, 6 · If the induction-variable analysis is too much (+70 more)
 
 ### Community 278 - "test_55_workload_profile.psm"
 Cohesion: 0.29
@@ -1802,28 +1783,28 @@ Cohesion: 0.57
 Nodes (7): columnCount(), columnsAreReadable(), fail(), main(), mutateColumns(), Pair, Sample
 
 ### Community 293 - "test_52_aif_cycle_collector.psm"
-Cohesion: 0.44
-Nodes (10): cyc_collect_now(), node_to_ptr(), ptr_to_node(), build_cycle(), check(), collected_when_unreachable(), live_cycle_survives(), main() (+2 more)
+Cohesion: 0.38
+Nodes (11): The T4b cycle collector — **DONE, 2026-08-07**, cyc_collect_now(), node_to_ptr(), ptr_to_node(), build_cycle(), check(), collected_when_unreachable(), live_cycle_survives() (+3 more)
 
-### Community 294 - "M4.3b — DataView element reads"
-Cohesion: 0.29
-Nodes (6): Correctness and closure gates, M4.3b — DataView element reads, Next gate, Read-only layout gate, Standard-corpus regression gate, What changed
+### Community 294 - "test_259_display_print.psm"
+Cohesion: 0.43
+Nodes (6): child(), fail(), main(), maybeName(), impl Display for Version, Version
 
-### Community 295 - "test_74_reinit_assignment.psm"
-Cohesion: 0.33
-Nodes (11): What moved, Tree, Leaf, Node, build(), consumeStr(), fail(), main() (+3 more)
+### Community 295 - "field_release_of"
+Cohesion: 0.07
+Nodes (44): 1 · What was wrong, 2 · The rule that replaced it, 3 · Measured, 4 · The two failures on the way, both instructive, 5 · Known limits, measured or explicitly not, 6 · Timing, M2.1a — recursive releases for self-referential types (fork (a)), 1 · The baseline (+36 more)
 
-### Community 296 - "M5.1 — allocator evaluation"
-Cohesion: 0.22
-Nodes (9): Direct mimalloc result, Direct rpmalloc result, Final gate and decision, Initial dynamic-interposition result, M5.1 — allocator evaluation, Method, Question and acceptance rule, Research choice (+1 more)
+### Community 296 - "test_88_map_keys.psm"
+Cohesion: 0.36
+Nodes (4): fail(), impl Copy for Point, impl Key for Point, Point
 
 ### Community 297 - "AIF — Evaluation as a General-Purpose Memory Model"
 Cohesion: 0.20
 Nodes (10): 1 · The finding that should drive planning, 2 · What holds up as general-purpose, 3 · Where the spec is over-fitted — the 80/20 budget rule, 4 · Regions generalise better than layout, and are under-emphasised, 5 · The biggest hole: closures, 6 · PIR is a heavier liability for general-purpose than for games, 7 · Honest scorecard, 8 · What I would change (+2 more)
 
-### Community 298 - "MEM-035: the stencil's offsets were never the problem — its condition was"
-Cohesion: 0.33
-Nodes (6): 1 · What the spec said, and what was actually there, 2 · The fix, 3 · Measured, 4 · A measurement that had to be thrown away first, MEM-035: the stencil's offsets were never the problem — its condition was, benchConvolution()
+### Community 298 - "quicksort and graph_bfs: what the gap was, 2026-10-01"
+Cohesion: 0.29
+Nodes (6): edit_distance: not a code gap, large_buffer_copy: still 1.14-1.16x, and why, mandelbrot: 1.12x -> 0.99x of C++ (and Rust is 1.25x), quicksort: 1.12x -> 1.02-1.03x of C++, quicksort and graph_bfs: what the gap was, 2026-10-01, The verdict rule (benchmarks/run.py `verdict`, schema 3)
 
 ### Community 299 - "LLVMValueRef"
 Cohesion: 0.05
@@ -1831,7 +1812,7 @@ Nodes (62): A bug worth remembering, Binary size and compile time against C++ an
 
 ### Community 300 - "3 · Steps"
 Cohesion: 0.12
-Nodes (19): 1 · Where `src/` stands, 2 · How a step is measured, 3 · Steps, 4 · Order, Binary size: where it goes, Left as it is, M11 · `prismio bench` must not report stale numbers: done in the working tree, uncommitted, M12 · Constant aggregate globals: language gap, not started (+11 more)
+Nodes (18): 1 · Where `src/` stands, 2 · How a step is measured, 3 · Steps, 4 · Order, Left as it is, M11 · `prismio bench` must not report stale numbers: done in the working tree, uncommitted, M12 · Constant aggregate globals: language gap, not started, M1 · `match` for enum if-chains: done in the working tree, uncommitted (+10 more)
 
 ### Community 301 - "M2.1b — consuming same-tag rebuilds reuse their input block"
 Cohesion: 0.25
@@ -1850,24 +1831,24 @@ Cohesion: 0.40
 Nodes (9): clock_gettime(), write(), distinctKeys(), main(), nextRandom(), now(), say(), vocabulary() (+1 more)
 
 ### Community 305 - "AIF — Adaptive Inference Framework"
-Cohesion: 0.22
-Nodes (9): AIF — Adaptive Inference Framework, Conformance is graded, Contents, Running the prototype, Start here, Status, The model in one screen, Two things to know before extending this (+1 more)
-
-### Community 306 - "8.4 Views — slices and element references"
 Cohesion: 0.20
-Nodes (10): 8.1 Handles, 8.2 The compiler owns layout, 8.3 The static region, 8.4 Views — slices and element references, 8 · Representation, Cost, stated plainly, Element references are views too — the deep consequence, Invalidation, without a borrow checker (+2 more)
+Nodes (10): AIF — Adaptive Inference Framework, Conformance is graded, Contents, Running the prototype, Start here, Status, The model in one screen, Two things to know before extending this (+2 more)
 
-### Community 307 - "field_release_of"
-Cohesion: 0.05
-Nodes (70): 3 · The mechanism, Not delivered, and why, 1 · What was wrong, 2 · The rule that replaced it, 3 · Measured, 4 · The two failures on the way, both instructive, 5 · Known limits, measured or explicitly not, 6 · Timing (+62 more)
+### Community 306 - "2 · Fact domains"
+Cohesion: 0.29
+Nodes (7): 2.1 `E` — escape, 2.2 `A` — aliasing, 2.3 `T` — thread affinity, 2.4 `C` — cyclicity, 2.5 `L` — lifetime determinacy *(derived)*, 2.6 The product, 2 · Fact domains
+
+### Community 307 - "aif_tier_of"
+Cohesion: 0.07
+Nodes (44): 1 · What this closes, 2 · The defect was documented, deliberate, and had stopped being true, 3 · The mechanism, 4 · The two things that cost the most to find, 5 · The fixture, and how it nearly measured nothing, 6 · Timing, Appendix — M2's closing state, 2026-08-23, Delivered (+36 more)
 
 ### Community 308 - "16. A practical review checklist"
 Cohesion: 0.33
 Nodes (6): 16. A practical review checklist, Architecture, Code, Comments, Correctness, Performance
 
 ### Community 309 - "test_181_std_math.psm"
-Cohesion: 0.26
-Nodes (8): 3 · Cost, checkBool(), checkInt(), main(), near(), same(), sumOfRoots(), sumOfRootsInline()
+Cohesion: 0.33
+Nodes (7): checkBool(), checkInt(), main(), near(), same(), sumOfRoots(), sumOfRootsInline()
 
 ### Community 310 - "test_193_map_methods.psm"
 Cohesion: 0.36
@@ -1885,9 +1866,9 @@ Nodes (9): print(), println(), computed_hint(), exact_fit(), fail(), grows_past_
 Cohesion: 0.53
 Nodes (9): print(), println(), boxed_elements(), counted_but_uncounted(), counted_elements(), deliberate_pessimisation(), fail(), main() (+1 more)
 
-### Community 314 - "compile_bench.py"
-Cohesion: 0.25
-Nodes (5): build(), copy_project(), main(), scenario(), touch()
+### Community 314 - "Performance: what is open, and how to measure it"
+Cohesion: 0.29
+Nodes (7): 1 · For 0.1, 3.1 · Compiler levers, 3.2 · Platform, not performance, 3 · Later, 4 · Closed, with evidence, 5 · How this work is done, Performance: what is open, and how to measure it
 
 ### Community 315 - "test_84_task_release.psm"
 Cohesion: 0.51
@@ -1897,17 +1878,17 @@ Nodes (10): 4 · Defect 1 — the task handle had no owner. Fixed., print(), pri
 Cohesion: 0.29
 Nodes (7): 11.1 Field sensitivity is object-insensitive, 11.2 The context set is discovered from facts that are still moving, 11.3 Loops are handled by the lattice, not by a loop analysis, 11.4 There is no interprocedural path sensitivity, 11.5 ~~The `⊤` context is a cliff~~ — resolved in 1.2, 11.6 Everything here assumes whole-program PIR, 11 · Known weaknesses
 
-### Community 317 - "BenchSphere"
-Cohesion: 0.25
-Nodes (8): BenchSphere, cb, cg, cr, r, x, y, z
+### Community 317 - "test_140_string_search.psm"
+Cohesion: 0.57
+Nodes (6): agrees(), checkAlphabet(), fail(), generate(), main(), naiveIndexOf()
 
 ### Community 318 - "Genuinely-cold compilation"
 Cohesion: 0.25
 Nodes (7): 1 · What the standing entry actually named, 2.1 One invocation producing both was measured and rejected, 2 · Why the first step only got half of it, 3 · What is left, and why it is left, 4 · Result, 5 · Gates, Genuinely-cold compilation
 
 ### Community 319 - "Prismio performance benchmarks"
-Cohesion: 0.07
-Nodes (25): edit_distance: not a code gap, graph_bfs: not a code gap, large_buffer_copy: still 1.14-1.16x, and why, mandelbrot: 1.12x -> 0.99x of C++ (and Rust is 1.25x), quicksort and graph_bfs: what the gap was, 2026-10-01, The verdict rule (benchmarks/run.py `verdict`, schema 3), Coverage, Currently Unsupported by Prismio (+17 more)
+Cohesion: 0.10
+Nodes (18): mixed_map_removal(), Coverage, Currently Unsupported by Prismio, Infrastructure changes, Prismio performance benchmarks, Run, The three arms must be the same program, What `results.json` records (+10 more)
 
 ### Community 320 - "test_143_string_compare.psm"
 Cohesion: 0.67
@@ -1917,9 +1898,9 @@ Nodes (5): agrees(), fail(), main(), referenceOrder(), sign()
 Cohesion: 0.57
 Nodes (7): check(), filled(), main(), readWrite(), sumDown(), sumDownOffset(), sumUp()
 
-### Community 322 - "5 · The cost model"
-Cohesion: 0.29
-Nodes (7): 5.1 Traversal cost — the dominant term, 5.2.1 Linked splits and indexed splits are not the same cost, 5.2 Arithmetic and the SIMD credit, 5.3 Allocation, footprint, packing, sharing, 5.4 Marshalling, 5.5 Total, 5 · The cost model
+### Community 322 - "Results: LLVM 22.1.8 to 23.1.1 (2026-09-17)"
+Cohesion: 0.33
+Nodes (5): Checks, IR, Results: LLVM 22.1.8 to 23.1.1 (2026-09-17), What changed in the code, What the upgrade showed about the toolchain
 
 ### Community 323 - "test_63_placement_pin.psm"
 Cohesion: 0.61
@@ -1929,13 +1910,13 @@ Nodes (7): arena_objects(), bracketed_make(), bracketed_pin(), fail(), lexical_p
 Cohesion: 0.22
 Nodes (8): Changes that shipped, Maintained benchmark results, Map probing and full-width key hashing, Memory cost, Rejected experiments and research, Remaining critical gaps, Supplemental workloads, Validation and reproduction
 
-### Community 325 - "strFromFloat"
-Cohesion: 0.29
-Nodes (5): str_from_double_fixed(), str_from_double(), strFromFloat(), strFromFloatFixed(), impl Float
+### Community 325 - "M4.1 — first-class `Slice<T>`"
+Cohesion: 0.33
+Nodes (5): Discriminating gates, M4.1 — first-class `Slice<T>`, Ownership result, Surface and representation, Verification and measurement
 
 ### Community 326 - "Debug-mode integer overflow checking"
-Cohesion: 0.29
-Nodes (7): 1 · The measurement that changed the plan, 2 · What it actually costs on real programs, 4 · A parser defect this found, 6 · What this does not do, 7 · Also in this change: the benchmark clock, 8 · Sources, Debug-mode integer overflow checking
+Cohesion: 0.22
+Nodes (9): 1 · The measurement that changed the plan, 2 · What it actually costs on real programs, 3 · Implementation, 4 · A parser defect this found, 6 · What this does not do, 7 · Also in this change: the benchmark clock, 8 · Sources, Debug-mode integer overflow checking (+1 more)
 
 ### Community 328 - "A `spawn`ed call's owned temporary argument now has an owner"
 Cohesion: 0.22
@@ -1957,9 +1938,9 @@ Nodes (15): 5.0.1 Annotations are assertions, not directives *(normative)*, 5.0 
 Cohesion: 0.25
 Nodes (7): Acknowledgements, Reporting a Vulnerability, Response Timeline, Responsible Disclosure, Scope, Security Policy, Supported Versions
 
-### Community 333 - "ownership.psm"
-Cohesion: 0.26
-Nodes (15): ir_var_is_mutable(), ir_var_is_readonly_view(), semaCheckExternContracts(), semaCheckMutablePlace(), semaContractArgument(), semaContractIsStringOnly(), semaContractName(), semaExternTypeIsDataView() (+7 more)
+### Community 333 - "8 · Annotations as axioms and constraints"
+Cohesion: 0.33
+Nodes (6): 8.1 Seeding and cutting, 8.2 `unique` — verification is complete, 8.3 `region` — verification is sound, and imprecision costs only performance, 8.4 `pin`, 8.5 Verification under budget, 8 · Annotations as axioms and constraints
 
 ### Community 334 - "neg_57_second_bound_not_satisfied.psm"
 Cohesion: 0.36
@@ -2029,9 +2010,9 @@ Nodes (4): AIF Corpus, Building, Gaps to fill, Three things the corpus establish
 Cohesion: 0.54
 Nodes (7): build_scene(), cull(), main(), submit(), DrawCmd, Renderable, Stats
 
-### Community 351 - "M4.4 — generic/container layout specialization"
+### Community 351 - "LayoutParticle"
 Cohesion: 0.33
-Nodes (5): Answer: Prismio chooses after substitution, Exit, M4.4 — generic/container layout specialization, Performance control, Question
+Nodes (6): LayoutParticle, mass, velocity, x, y, z
 
 ### Community 352 - "g2_bench.psm"
 Cohesion: 0.54
@@ -2045,13 +2026,13 @@ Nodes (7): alive(), build(), main(), make_particle(), step(), Particle, Vec3
 Cohesion: 0.33
 Nodes (6): The four annotations — **`unique` and `pin` DONE, 2026-08-07**, aif_check_pins(), aif_site_derived_tier(), derived_tier(), fits_on_stack(), site_is_loop_struct()
 
-### Community 356 - "strSubstring"
-Cohesion: 0.17
-Nodes (9): main(), makeView(), main(), 11 · A `break` in a nested loop is that loop's, 8 · A binding returned on one path leaked on the others, Round 2: case, Trojan Source, UTS #39 -- and what measuring them found, The AIF oracle, strRepeat() (+1 more)
+### Community 356 - "strLength"
+Cohesion: 0.18
+Nodes (9): main(), makeView(), main(), 6 · What is left, 8 · A binding returned on one path leaked on the others, Resolved in 1.1 — was open in v1.0, strLength(), strRepeat() (+1 more)
 
-### Community 357 - "test_75_std_string.psm"
+### Community 357 - "test_89_closures.psm"
 Cohesion: 0.60
-Nodes (5): str_with_capacity(), fail(), main(), referenceIndexOf(), searchFixture()
+Nodes (5): applyTwice(), fail(), main(), viaMethod(), zero()
 
 ### Community 358 - "noise floor that decided it"
 Cohesion: 0.25
@@ -2062,8 +2043,8 @@ Cohesion: 0.44
 Nodes (5): left_value(), right_value(), shared_double(), fail(), main()
 
 ### Community 360 - "evidence/README.md"
-Cohesion: 0.06
-Nodes (24): AIF Evidence, Before quoting any number, Judgement, Projected, not measured, 1 · What the matrix saw, and what this host did not, 4 · Before / after, 5 · What to check next, A payload-free enum variant allocated uninitialised memory (+16 more)
+Cohesion: 0.04
+Nodes (38): AIF Evidence, Before quoting any number, Judgement, Projected, not measured, 1 · What the matrix saw, and what this host did not, 4 · Before / after, 5 · What to check next, A payload-free enum variant allocated uninitialised memory (+30 more)
 
 ### Community 361 - "test_113_std_eq_and_display.psm"
 Cohesion: 0.28
@@ -2082,48 +2063,40 @@ Cohesion: 0.33
 Nodes (5): Findings worth keeping, Numbers (scale 4), Tests, The relational tier, byte-sized Bool elements, and three gaps read from disassembly, What changed
 
 ### Community 365 - "LAYOUT 6's candidate space, measured against what this compiler can emit"
-Cohesion: 0.14
-Nodes (13): 1 · Handles did not land, and two dimensions depend on them, 3 · Bit-packing is blocked by the specification, not by codegen, 4.1 · Both blockers are gone, and the remaining piece is a search loop, 4 · Empirical validation (LAYOUT §8) is behind §7.2, not behind the runner, 5.1 Restricted to what codegen can emit, the model picks the measured cut, 5.2 A linked split is not an indexed split, and the prototype cannot tell them apart, 5.3 What this does and does not unblock, 5 · The cost model is ported, and it could not have ranked the cut it was ported for (+5 more)
+Cohesion: 0.17
+Nodes (11): 1 · Handles did not land, and two dimensions depend on them, 3 · Bit-packing is blocked by the specification, not by codegen, 4.1 · Both blockers are gone, and the remaining piece is a search loop, 4 · Empirical validation (LAYOUT §8) is behind §7.2, not behind the runner, 5.1 Restricted to what codegen can emit, the model picks the measured cut, 5.2 A linked split is not an indexed split, and the prototype cannot tell them apart, 5.3 What this does and does not unblock, 5 · The cost model is ported, and it could not have ranked the cut it was ported for (+3 more)
 
-### Community 366 - ".charAt"
-Cohesion: 0.09
-Nodes (25): Found while building this, not caused by it, Measurement 1 — the `+` chain had to be flattened, Measurement 2 — a property may not allocate, The cost: 64 claimed global names, The String surface: operators, properties, iteration, Verification, What landed, 2 · The measurement, and the probe that lied (+17 more)
+### Community 366 - "6 · Ownership contexts"
+Cohesion: 0.40
+Nodes (5): 6.1 What a context is, 6.2 Context ordering, 6.3 Discovery (demand-driven), 6.4 The context cap, 6 · Ownership contexts
 
 ### Community 367 - "edit_distance"
-Cohesion: 0.13
-Nodes (34): Bugs found on the way, Changes, Method, Results: the string-benchmark gap (2026-09-11), Root causes, Still open, The suite, before and after, Block partitioning in `sort` (+26 more)
+Cohesion: 0.19
+Nodes (26): Bugs found on the way, Changes, Method, Results: the string-benchmark gap (2026-09-11), Root causes, Still open, The suite, before and after, Block partitioning in `sort` (+18 more)
 
-### Community 368 - "Plain-data channels copy through the ring"
+### Community 368 - "BenchTree"
 Cohesion: 0.40
-Nodes (4): Plain-data channels copy through the ring, Reproduce, The pointer path's ledger (same day), Tried, and not levers
+Nodes (4): BenchTree, left, right, value
 
-### Community 369 - "test_46_aif_annotations.psm"
-Cohesion: 0.38
-Nodes (11): str_concat(), annotated_both(), annotated_pin(), annotated_unique(), check(), main(), names_are_not_reserved(), plain_pin() (+3 more)
+### Community 369 - "build_tree"
+Cohesion: 0.50
+Nodes (3): build_tree(), tree_sum(), tree_traversal()
 
 ### Community 370 - "compiler_plib_interface"
-Cohesion: 0.31
-Nodes (7): compiler_plib_interface(), extract_plib_bitcode(), plib_empty(), plib_read_sections(), plib_section_for_target(), read_u32_le(), read_u64_le()
+Cohesion: 0.27
+Nodes (8): compiler_plib_interface(), extract_plib_bitcode(), plib_empty(), plib_read_sections(), plib_section_for_target(), read_u32_le(), read_u64_le(), FILE
 
-### Community 372 - "7. Functions and control flow"
+### Community 372 - "loop_named"
 Cohesion: 0.40
-Nodes (5): 7. Functions and control flow, Do not repeat ownership-sensitive work, One responsibility per function, Prefer early returns, Use `loop` for unconditional loops
+Nodes (5): ir_loop_break_label_named(), ir_loop_continue_label_named(), ir_loop_drop_floor_named(), ir_loop_region_depth_named(), loop_named()
 
-### Community 373 - "aif_ledger_init"
-Cohesion: 0.60
-Nodes (3): aif_ledger_init(), cyc_lock_init(), BOOL
-
-### Community 375 - "test_141_string_list.psm"
+### Community 373 - "test_176_match_diverges.psm"
 Cohesion: 0.70
-Nodes (4): fail(), main(), totalLength(), Roster
+Nodes (4): code(), firstPositive(), main(), orZero()
 
-### Community 376 - "join"
-Cohesion: 0.25
-Nodes (9): 1 · Why the item existed, 2.1 The mechanism, and it is not a wash, 2 · Where Prismio stands, 3 · What the program found immediately, 5 · Defect 2 — a callee-allocated argument still leaks, and it is not about spawn. Open., 6 · Gates, The concurrency axis, benchStringJoin() (+1 more)
-
-### Community 377 - "suite.rs"
-Cohesion: 0.29
-Nodes (3): main(), run(), BENCH_MOD
+### Community 376 - "Reading input: what is awkward and what to change"
+Cohesion: 0.50
+Nodes (3): 1 · The program that does not build, 4 · Order, Reading input: what is awkward and what to change
 
 ### Community 378 - "ir_jit_run_file"
 Cohesion: 0.36
@@ -2137,13 +2110,13 @@ Nodes (7): ir_range_proof_data(), ir_range_proof_mark(), ir_range_proof_marked()
 Cohesion: 0.29
 Nodes (7): 0 · The commit, 1 · The local gate, 2 · The three-platform matrix — **needs authorisation**, 3 · Artifacts and checksums, 4 · Clean-environment smoke test, 5 · Tag and publish — **needs explicit authorisation**, Releasing Prismio
 
-### Community 381 - "test_77_spawn_literal.psm"
-Cohesion: 0.70
-Nodes (4): fail(), main(), measure(), measureBoth()
+### Community 381 - "drop_index"
+Cohesion: 0.50
+Nodes (4): drop_index(), ir_drop_kind(), ir_drop_slot(), ir_drop_type()
 
-### Community 382 - "vec_element_replace_probe.psm"
-Cohesion: 0.70
-Nodes (4): fail(), main(), named(), Named
+### Community 382 - "ir_loop_label"
+Cohesion: 0.67
+Nodes (3): ir_loop_drop_floor(), ir_loop_label(), ir_loop_region_depth()
 
 ### Community 383 - "A general affine index matcher, built and reverted"
 Cohesion: 0.29
@@ -2213,10 +2186,6 @@ Nodes (7): Tree, Leaf, Node, exit(), main(), mapAdd(), rootValue()
 Cohesion: 0.46
 Nodes (7): contaminated_site(), fail(), formatted_append(), main(), repeated_append(), self_append(), view_append()
 
-### Community 400 - "test_35_short_circuit.psm"
-Cohesion: 0.32
-Nodes (7): 2.1 Contents, 2.2 Format, 2 · The access profile, fail(), main(), touched(), side_effects
-
 ### Community 401 - "1. Architecture"
 Cohesion: 0.33
 Nodes (6): 1. Architecture, Do not place code in the nearest convenient file, Do not split into meaningless fragments, File size is a signal, not a law, Keep subsystem boundaries explicit, Modules own responsibilities
@@ -2249,21 +2218,21 @@ Nodes (7): bools_survive(), check(), float_round_trip(), grows_past_capacity(), 
 Cohesion: 0.83
 Nodes (3): findLiteral(), main(), payloadOr()
 
-### Community 410 - "test_85_passthrough_escape.psm"
-Cohesion: 0.64
-Nodes (7): band(), escaping(), escapingNested(), fail(), main(), passthru(), Band
+### Community 410 - "A binding that escapes through a callee's return was freed under its caller"
+Cohesion: 0.24
+Nodes (14): 1 · The defect, 2 · Which escape routes were already guarded, and which was not, 3 · The fix, 4 · Before / after, 6 · Sources, A binding that escapes through a callee's return was freed under its caller, Two things that were measured, not reasoned, band() (+6 more)
 
 ### Community 412 - "rc_alloc"
-Cohesion: 0.09
-Nodes (23): AIF and memory gap tracker, G-001 — `aif_rc` asserts a proxy that no longer tracks its property, G-002 — ownership annotations are not part of trait conformance, G-003 — return-position ownership is not part of trait conformance, G-004 — a node field assigned a local String, and a field overwritten while aliased, How to use it, Measured, 1 · What the first slice broke (+15 more)
+Cohesion: 0.13
+Nodes (17): AIF and memory gap tracker, G-001 — `aif_rc` asserts a proxy that no longer tracks its property, G-002 — ownership annotations are not part of trait conformance, G-003 — return-position ownership is not part of trait conformance, G-004 — a node field assigned a local String, and a field overwritten while aliased, How to use it, 6 · Two things this cost to find, Level 5 — T3 — **DONE, 2026-08-07** (+9 more)
 
 ### Community 413 - "5. Ownership, handles, and globals"
 Cohesion: 0.33
 Nodes (6): 5. Ownership, handles, and globals, Globals holding handles need no initializer, Handles are `Ptr`, Strings and structs are affine, Test pointer absence with pointer helpers, The old string-punning invariant is retired
 
 ### Community 415 - "`Vec<T>` is used through methods"
-Cohesion: 0.10
-Nodes (27): The rule now, 2 · What 0.1 ships, 4 · Limits in 0.1, 5 · For 0.2: needs design first, Collection methods, 1 · Decisions, `Array<T, N>` is an array whose length is part of its type, Collections (+19 more)
+Cohesion: 0.12
+Nodes (20): Landing, Properties are declared: `prop`, Still open, The rule before, The rule now, 2 · What 0.1 ships, 4 · Limits in 0.1, 5 · For 0.2: needs design first (+12 more)
 
 ### Community 416 - "Null empty variants for boxed recursive enums"
 Cohesion: 0.29
@@ -2273,17 +2242,9 @@ Nodes (6): Allocation and validation evidence, Null empty variants for boxed rec
 Cohesion: 0.29
 Nodes (7): 1 · Result, 2 · The boundary is cheap because the API is handle-based, 3 · Most of the sealing loss is recoverable with contracts, 4 · A prototype bug worth recording, 5 · Compiler bug found: `List<Int>` miscompiles, 6 · What this does not show, AIF — Engine/Game Boundary Results (A2)
 
-### Community 420 - "run_module_artifact_test"
-Cohesion: 0.33
-Nodes (3): plib_sections(), run_module_artifact_test(), run_plib_triple_sections()
-
 ### Community 421 - "M4.3c — mutable DataView round trip"
 Cohesion: 0.25
 Nodes (7): Correctness and closure gates, Is Prismio DataView hand-tuned?, M4.3c — mutable DataView round trip, Mutable g1 layout gate, side by side with Rust, Standard-corpus regression gate, What changed, data_view_column()
-
-### Community 423 - "M4.3a — explicit DataView conversion boundary"
-Cohesion: 0.33
-Nodes (5): Boundary microbenchmark, Correctness and reproducibility, M4.3a — explicit DataView conversion boundary, Standard milestone benchmark, What landed
 
 ### Community 427 - "test_94_selective_imports.psm"
 Cohesion: 0.47
@@ -2316,10 +2277,6 @@ Nodes (4): main(), requireFrom(), impl From for String, From
 ### Community 440 - "neg_73_trait_argument_bound_mismatch.psm"
 Cohesion: 0.43
 Nodes (4): main(), requireFromInt(), impl From for String, From
-
-### Community 443 - "15. Working with agents"
-Cohesion: 0.40
-Nodes (5): 15. Working with agents, Do not leave partial modularization, Do not solve architecture problems with comments, Do not solve architecture problems with one-off wrappers, Prefer one coherent refactor over many cosmetic edits
 
 ### Community 444 - "neg_80_where_bound_not_satisfied.psm"
 Cohesion: 0.43
@@ -2369,9 +2326,9 @@ Nodes (6): fail(), main(), use_globals(), BUFFER_SIZE, global_counter, MAX_TOKEN
 Cohesion: 0.67
 Nodes (6): add3(), add4(), add5(), fail(), main(), nested_calls()
 
-### Community 457 - "Prismio IDE protocol"
-Cohesion: 0.40
-Nodes (4): Checking one file of a program, Current boundary, JSON diagnostics, Prismio IDE protocol
+### Community 457 - "Progress"
+Cohesion: 0.17
+Nodes (5): Progress, Checking one file of a program, Current boundary, JSON diagnostics, Prismio IDE protocol
 
 ### Community 458 - "test_162_removal_parks_under_view.psm"
 Cohesion: 0.67
@@ -2405,17 +2362,13 @@ Nodes (3): fail(), main(), greeting
 Cohesion: 1.00
 Nodes (3): main(), use_it(), Wide
 
-### Community 471 - "impl Char"
-Cohesion: 0.15
-Nodes (3): charDigitValue(), strFromChar(), impl Char
+### Community 471 - "Which std functions are properties"
+Cohesion: 0.11
+Nodes (12): Which std functions are properties, impl PlatformQuery, charDigitValue(), charIsAlnum(), charIsAlpha(), charIsDigit(), charIsLower(), charIsUpper() (+4 more)
 
 ### Community 482 - "8. Comments"
 Cohesion: 0.33
 Nodes (6): 8. Comments, Bad comments explain, Comment density should be earned, Do not turn source files into the specification, Good comments explain, Preserve subtle bug explanations
-
-### Community 483 - "test_fft_direct.psm"
-Cohesion: 0.60
-Nodes (5): cos(), sin(), benchFft(), benchFftTransform(), main()
 
 ### Community 485 - "neg_109_impl_trait_bound.psm"
 Cohesion: 0.53
@@ -2679,23 +2632,23 @@ Nodes (3): die(), PRISMIO_SEED_IR, refresh_seed.sh script
 
 ## Knowledge Gaps
 - **1247 isolated node(s):** `Empty`, `Node`, `Value`, `Empty`, `None` (+1242 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2629 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **140 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2643 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **138 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `__builtin_string_len()` connect `string.psm` to `node_to_ptr`, `std/io.psm`, `checker.psm`, `compile.psm`, `impl Parser`, `model.psm`, `generateAssignment`, `ASTNode`, `Display`, `test_47_aif_minimal_cause.psm`, `test_45_aif_affine_collections.psm`, `src/main.psm`, `umsLex`, `unicode.psm`, `.equals`, `ptr_to_node`, `ir/stmt.psm`, `TypeInfo`, `fs.psm`, `aif_concurrency.psm`, `str_with_capacity`, `test_09_strings.psm`, `test_17_string_runtime.psm`, `test_34_string_escapes.psm`, `nodeGetType`, `The 2026-09-30 `--verify` sweep`, `impl RelLoop`, `test_44_aif_region.psm`, `aifWalk`, `test_74_reinit_assignment.psm`, `maphash.psm`, `generateModule`, `use_it`, `aifCallSites`, `test_43_aif_scope_drop.psm`, `scalarToSlot`, `ir/expr.psm`, `unicode_conformance.psm`, `test_19_runtime_split.psm`, `rt_alloc`, `report.psm`, `ownership.psm`, `aif_tiers.psm`, `workspace.psm`, `UmsDiagnostic`, `test_53_memory_budget.psm`, `scanner.psm`, `key-before.psm`, `strSubstring`, `test_75_std_string.psm`, `manifest_writer.psm`, `.charAt`, `edit_distance`, `host.psm`, `test_46_aif_annotations.psm`, `project.psm`, `test_77_spawn_literal.psm`, ``Int` width — the decision, and the three measurements that made it`?**
-  _High betweenness centrality (0.034) - this node is a cross-community bridge._
-- **Why does `ASTNode` connect `ASTNode` to `node_to_ptr`, `bridge.psm`, `checker.psm`, `impl Parser`, `compile.psm`, `impl Parser`, `model.psm`, `generateAssignment`, `aifRunProfiled`, `.equals`, `ptr_to_node`, `ir/stmt.psm`, `TypeInfo`, `NodeKind`, `nodeGetType`, `impl RelLoop`, `aifWalk`, `generateModule`, `ir/expr.psm`, `semaCallExpr`, `ownership.psm`, `flatSetScalarStride`, `layout.psm`, `aifEmitManifest`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
-- **Why does `The 2026-09-30 `--verify` sweep` connect `The 2026-09-30 `--verify` sweep` to `bridge.psm`, `Channels: what 0.1 needs, and the production design after it`, `string.psm`, `generateAssignment`, `program_support.c`, `context.psm`, `prismio_task_spawn`, `lang_runtime.c`, `rt_free`, `list_get`, `build_driver.c`, `ptr_to_node`, `rc_alloc`, `flow_build`, `test_runner.py`, ``Vec<T>` is used through methods`, `ir/stmt.psm`, `map.psm`, `nodeGetType`, `3 · Steps`, `arena_state`, `bits_test`, `field_release_of`, `prismio`, `aifCallSites`, `ir/expr.psm`, `rt_alloc`, `algorithms.cpp`, `list_release`, `neg_190_failure_builtin_arguments.psm`, `derived_tier`, `fn_may_return_param`, `edit_distance`, `Process`?**
-  _High betweenness centrality (0.030) - this node is a cross-community bridge._
+- **Why does `ASTNode` connect `ASTNode` to `bridge.psm`, `checker.psm`, `impl Parser`, `compile.psm`, `model.psm`, `impl Parser`, `ranges.psm`, `ptr_to_node`, `rangeEmitAccess`, `ir/stmt.psm`, `NodeKind`, `symbols.psm`, `dbm.psm`, `aifWalk`, `src/main.psm`, `nodeIsNull`, `impl RelLoop`, `report.psm`, `layout.psm`, `aifEmitManifest`, `RangeLoop`?**
+  _High betweenness centrality (0.036) - this node is a cross-community bridge._
+- **Why does `__builtin_string_len()` connect `__builtin_string_len` to `string.psm`, `bridge.psm`, `ASTNode`, `checker.psm`, `std/io.psm`, `impl String`, `compile.psm`, `.concat`, `impl Parser`, `Display`, `Language surface`, `test_47_aif_minimal_cause.psm`, `ums_cli.psm`, `.charAt`, `unicode.psm`, `ranges.psm`, `ptr_to_node`, `ir/stmt.psm`, `aif_concurrency.psm`, `str_with_capacity`, `field_release_of`, `symbols.psm`, `aifWalk`, `src/main.psm`, `maphash.psm`, `use_it`, `test_72_reassigned_ownership.psm`, `aifCallSites`, `unicode_conformance.psm`, `nodeIsNull`, `impl RelLoop`, `rt_alloc`, `report.psm`, `aif_tiers.psm`, `test_19_runtime_split.psm`, `UmsDiagnostic`, `test_53_memory_budget.psm`, ``Int` width — the decision, and the three measurements that made it`, `The 2026-09-30 `--verify` sweep`, `key-before.psm`, `strLength`, `project.psm`?**
+  _High betweenness centrality (0.035) - this node is a cross-community bridge._
+- **Why does `The 2026-09-30 `--verify` sweep` connect `The 2026-09-30 `--verify` sweep` to `Codegen`, `impl String`, `prismio_task_spawn`, `__builtin_string_len`, `rt_free`, `list_get`, `build_driver.c`, `rc_alloc`, `ir/stmt.psm`, `field_release_of`, `map.psm`, `rt_base_alloc`, `3 · Steps`, `arena_state`, `bits_test`, `aif_tier_of`, `aifCallSites`, `nodeIsNull`, `rt_alloc`, ``Int` width — the decision, and the three measurements that made it`, `derived_tier`, `vec_push`, `edit_distance`, `Toolchain layout`, `main`?**
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
 - **Are the 246 inferred relationships involving `__builtin_string_len()` (e.g. with `keyHashBytes()` and `6 · Verdict`) actually correct?**
   _`__builtin_string_len()` has 246 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `Empty`, `Node`, `Value` to the rest of the system?**
   _1247 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `strFromU64Radix` be split into smaller, more focused modules?**
-  _Cohesion score 0.056910569105691054 - nodes in this community are weakly interconnected._
+- **Should `string.psm` be split into smaller, more focused modules?**
+  _Cohesion score 0.03021978021978022 - nodes in this community are weakly interconnected._
 - **Should `bridge.psm` be split into smaller, more focused modules?**
-  _Cohesion score 0.014796218150739811 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.012292838301896182 - nodes in this community are weakly interconnected._

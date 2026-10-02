@@ -173,6 +173,24 @@ jobs:
             echo "seed carries a target directive; it must stay target-neutral"; exit 1; }
           echo "seed is target-neutral"
 
+      # Usable is not current: the seed only has to parse src/, so a stale one
+      # passes the step above while describing an older compiler (the 0.1.0 seed
+      # was ~7,500 lines behind). The gen2 built from this tree, asked for seed IR
+      # from the repository root, must reproduce the committed seed exactly.
+      # Compared on Linux only: macOS and Linux were checked to agree byte for
+      # byte, Windows has not been.
+      - name: Check the committed seed is current
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -e
+          PRISMIO_SEED_IR=1 build/gen2 build src/main.psm -o build/seed-now.ll
+          if ! diff <(grep -v '^;' build/seed-now.ll) <(grep -v '^;' bootstrap/prismio-seed.ll) >/dev/null; then
+            echo "::error title=Stale seed::bootstrap/prismio-seed.ll does not match src/. Run tools/refresh_seed.sh --compiler <a fixpoint compiler> and commit the result."
+            exit 1
+          fi
+          echo "seed is current"
+
       # The separation this asserts is not cosmetic: a compiled program merges
       # the runtime bitcode only, so no `ir_*` backend symbol may reach a user
       # binary, and the backend ships inside the compiler and nowhere else.
@@ -231,3 +249,20 @@ jobs:
           OUT="$(./smoke$EXT)"
           echo "smoke output: $OUT"
           [ "$OUT" = "18" ] || { echo "expected 18"; exit 1; }
+
+      # RELEASE.md section 3, on the runner's own architecture: `linux-x64` and
+      # `windows-x64` can only be built on an x64 machine, and this is the only
+      # x64 machine the project has. `release.py` re-checks the fixpoint, packages
+      # with runtime bitcode and std rebuilt from source, checks the oldest OS the
+      # artifact runs on, and writes the archive and its SHA-256. Uploaded so the
+      # exact bytes CI tested are the ones a release can be cut from.
+      - name: Build the release artifact
+        shell: bash
+        run: python tools/release.py --compiler build/gen2 --out dist/release
+
+      - name: Keep the release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ runner.os }}-${{ runner.arch }}
+          path: dist/release/*
+          if-no-files-found: error

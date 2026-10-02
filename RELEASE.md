@@ -1,133 +1,142 @@
 # Releasing Prismio
 
-The v0.1.0 procedure, written down because the interesting part is the order:
-**nothing is tagged until three platforms have agreed on the exact commit that
-would be tagged.** A tag is the one artifact that cannot be corrected quietly.
+The order is the point: **nothing is tagged until three platforms have agreed on
+the exact commit that would be tagged.** A tag is the one artifact that cannot be
+corrected quietly.
 
-This file is *how*. What is still open is [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)
-plus whichever step below has not yet gone green on all three platforms. There is no
-separate checklist file. The numbers a previous candidate
-produced (suite 202/202, a macOS checksum from `63a5bcf`) were removed on
-2026-09-25, because the tree has moved past that candidate. Fill them in again
-from the candidate that is tagged.
+Everything below is a project command from `build.ums`, run as `prismio <command>`
+from the checkout. What is still open is [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)
+plus whichever step below has not yet gone green on all three platforms; there is
+no separate checklist. Fill the numbers into the release notes from the candidate
+that is tagged, never from an earlier one.
+
+| Command | What it is for |
+|---|---|
+| `prismio build` | builds the compiler this checkout runs (`.prismio/build/debug/prismio`) |
+| `prismio suite` | the test suite, for the fast loop |
+| `prismio verify` | suite, source lists, externs, AIF differential |
+| `prismio gate` | the pre-push gate: lint, then the release gate on a packaged candidate |
+| `prismio release` | the archive and its checksum for **this** host |
+| `prismio bench` | the cross-language benchmarks |
 
 ## 0 · The commit
 
-The RC is **`main`'s head at push time**. Check it:
+The release candidate is **`main`'s head at push time**, so everything that is
+generated from the tree is refreshed *first*, in the commit that gets tested,
+never after it. A refresh after the gate makes a new commit the gate has not seen.
 
 ```bash
-git log --oneline -1                                    # the commit CI will run on
-python tools/release_gate.py --rc build/v0.1-rc/bin/prismio   # must be green on it (see §1)
+prismio build && prismio build       # twice: the host must be a fixpoint of this src/
+tools/refresh_seed.sh --compiler .prismio/build/debug/prismio   # .ps1 on Windows
+graphify update .                    # AST only, no API cost
+git status --short                   # only the intended files; no stray .prismio-* or build/
 ```
 
-A clean checkout of the RC commit, bootstrapped once, must emit
-**byte-identical compiler IR** to the frozen `build/v0.1-rc`. That is what makes
-the tag reproduce the RC rather than sit beside it.
+The **seed** (`bootstrap/prismio-seed.ll`) is what a new machine builds the
+compiler from. CI only checks that it can still parse `src/`, so a stale one passes
+while describing an older compiler: before the 0.1.0 refresh it was about 7,500 lines
+behind. Refresh it whenever `src/` changed since it was written, and commit it with
+that change. `graphify-out/` (`graph.json`, `GRAPH_REPORT.md`, `manifest.json`,
+`graph.html`) is committed with the change that moved it.
 
-**Re-run the gate on the commit you are about to tag.** It takes minutes and it
-is the only thing that makes the tag mean what the release notes say it means.
+```bash
+git log --oneline -1     # the commit CI will run on
+prismio gate             # must be green on it
+```
+
+A clean checkout of that commit, bootstrapped once, must emit byte-identical
+compiler IR to the packaged candidate. The gate checks it, and it is what makes
+the tag reproduce the candidate rather than sit beside it. **Re-run the gate on the
+commit you are about to tag.** It takes minutes and is the only thing that makes
+the tag mean what the release notes say.
 
 ## 1 · The local gate
 
 ```bash
-bash tools/bootstrap.sh --compiler <compiler> --out build/v0.1-rc-bin
-python tools/package.py --compiler build/v0.1-rc-bin --out build/v0.1-rc
-PATH=$PWD/third_party/llvm/bin:$PATH python tools/release_gate.py --rc build/v0.1-rc/bin/prismio
+prismio gate
 ```
 
-**Two things the gate does not check for you, and both fail it wholesale.**
-The RC must be a *packaged* compiler: a bare generation has no
-`lib/runtime/*.bc`, so every program the suite, the corpus and the verify sweep
-build fails (229 suite failures, 2026-09-25). And the pinned LLVM must come
-first on `PATH`: the system's `llvm-nm` and `clang` (18 on the Linux box this
-was written on) cannot read LLVM 23 bitcode or agree on its data layout, which
-fails the packaged-toolchain check, `module_artifacts` and `target_cross`.
+It lints, packages the host the way a user installs it (a bare generation has no
+`lib/runtime/*.bc`, so every program the suite builds would fail), puts the pinned
+LLVM first on `PATH` (the system's `clang` and `llvm-nm` cannot read LLVM 23
+bitcode), and runs the release gate: the two-generation byte-identical fixpoint,
+the candidate reproducing, the committed seed, the suite, the AIF differential,
+the corpus built and run, the `--verify` sweep, the JIT, the cross target, and
+packaging with toolchain separation. Every check must be green.
 
-Every check must be green: the two-generation byte-identical fixpoint, the RC
-reproducing, the seed, the suite, the AIF differential, the corpus built and
-run, the `--verify` sweep, the JIT, the cross target, and packaging with
-toolchain separation. `--old <compiler>` adds a per-function mnemonic diff
-against a previous build. It is optional, and any baseline is a
-`tools/bootstrap.sh` away from the commit that had it. Record the run in
-`aif/evidence/`, as the first candidate did in
-`RESULTS-v01-release-candidate.md`.
+Record the run in `aif/evidence/`, as `RESULTS-v01-release-candidate.md` did.
+`prismio verify` is the cheaper subset for the fast loop. Two fixtures cannot be
+trusted through the `prismio` command itself, because they replace the compiler
+the command is running on: the suite's ums host-routing test reports one failure
+there that `python3 tools/run_suite.py` does not, so use the direct form as the
+final word.
 
 ## 2 · The three-platform matrix — **needs authorisation**
 
-CI runs on push. The workflow (`.github/workflows/ci.yml`) does source lists, a
-three-generation bootstrap **from the committed seed**, the fixpoint, the suite
-(which contains the corpus and JIT checks), the AIF differential, the seed
-check, packaging, `verify_separation`, and a **clean-environment smoke test** of
-the packaged toolchain outside the checkout — on `windows-latest`,
-`ubuntu-latest` and `macos-latest`.
-
-The packaging, separation and smoke-test steps are new in this commit. Before
-it, nothing in CI exercised the thing a user installs, and an uninstalled
-compiler falls back to the runtime sources embedded in its own binary —
-silently, so a packaging mistake looked like success.
+CI runs on push: source lists, a three-generation bootstrap **from the committed
+seed**, the fixpoint, the suite, the AIF differential, the seed check, packaging,
+`verify_separation`, and a clean-environment smoke test of the packaged toolchain
+outside the checkout, on `windows-latest`, `ubuntu-latest` and `macos-latest`.
 
 ```bash
 git push origin main                       # needs the owner's go-ahead
 gh run watch --exit-status                 # then: wait for all three
 ```
 
-Do not proceed past this step until all three jobs are green **on the exact
-commit you pushed**. If any is red, fix, re-run the local gate, and the commit hash in
-this file changes.
+Do not go past this step until all three jobs are green **on the exact commit you
+pushed**. If one is red, fix, re-run `prismio gate`, and push again; the commit
+changes, so the earlier runs prove nothing about it.
 
 ## 3 · Artifacts and checksums
 
-Run on **each** platform, against that platform's own gate-green build:
+On **each** platform, from a checkout of the gate-green commit:
 
 ```bash
-python tools/release.py --compiler build/v0.1-rc --version 0.1.0 --out dist/release
+prismio build
+prismio release
 ```
 
-That ships the gate-green RC binary exactly as it is. `prismio release` is the
-other form: it has the project host run `build --release` and ships the result,
-so the archive always holds the checkout as it is now rather than whatever the
-last `prismio build` left behind.
+`prismio release` has the project host run `build --release`, checks the result is
+a fixpoint, packages it with runtime bitcode and `std` rebuilt from source, runs
+the separation checks, and writes `dist/release/prismio-<version>-<os>-<arch>`:
+`.tar.gz` on macOS and Linux, `.zip` on Windows, with a `.sha256` beside it. The
+three `.sha256` files concatenate into one manifest, which is how three machines
+produce one checksum file without any trusting the others. To ship an already
+gate-green compiler instead of rebuilding, pass its binary (a bare
+generation is fine; `release.py` packages it): `prismio release --compiler <binary>`.
 
-It refuses to build from a compiler that is not a fixpoint, packages, runs the
-separation checks, archives as `prismio-<version>-<os>-<arch>.tar.gz` (`macos-arm64`, `linux-x64`, `windows-x64`; `.zip` on Windows), and writes a
-SHA-256 beside it. The three `.sha256` files concatenate into one manifest, which
-is what lets three machines produce one checksum file without any of them
-trusting the others.
-
-**It also reads the oldest system the artifact runs on off the binaries** — the
-compiler's and a program's it builds — because nothing else would notice. The
-0.1.0 macOS archive said `minos 27.0`, the build machine's version, and would not
-start on macOS 26. A macOS artifact must say 14.0 for the compiler (the LLVM it
-links) and 11.0 for programs; a Windows one must not import the Visual C++
-runtime. **Linux has no such check**: glibc binds every symbol to the build
-machine's version, and only the build machine can set that floor. Build the Linux
-artifact on the oldest distribution you mean to support, and copy the glibc
+**It reads the oldest system the artifact runs on off the binaries**, because
+nothing else would notice. A macOS archive must say `minos 14.0` for the compiler
+(the LLVM it links) and `11.0` for the programs it builds; the 0.1.0 candidate said
+`minos 27.0`, the build machine's version, and would not start on macOS 26. A
+Windows archive must not import the Visual C++ runtime. **Linux has no such
+check**: glibc binds every symbol to the build machine's version, so build the
+Linux artifact on the oldest distribution you mean to support and copy the glibc
 version it prints into the release notes.
 
-**`POST_INSTALL.txt` is not dead weight.** Nothing in this repository reads it —
-the Windows `.exe` installer, which lives outside this tree, displays it after a
-successful install. A grep for it inside the repo finds nothing, which is exactly
-why this sentence exists.
+`POST_INSTALL.txt` is read by nothing in this repository: the Windows `.exe`
+installer, which lives elsewhere, displays it after a successful install. Do not
+remove it because a grep finds no user.
 
-**Signing.** This project does not sign artifacts today and the release notes do
-not claim it does. The checksum is the integrity story; if signing is added it
-belongs in `tools/release.py` beside the checksum, not in a separate manual step.
+**Signing.** Artifacts are not signed and the release notes do not claim they are.
+The checksum is the integrity story. If signing is added it belongs in
+`tools/release.py` beside the checksum, not in a manual step.
 
 ## 4 · Clean-environment smoke test
 
-Unpack somewhere that is **not** the checkout — the tree would otherwise supply
-whatever the package forgot — and build a program the checkout does not contain:
+Unpack somewhere that is **not** the checkout, which would otherwise supply
+whatever the package forgot, and build a program the checkout does not contain:
 
 ```bash
-tar -xzf prismio-0.1.0-macos-arm64.tar.gz
+tar -xzf prismio-0.1.0-macos-arm64.tar.gz       # Windows: unzip the .zip
 cd /tmp/clean && ./prismio-0.1.0-macos-arm64/bin/prismio --version
 ./prismio-0.1.0-macos-arm64/bin/prismio build smoke.psm -o smoke && ./smoke
 ```
 
-`smoke.psm` is the one in the CI step: it exercises `sort`, an **annotated**
-`Map<Int, Int>` and a `Channel<T>` round trip, and prints `18`. Those three are
-not arbitrary — the annotated generic is the shape that did not link until this
-commit, and the channel is the feature this release adds.
+`smoke.psm` is the program inlined in `.github/workflows/ci.yml`. It exercises
+`sort`, an annotated `Map<Int, Int>` and a `Channel<T>` round trip, and prints
+`18`: the annotated generic is the shape that once did not link, and the channel is
+what 0.1.0 adds.
 
 ## 5 · Tag and publish — **needs explicit authorisation**
 
@@ -137,7 +146,7 @@ Only after steps 2–4 are green on all three platforms:
 git tag -a v0.1.0 -m "Prismio 0.1.0"        # on main's head, gate-green
 git push origin v0.1.0
 
-# The release notes are the docs site's page, `../website/apps/docs/content/releases/0.1.0.md`;
+# The notes are the docs site's page, `../website/apps/docs/content/releases/0.1.0.md`;
 # there is no CHANGELOG.md. gh wants the body without the page's front matter:
 awk '/^---$/ && n < 2 { n++; next } n >= 2' \
     ../website/apps/docs/content/releases/0.1.0.md > dist/release/NOTES.md
@@ -145,16 +154,16 @@ awk '/^---$/ && n < 2 { n++; next } n >= 2' \
 gh release create v0.1.0 \
     --title "Prismio 0.1.0" \
     --notes-file dist/release/NOTES.md \
-    dist/release/prismio-0.1.0-*.tar.gz \
-    dist/release/prismio-0.1.0-*.tar.gz.sha256
+    dist/release/prismio-0.1.0-*.tar.gz dist/release/prismio-0.1.0-*.zip \
+    dist/release/prismio-0.1.0-*.sha256
 ```
 
 **A `v1.0.0` tag already exists in this repository and is older than this work.**
-It is not what 0.1.0 releases from and it is not touched here; whether it should
-be deleted is a separate decision, and deleting a published tag is the kind of
-thing that breaks other people's checkouts.
+It is not what 0.1.0 releases from and is not touched here. Deleting a published
+tag breaks other people's checkouts, so whether to delete it is a separate
+decision.
 
 Then publish the docs site from `../website`, at the commit whose
 `verify-doc-examples.mjs` passed in both apps against this toolchain. Its
-release-notes page is the one the GitHub release was created from (step 5), so
-the two cannot differ.
+release-notes page is the one the GitHub release was created from, so the two
+cannot differ.

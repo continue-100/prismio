@@ -931,7 +931,16 @@ void ir_module_start(const char *module_name) {
     // Windows build emits -- on the one platform none of this was tested on.
     // `--target x86_64-pc-windows-msvc` goes through the record like any other
     // named target; moving the default there is a job for someone with the box.
+    //
+    // The architecture follows the host, as msvc_target_arch() in build_driver.c
+    // does for the link. A native ARM64 compiler that stamped x86_64 here merged
+    // aarch64 runtime bitcode into an x86_64 module ("Linking two modules of
+    // different target triples") and `tools/release.py` refused the result.
+#if defined(_M_ARM64) || defined(__aarch64__)
+    LLVMSetTarget(g_module, "aarch64-pc-windows-msvc");
+#else
     LLVMSetTarget(g_module, "x86_64-pc-windows-msvc");
+#endif
 #endif
 }
 

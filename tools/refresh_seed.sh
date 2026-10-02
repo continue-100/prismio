@@ -34,13 +34,19 @@ die() { printf '\033[31mFAILED: %s\033[0m\n' "$1" >&2; exit 1; }
 # runtime/llvm-api-backend.c.
 export PRISMIO_SEED_IR=1
 
-"$COMPILER" build "$REPO/src/main.psm" -o "$RAW" >/dev/null || die "compiler could not build src/main.psm"
+# Built from the repository root with a relative path. The compiler records source
+# paths in the IR (the AIF profile keys), and an absolute one would put the
+# refreshing machine's checkout location in the committed seed.
+COMPILER="$(cd "$(dirname "$COMPILER")" && pwd)/$(basename "$COMPILER")"
+cd "$REPO"
+
+"$COMPILER" build src/main.psm -o "$RAW" >/dev/null || die "compiler could not build src/main.psm"
 [ -f "$RAW" ] || die "no IR produced"
 
 # Fixed-point check: a compiler that does not reproduce its own IR is mid-migration,
 # and freezing that state into the seed would hand every new host a compiler that
 # disagrees with the one everyone else is running.
-"$COMPILER" build "$REPO/src/main.psm" -o "$AGAIN" >/dev/null || die "second build failed"
+"$COMPILER" build src/main.psm -o "$AGAIN" >/dev/null || die "second build failed"
 cmp -s "$RAW" "$AGAIN" || die "compiler is not deterministic"
 
 SEED="$REPO/bootstrap/prismio-seed.ll"

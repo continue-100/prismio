@@ -39,6 +39,39 @@ fails a generation later with nothing pointing at the cause:
   every program in `tests/` and `aif/corpus/`. Verify with two generations to a
   fixpoint, the full suite, and `tools/aif_differential.py`.
 
+## Commands
+
+Everything is a project command from `build.ums`, run from the checkout:
+`prismio build` (the compiler this checkout runs, `.prismio/build/debug/prismio`),
+`prismio suite` (fast loop), `prismio verify` (suite, source lists, externs, AIF
+differential), `prismio gate` (lint, then the release gate on a packaged candidate;
+run it before every push), `prismio release` (the archive and `.sha256` for this
+host), `prismio bench`. The `.py` and `.sh` files under `tools/` are what they call;
+reach for them directly only when a command cannot (bootstrapping, the seed).
+
+Four hazards, each of which has cost a session:
+
+- **Never run `prismio build`, or edit `src/`, while `tools/run_suite.py` runs.** Its
+  ums fixture moves the host aside, and some fixtures compile the working tree.
+- **A feature `src/` needs must be installed as the host first.** Teach the compiler,
+  build it, refresh the seed (`tools/refresh_seed.sh`), install that generation as the
+  host, *then* use the feature in `src/`. The old host cannot build a tree that needs
+  something it lacks.
+- **Name a test compiler anything but `prismio`.** It is a launcher that forwards by
+  basename; set `PRISMIO_INTERNAL_HOSTED=1`. A fixpoint is read in the IR
+  (`gen build src/main.psm -o x.ll`, twice), never in the binary.
+- **The LLVM targets are written twice**: `PRISMIO_LLVM_TARGET_LIST` in
+  `runtime/prismio_llvm.h` and `TARGET_COMPONENTS` in `tools/setup_llvm.py`
+  (AArch64, X86, WebAssembly). `tools/check_source_lists.py` fails if they disagree;
+  adding a target is both lists plus `default_target_cpu` and the targets docs page.
+
+## Before a release
+
+The seed and `graphify-out/` are refreshed *before* the gate, in the commit that gets
+tested: `prismio build` twice, `tools/refresh_seed.sh --compiler
+.prismio/build/debug/prismio`, `graphify update .`. CI only checks that the seed can
+still parse `src/`, so a stale one passes. The full procedure is `RELEASE.md`.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships. `graphify update .` builds it from the tree. Only `graph.json`, `GRAPH_REPORT.md`, `manifest.json` and `graph.html` are tracked; the cache, `cost.json` and the `.graphify_*` sidecars stay local (see `.gitignore`). Commit the three with the change that moved them, not on their own.
